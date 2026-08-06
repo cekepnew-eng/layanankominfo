@@ -1,0 +1,1614 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portal Pengajuan Layanan — Diskominfo Kota Bogor</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+
+    <style>
+        :root {
+            --primary: #0284c7;
+            --primary-light: #f0f9ff;
+            --primary-border: #bae6fd;
+            --slate-50: #f8fafc;
+            --slate-100: #f1f5f9;
+            --slate-200: #e2e8f0;
+            --slate-300: #cbd5e1;
+            --slate-400: #94a3b8;
+            --slate-500: #64748b;
+            --slate-600: #475569;
+            --slate-700: #334155;
+            --slate-800: #1e293b;
+            --slate-900: #0f172a;
+        }
+
+        /* Menyembunyikan Navbar dan Footer sesuai permintaan */
+        #siteNav,
+        .site-footer {
+            display: none !important;
+        }
+
+        html,
+        body {
+            overflow-x: hidden;
+            width: 100%;
+            position: relative;
+        }
+
+        html {
+            scroll-behavior: smooth;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+
+        /* Minimalist Background */
+        body::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 700px;
+            background: linear-gradient(180deg, var(--primary-light) 0%, rgba(248, 250, 252, 0) 100%);
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        /* Split Hero Section */
+        .portal-hero {
+            padding: 60px 0 80px;
+            position: relative;
+        }
+
+        .portal-hero h1 {
+            font-size: clamp(2.2rem, 4vw, 3.2rem);
+            font-weight: 800;
+            color: var(--slate-900);
+            letter-spacing: -0.02em;
+            margin-bottom: 1.25rem;
+            line-height: 1.2;
+        }
+
+        .portal-hero h1 span {
+            color: var(--primary);
+        }
+
+        .portal-hero p {
+            font-size: 1.1rem;
+            color: var(--slate-500);
+            max-width: 600px;
+            line-height: 1.7;
+            margin-bottom: 2.5rem;
+        }
+
+        .btn-mulai-sekarang {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            background: var(--primary);
+            color: white;
+            padding: 1rem 2.25rem;
+            border-radius: 50px;
+            font-weight: 700;
+            font-size: 1.05rem;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 20px -5px rgba(2, 132, 199, 0.4);
+        }
+
+        .btn-mulai-sekarang:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 25px -5px rgba(2, 132, 199, 0.5);
+            color: white;
+        }
+
+        .btn-lihat-layanan {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            background: white;
+            color: var(--slate-700);
+            border: 1px solid var(--slate-200);
+            padding: 1rem 2.25rem;
+            border-radius: 50px;
+            font-weight: 700;
+            font-size: 1.05rem;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
+        }
+
+        .btn-lihat-layanan:hover {
+            background: var(--slate-50);
+            border-color: var(--slate-300);
+            color: var(--slate-900);
+            transform: translateY(-3px);
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.05);
+        }
+
+        .hero-image-wrapper {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .hero-image {
+            max-width: 90%;
+            height: auto;
+            filter: drop-shadow(0 20px 30px rgba(2, 132, 199, 0.15));
+            animation: float 6s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0% {
+                transform: translateY(0px);
+            }
+
+            50% {
+                transform: translateY(-15px);
+            }
+
+            100% {
+                transform: translateY(0px);
+            }
+        }
+
+        /* Layanan Header & Search */
+        .section-layanan {
+            padding-top: 2rem;
+        }
+
+        .section-title {
+            font-size: 2rem;
+            font-weight: 800;
+            color: var(--slate-900);
+            margin-bottom: 0.25rem;
+        }
+
+        .search-container-layanan {
+            position: relative;
+            width: 100%;
+            max-width: 380px;
+        }
+
+        .search-input-layanan {
+            width: 100%;
+            padding: 0.9rem 1.25rem 0.9rem 3rem;
+            border-radius: 16px;
+            border: 1px solid var(--slate-200);
+            font-size: 1rem;
+            color: var(--slate-800);
+            background: white;
+            transition: all 0.2s;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+
+        .search-input-layanan:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px var(--primary-light);
+        }
+
+        .search-icon-layanan {
+            position: absolute;
+            left: 1.1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--slate-400);
+            transition: color 0.2s;
+        }
+
+        .search-input-layanan:focus+.search-icon-layanan {
+            color: var(--primary);
+        }
+
+        /* Grid Layanan */
+        .services-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .service-item.d-none {
+            display: none !important;
+        }
+
+        /* Service Cards */
+        .service-card {
+            background: #ffffff;
+            border-radius: 20px;
+            padding: 1.75rem;
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.02);
+            position: relative;
+            overflow: hidden;
+            z-index: 1;
+        }
+
+        .service-card::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(248, 250, 252, 0.5) 100%);
+            z-index: -1;
+            border-radius: 24px;
+        }
+
+        .service-card:hover {
+            transform: translateY(-6px);
+            box-shadow: 0 20px 40px -10px rgba(2, 132, 199, 0.12);
+            border-color: rgba(2, 132, 199, 0.3);
+        }
+
+        .service-icon-wrapper {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1.25rem;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border: 1px solid transparent;
+        }
+
+        .service-icon-wrapper svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        .service-card:hover .service-icon-wrapper {
+            transform: scale(1.1) rotate(5deg);
+        }
+
+        /* Specific Icon Colors */
+        .icon-blue {
+            background-color: #eff6ff;
+            color: #3b82f6;
+            border-color: #dbeafe;
+        }
+
+        .service-card:hover .icon-blue {
+            background-color: #3b82f6;
+            color: white;
+            border-color: #3b82f6;
+        }
+
+        .icon-purple {
+            background-color: #f3e8ff;
+            color: #a855f7;
+            border-color: #e9d5ff;
+        }
+
+        .service-card:hover .icon-purple {
+            background-color: #a855f7;
+            color: white;
+            border-color: #a855f7;
+        }
+
+        .icon-green {
+            background-color: #f0fdf4;
+            color: #22c55e;
+            border-color: #dcfce7;
+        }
+
+        .service-card:hover .icon-green {
+            background-color: #22c55e;
+            color: white;
+            border-color: #22c55e;
+        }
+
+        .icon-cyan {
+            background-color: #ecfeff;
+            color: #06b6d4;
+            border-color: #cffafe;
+        }
+
+        .service-card:hover .icon-cyan {
+            background-color: #06b6d4;
+            color: white;
+            border-color: #06b6d4;
+        }
+
+        .icon-emerald {
+            background-color: #ecfdf5;
+            color: #10b981;
+            border-color: #d1fae5;
+        }
+
+        .service-card:hover .icon-emerald {
+            background-color: #10b981;
+            color: white;
+            border-color: #10b981;
+        }
+
+        .service-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--slate-900);
+            margin-bottom: 0.5rem;
+            line-height: 1.4;
+            letter-spacing: -0.01em;
+        }
+
+        .service-desc {
+            font-size: 0.9rem;
+            color: var(--slate-500);
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+            flex-grow: 1;
+            /* Mendorong tombol selalu ke bawah */
+        }
+
+        .btn-ajukan {
+            margin-top: auto;
+            /* Memastikan tombol rata bawah */
+            background: white;
+            color: var(--primary);
+            border: 1.5px solid var(--primary-border);
+            padding: 0.75rem 1rem;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            text-align: center;
+            text-decoration: none;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.5rem;
+            width: 100%;
+        }
+
+        .btn-ajukan svg {
+            width: 16px;
+            height: 16px;
+            transition: transform 0.3s ease;
+        }
+
+        .service-card:hover .btn-ajukan {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+            box-shadow: 0 8px 16px -4px rgba(2, 132, 199, 0.2);
+        }
+
+        .service-card:hover .btn-ajukan svg {
+            transform: translateX(4px);
+        }
+
+
+
+        /* Empty State Responsive */
+        #noDataMessage {
+            grid-column: 1 / -1;
+            padding: 4rem 1rem;
+            animation: fadeIn 0.4s ease forwards;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Chip Filter styling */
+        .category-scroll-wrapper {
+            display: flex;
+            gap: 0.75rem;
+            overflow-x: auto;
+            padding-bottom: 0.5rem;
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        .category-scroll-wrapper::-webkit-scrollbar {
+            display: none;
+        }
+
+        .category-chip {
+            white-space: nowrap;
+            padding: 0.6rem 1.25rem;
+            border-radius: 50px;
+            background: white;
+            color: var(--slate-600);
+            border: 1px solid var(--slate-200);
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+            outline: none;
+        }
+
+        .category-chip:hover {
+            border-color: var(--primary-border);
+            background: var(--primary-light);
+            color: var(--primary);
+        }
+
+        .category-chip.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+            box-shadow: 0 4px 10px rgba(2, 132, 199, 0.25);
+        }
+
+        /* Premium FAQ Accordion matching Penelitian */
+        .faq-section {
+            padding: 6rem 0 8rem 0;
+        }
+
+        .faq-header {
+            text-align: center;
+            margin-bottom: 3.5rem;
+        }
+
+        .faq-header h2 {
+            font-size: 2.2rem;
+            font-weight: 800;
+            color: var(--slate-900);
+            margin-bottom: 1rem;
+        }
+
+        .faq-header p {
+            color: var(--slate-500);
+            font-size: 1.1rem;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .faq-container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .accordion-premium .accordion-item {
+            background: white;
+            border-radius: 16px !important;
+            margin-bottom: 16px !important;
+            border: 1px solid rgba(0, 0, 0, 0.05) !important;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.02) !important;
+            transition: all 0.3s ease;
+        }
+
+        .accordion-premium .accordion-item:hover {
+            border-color: var(--primary-border) !important;
+            box-shadow: 0 10px 20px -5px rgba(2, 132, 199, 0.05) !important;
+        }
+
+        .accordion-premium .accordion-button {
+            position: relative !important;
+            padding: 24px !important;
+            font-weight: 600 !important;
+            color: #0f172a !important;
+            font-size: 16px !important;
+            background: transparent !important;
+            border: none !important;
+            width: 100% !important;
+            text-align: left !important;
+            cursor: pointer;
+        }
+
+        .accordion-premium .accordion-button:focus {
+            outline: none;
+        }
+
+        .accordion-premium .accordion-button::after {
+            content: "" !important;
+            position: absolute !important;
+            right: 24px !important;
+            top: 50% !important;
+            margin-top: -1px !important;
+            width: 14px !important;
+            height: 2px !important;
+            background-color: #0f172a !important;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+            border: none !important;
+            transform: none !important;
+        }
+
+        .accordion-premium .accordion-button::before {
+            content: "" !important;
+            position: absolute !important;
+            right: 30px !important;
+            top: 50% !important;
+            margin-top: -7px !important;
+            width: 2px !important;
+            height: 14px !important;
+            background-color: #0f172a !important;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease !important;
+        }
+
+        .accordion-premium .accordion-button:not(.collapsed) {
+            color: #0284c7 !important;
+        }
+
+        .accordion-premium .accordion-button:not(.collapsed)::before {
+            transform: rotate(90deg) !important;
+            opacity: 0 !important;
+        }
+
+        .accordion-premium .accordion-button:not(.collapsed)::after {
+            transform: rotate(180deg) !important;
+            background-color: #0284c7 !important;
+        }
+
+        .accordion-premium .accordion-collapse {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s ease;
+        }
+
+        .accordion-premium .accordion-collapse.show {
+            /* height is handled in JS */
+        }
+
+        .accordion-premium .accordion-body {
+            padding: 0 24px 24px !important;
+            font-size: 14px !important;
+            color: #64748b !important;
+            line-height: 1.6 !important;
+        }
+
+        /* Modern & Elegant Mobile Responsiveness */
+        @media (max-width: 992px) {
+            .portal-hero {
+                text-align: center;
+            }
+
+            .portal-hero p {
+                margin: 0 auto 2.5rem;
+            }
+
+            .portal-hero .d-flex {
+                justify-content: center;
+            }
+
+            .hero-image-wrapper {
+                margin-top: 3rem;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .portal-hero {
+                padding: 40px 0 50px;
+            }
+
+            .portal-hero h1 {
+                font-size: clamp(2rem, 8vw, 2.5rem);
+                line-height: 1.15;
+                margin-bottom: 1rem;
+            }
+
+            .portal-hero p {
+                font-size: 1.05rem;
+                padding: 0 10px;
+                color: var(--slate-600);
+            }
+
+            .btn-mulai-sekarang,
+            .btn-lihat-layanan {
+                width: 100%;
+                justify-content: center;
+                padding: 1.1rem;
+                border-radius: 16px;
+                font-size: 1.1rem;
+            }
+
+            .search-container-layanan {
+                max-width: 100%;
+                margin-top: 1rem;
+            }
+
+            .search-input-layanan {
+                padding: 1rem 1.25rem 1rem 3.5rem;
+                border-radius: 16px;
+                font-size: 1.05rem;
+                border: none;
+                box-shadow: 0 8px 25px rgba(0, 0, 0, 0.04);
+            }
+
+            .search-icon-layanan {
+                left: 1.3rem;
+                width: 22px;
+                height: 22px;
+            }
+
+            .category-scroll-wrapper {
+                padding-bottom: 1.2rem;
+                gap: 0.6rem;
+                margin: 0 -15px;
+                padding-left: 15px;
+                padding-right: 15px;
+            }
+
+            .category-chip {
+                font-size: 0.9rem;
+                padding: 0.6rem 1.2rem;
+                border-radius: 12px;
+            }
+
+            .services-grid {
+                grid-template-columns: 1fr;
+                gap: 1.2rem;
+            }
+
+            .service-card {
+                padding: 1.5rem;
+                border-radius: 20px;
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.03);
+                border: 1px solid rgba(226, 232, 240, 0.5);
+            }
+
+            .service-icon-wrapper {
+                width: 54px;
+                height: 54px;
+                border-radius: 16px;
+                margin-bottom: 1rem;
+            }
+
+            .service-title {
+                font-size: 1.25rem;
+            }
+
+            .service-desc {
+                font-size: 0.95rem;
+                margin-bottom: 1.5rem;
+            }
+
+            .btn-ajukan {
+                padding: 0.9rem;
+                border-radius: 14px;
+                font-size: 1rem;
+                background: var(--primary-light);
+                border: none;
+            }
+
+            .service-card:hover .btn-ajukan {
+                background: var(--primary);
+            }
+
+            .faq-section {
+                padding: 3rem 0;
+            }
+
+            .faq-header h2 {
+                font-size: 1.8rem;
+                padding: 0 15px;
+            }
+
+            .accordion-premium .accordion-item {
+                border-radius: 16px !important;
+                margin-bottom: 12px !important;
+            }
+
+            .accordion-premium .accordion-button {
+                padding: 18px !important;
+                font-size: 1.05rem !important;
+            }
+
+            .accordion-premium .accordion-button::after {
+                right: 18px !important;
+            }
+
+            .accordion-premium .accordion-button::before {
+                right: 24px !important;
+            }
+
+            .accordion-premium .accordion-body {
+                padding: 0 18px 18px !important;
+                font-size: 0.95rem !important;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <main>
+        <!-- 1. Header (Split Layout) -->
+        <section class="portal-hero" data-aos="fade-in">
+            <div class="container">
+                <div class="row align-items-center">
+                    <!-- Kiri: Teks dan Tombol -->
+                    <div class="col-lg-6 text-start mb-4 mb-lg-0">
+                        <h1>Portal Layanan<br><span>Diskominfo Kota Bogor</span></h1>
+                        <p>Sistem pelayanan terpadu untuk memfasilitasi kebutuhan administrasi, penyediaan jaringan,
+                            pengembangan sistem, hingga permohonan informasi publik secara cepat dan transparan.</p>
+
+                        <div class="d-flex flex-wrap gap-3 mt-2" data-aos="fade-up" data-aos-delay="50">
+                            <a href="#" class="btn-mulai-sekarang">
+                                Mulai Sekarang
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2.5">
+                                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                                    <polyline points="12 5 19 12 12 19"></polyline>
+                                </svg>
+                            </a>
+                            <a href="#daftar-layanan" class="btn-lihat-layanan">
+                                Lihat Layanan
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Kanan: Ilustrasi Animasi -->
+                    <div class="col-lg-6">
+                        <div class="hero-image-wrapper">
+                            <img src="magang_illustration.png" alt="Ilustrasi Layanan Diskominfo"
+                                class="img-fluid hero-image">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Daftar Layanan -->
+        <section id="daftar-layanan" class="section-layanan mb-5 pb-5">
+            <div class="container">
+                <!-- Header Layanan & Search -->
+                <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end mb-4">
+                    <div>
+                        <h2 class="section-title">Layanan Kami</h2>
+                        <p class="text-slate-500 mb-0">Pilih layanan yang Anda butuhkan di bawah ini.</p>
+                    </div>
+
+                    <div class="search-container-layanan mt-3 mt-md-0">
+                        <input type="text" id="searchInput" class="search-input-layanan"
+                            placeholder="Cari layanan (contoh: magang)..." autocomplete="off">
+                        <svg class="search-icon-layanan" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2.5">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                    </div>
+                </div> <!-- Kategori Filter -->
+                <div class="category-filter-container mb-5 pb-2">
+                    <div class="category-scroll-wrapper">
+                        <button class="category-chip active" data-category="all">Semua Layanan</button>
+                        <button class="category-chip" data-category="umum-sdm">Layanan Umum & SDM</button>
+                        <button class="category-chip" data-category="infrastruktur">Infrastruktur & TI</button>
+                        <button class="category-chip" data-category="sistem">Tata Kelola & Aplikasi</button>
+                        <button class="category-chip" data-category="keamanan">Keamanan & Siber</button>
+                    </div>
+                </div>
+
+                <!-- Grid Cards by Category -->
+                <div id="servicesContainer">
+
+                    <!-- Category: Layanan Umum & SDM -->
+                    <div class="category-section mb-5" data-category-id="umum-sdm">
+                        <h3 class="fw-bold text-slate-800 mb-4" style="font-size: 1.5rem;">Layanan Umum & SDM</h3>
+                        <div class="services-grid">
+                            <div class="service-item" data-title="magang pkl mahasiswa siswa pendaftaran aplikasi umum">
+                                <div class="service-card" data-aos="fade-up">
+                                    <div class="service-icon-wrapper icon-blue">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <rect width="20" height="14" x="2" y="7" rx="2" ry="2" />
+                                            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="service-title" style="font-size: 1.15rem;">Magang & PKL</h3>
+                                    <p class="service-desc" style="font-size: 0.9rem;">Pendaftaran program praktik kerja
+                                        lapangan (PKL) dan magang bagi siswa SMK serta mahasiswa.</p>
+                                    <a href="form-layanan.html?layanan=Magang" class="btn-ajukan">
+                                        Ajukan Pendaftaran
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                            <polyline points="12 5 19 12 12 19"></polyline>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="service-item"
+                                data-title="fasilitasi zoom meeting rapat video conference online umum">
+                                <div class="service-card" data-aos="fade-up">
+                                    <div class="service-icon-wrapper icon-cyan">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <polygon points="23 7 16 12 23 17 23 7" />
+                                            <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="service-title" style="font-size: 1.15rem;">Fasilitasi Zoom</h3>
+                                    <p class="service-desc" style="font-size: 0.9rem;">Peminjaman akun atau fasilitasi
+                                        teknis Zoom Premium untuk rapat resmi perangkat daerah.</p>
+                                    <a href="form-layanan.html?layanan=Fasilitasi Zoom Meeting" class="btn-ajukan">
+                                        Isi Formulir
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                            <polyline points="12 5 19 12 12 19"></polyline>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="service-item"
+                                data-title="layanan peningkatan kapasitas sdm pemerintah daerah sumber daya manusia">
+                                <div class="service-card" data-aos="fade-up">
+                                    <div class="service-icon-wrapper icon-cyan">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                                            <circle cx="9" cy="7" r="4" />
+                                            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                                            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="service-title" style="font-size: 1.15rem;">Peningkatan Kapasitas SDM</h3>
+                                    <p class="service-desc" style="font-size: 0.9rem;">Fasilitasi peningkatan kapasitas
+                                        SDM TIK di lingkungan Pemerintah Daerah.</p>
+                                    <a href="form-layanan.html?layanan=Kapasitas SDM" class="btn-ajukan">
+                                        Ajukan Layanan
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                            <polyline points="12 5 19 12 12 19"></polyline>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Category: Infrastruktur Jaringan & TI -->
+                    <div class="category-section mb-5" data-category-id="infrastruktur">
+                        <h3 class="fw-bold text-slate-800 mb-4" style="font-size: 1.5rem;">Infrastruktur Jaringan & TI
+                        </h3>
+                        <div class="services-grid">
+                            <div class="service-item" data-title="layanan jaringan intra pemerintah">
+                                <div class="service-card" data-aos="fade-up">
+                                    <div class="service-icon-wrapper icon-blue">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                                            <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                                            <line x1="6" y1="6" x2="6.01" y2="6" />
+                                            <line x1="6" y1="18" x2="6.01" y2="18" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="service-title" style="font-size: 1.15rem;">Jaringan Intra Pemerintah</h3>
+                                    <p class="service-desc" style="font-size: 0.9rem;">Penyediaan dan pengelolaan
+                                        jaringan intra pemerintah kota.</p>
+                                    <a href="form-layanan.html?layanan=Jaringan Intra Pemerintah" class="btn-ajukan">
+                                        Ajukan Layanan
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                            <polyline points="12 5 19 12 12 19"></polyline>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="service-item" data-title="layanan pengembangan infrastruktur">
+                                <div class="service-card" data-aos="fade-up">
+                                    <div class="service-icon-wrapper icon-blue">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                                            <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                                            <line x1="6" y1="6" x2="6.01" y2="6" />
+                                            <line x1="6" y1="18" x2="6.01" y2="18" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="service-title" style="font-size: 1.15rem;">Pengembangan Infrastruktur
+                                    </h3>
+                                    <p class="service-desc" style="font-size: 0.9rem;">Fasilitasi pengembangan
+                                        infrastruktur teknologi informasi.</p>
+                                    <a href="form-layanan.html?layanan=Pengembangan Infrastruktur" class="btn-ajukan">
+                                        Ajukan Layanan
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                            <polyline points="12 5 19 12 12 19"></polyline>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="service-item" data-title="layanan server perangkat daerah">
+                                <div class="service-card" data-aos="fade-up">
+                                    <div class="service-icon-wrapper icon-blue">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                                            <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                                            <line x1="6" y1="6" x2="6.01" y2="6" />
+                                            <line x1="6" y1="18" x2="6.01" y2="18" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="service-title" style="font-size: 1.15rem;">Server Perangkat Daerah</h3>
+                                    <p class="service-desc" style="font-size: 0.9rem;">Penyediaan layanan server untuk
+                                        kebutuhan perangkat daerah.</p>
+                                    <a href="form-layanan.html?layanan=Server Perangkat Daerah" class="btn-ajukan">
+                                        Ajukan Layanan
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                            <polyline points="12 5 19 12 12 19"></polyline>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="service-item" data-title="layanan wifi gratis di tempat publik internet">
+                                <div class="service-card" data-aos="fade-up">
+                                    <div class="service-icon-wrapper icon-blue">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <path d="M5 12.55a11 11 0 0 1 14.08 0" />
+                                            <path d="M1.42 9a16 16 0 0 1 21.16 0" />
+                                            <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+                                            <line x1="12" y1="20" x2="12.01" y2="20" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="service-title" style="font-size: 1.15rem;">Wifi Gratis Ruang Publik</h3>
+                                    <p class="service-desc" style="font-size: 0.9rem;">Penyediaan dan pemeliharaan
+                                        layanan wifi gratis di tempat publik.</p>
+                                    <a href="form-layanan.html?layanan=Wifi Gratis Publik" class="btn-ajukan">
+                                        Ajukan Layanan
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                            <polyline points="12 5 19 12 12 19"></polyline>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="service-item" data-title="layanan perangkat jaringan dan komunikasi">
+                                <div class="service-card" data-aos="fade-up">
+                                    <div class="service-icon-wrapper icon-blue">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                                            <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                                            <line x1="6" y1="6" x2="6.01" y2="6" />
+                                            <line x1="6" y1="18" x2="6.01" y2="18" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="service-title" style="font-size: 1.15rem;">Perangkat Jaringan &
+                                        Komunikasi</h3>
+                                    <p class="service-desc" style="font-size: 0.9rem;">Dukungan teknis perangkat
+                                        jaringan dan komunikasi pemerintah daerah.</p>
+                                    <a href="form-layanan.html?layanan=Perangkat Jaringan" class="btn-ajukan">
+                                        Ajukan Layanan
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                            <polyline points="12 5 19 12 12 19"></polyline>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Category: Tata Kelola & Aplikasi -->
+                    <div class="category-section mb-5" data-category-id="sistem">
+                        <h3 class="fw-bold text-slate-800 mb-4" style="font-size: 1.5rem;">Tata Kelola & Aplikasi</h3>
+                        <div class="services-grid">
+                            <div class="service-item"
+                                data-title="layanan kebijakan spbe sistem pemerintahan berbasis elektronik">
+                                <div class="service-card" data-aos="fade-up">
+                                    <div class="service-icon-wrapper icon-purple">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <circle cx="12" cy="12" r="10" />
+                                            <line x1="2" y1="12" x2="22" y2="12" />
+                                            <path
+                                                d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="service-title" style="font-size: 1.15rem;">Kebijakan SPBE</h3>
+                                    <p class="service-desc" style="font-size: 0.9rem;">Layanan pendampingan dan
+                                        perumusan kebijakan SPBE.</p>
+                                    <a href="form-layanan.html?layanan=Kebijakan SPBE" class="btn-ajukan">
+                                        Ajukan Layanan
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                            <polyline points="12 5 19 12 12 19"></polyline>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="service-item"
+                                data-title="layanan monev dan pelaporan spbe sistem pemerintahan berbasis elektronik">
+                                <div class="service-card" data-aos="fade-up">
+                                    <div class="service-icon-wrapper icon-purple">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <circle cx="12" cy="12" r="10" />
+                                            <line x1="2" y1="12" x2="22" y2="12" />
+                                            <path
+                                                d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="service-title" style="font-size: 1.15rem;">Monev & Pelaporan SPBE</h3>
+                                    <p class="service-desc" style="font-size: 0.9rem;">Monitoring, evaluasi, dan
+                                        pelaporan implementasi SPBE.</p>
+                                    <a href="form-layanan.html?layanan=Monev SPBE" class="btn-ajukan">
+                                        Ajukan Layanan
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                            <polyline points="12 5 19 12 12 19"></polyline>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="service-item"
+                                data-title="layanan permohonan reset password email pemerintah kota bogor aplikasi">
+                                <div class="service-card" data-aos="fade-up">
+                                    <div class="service-icon-wrapper icon-green">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                                            <line x1="3" y1="9" x2="21" y2="9" />
+                                            <line x1="9" y1="21" x2="9" y2="9" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="service-title" style="font-size: 1.15rem;">Reset Password Email Pemkot
+                                    </h3>
+                                    <p class="service-desc" style="font-size: 0.9rem;">Permohonan reset password akun
+                                        email resmi Pemerintah Kota Bogor.</p>
+                                    <a href="form-layanan.html?layanan=Reset Password Email" class="btn-ajukan">
+                                        Ajukan Layanan
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                            <polyline points="12 5 19 12 12 19"></polyline>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="service-item"
+                                data-title="layanan permohonan password website pemerintah kota bogor aplikasi">
+                                <div class="service-card" data-aos="fade-up">
+                                    <div class="service-icon-wrapper icon-green">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                                            <line x1="3" y1="9" x2="21" y2="9" />
+                                            <line x1="9" y1="21" x2="9" y2="9" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="service-title" style="font-size: 1.15rem;">Reset Password Website Pemkot
+                                    </h3>
+                                    <p class="service-desc" style="font-size: 0.9rem;">Permohonan reset password
+                                        pengelola website di lingkup Pemkot Bogor.</p>
+                                    <a href="form-layanan.html?layanan=Reset Password Website" class="btn-ajukan">
+                                        Ajukan Layanan
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                            <polyline points="12 5 19 12 12 19"></polyline>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Category: Keamanan Informasi & Siber -->
+                    <div class="category-section mb-5" data-category-id="keamanan">
+                        <h3 class="fw-bold text-slate-800 mb-4" style="font-size: 1.5rem;">Keamanan Informasi & Siber
+                        </h3>
+                        <div class="services-grid">
+                            <div class="service-item" data-title="kegiatan security awareness keamanan informasi siber">
+                                <div class="service-card" data-aos="fade-up">
+                                    <div class="service-icon-wrapper icon-emerald">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="service-title" style="font-size: 1.15rem;">Kegiatan Security Awareness
+                                    </h3>
+                                    <p class="service-desc" style="font-size: 0.9rem;">Peningkatan kesadaran keamanan
+                                        informasi bagi aparatur pemerintah.</p>
+                                    <a href="form-layanan.html?layanan=Kegiatan Security Awareness" class="btn-ajukan">
+                                        Ajukan Layanan
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                            <polyline points="12 5 19 12 12 19"></polyline>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="service-item"
+                                data-title="kegiatan monitoring security operation center soc keamanan">
+                                <div class="service-card" data-aos="fade-up">
+                                    <div class="service-icon-wrapper icon-emerald">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="service-title" style="font-size: 1.15rem;">Monitoring SOC</h3>
+                                    <p class="service-desc" style="font-size: 0.9rem;">Kegiatan Monitoring Security
+                                        Operation Center (SOC) secara berkelanjutan.</p>
+                                    <a href="form-layanan.html?layanan=Monitoring SOC" class="btn-ajukan">
+                                        Ajukan Layanan
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                            <polyline points="12 5 19 12 12 19"></polyline>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="service-item"
+                                data-title="kegiatan vulnerability assessment dan penetration testing vapt">
+                                <div class="service-card" data-aos="fade-up">
+                                    <div class="service-icon-wrapper icon-emerald">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="service-title" style="font-size: 1.15rem;">Vulnerability Assessment &
+                                        VAPT</h3>
+                                    <p class="service-desc" style="font-size: 0.9rem;">Pengujian kerentanan dan
+                                        penetrasi sistem keamanan informasi.</p>
+                                    <a href="form-layanan.html?layanan=VAPT" class="btn-ajukan">
+                                        Ajukan Layanan
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                            <polyline points="12 5 19 12 12 19"></polyline>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="service-item" data-title="pelaksanaan uji kesesuaian sistem uks keamanan">
+                                <div class="service-card" data-aos="fade-up">
+                                    <div class="service-icon-wrapper icon-emerald">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="service-title" style="font-size: 1.15rem;">Uji Kesesuaian Sistem (UKS)
+                                    </h3>
+                                    <p class="service-desc" style="font-size: 0.9rem;">Pelaksanaan pengujian kesesuaian
+                                        terhadap sistem elektronik daerah.</p>
+                                    <a href="form-layanan.html?layanan=Uji Kesesuaian Sistem" class="btn-ajukan">
+                                        Ajukan Layanan
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                            <polyline points="12 5 19 12 12 19"></polyline>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="service-item"
+                                data-title="pemenuhan dan pengisian mandiri indeks keamanan informasi kami">
+                                <div class="service-card" data-aos="fade-up">
+                                    <div class="service-icon-wrapper icon-emerald">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="service-title" style="font-size: 1.15rem;">Indeks KAMI</h3>
+                                    <p class="service-desc" style="font-size: 0.9rem;">Pemenuhan dan pengisian mandiri
+                                        Indeks Keamanan Informasi.</p>
+                                    <a href="form-layanan.html?layanan=Indeks KAMI" class="btn-ajukan">
+                                        Ajukan Layanan
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                            <polyline points="12 5 19 12 12 19"></polyline>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="service-item"
+                                data-title="pengelolaan aplikasi dashboard security assesment dsa keamanan">
+                                <div class="service-card" data-aos="fade-up">
+                                    <div class="service-icon-wrapper icon-emerald">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="service-title" style="font-size: 1.15rem;">Dashboard Security Assessment
+                                    </h3>
+                                    <p class="service-desc" style="font-size: 0.9rem;">Pengelolaan aplikasi Dashboard
+                                        Security Assessment (DSA).</p>
+                                    <a href="form-layanan.html?layanan=Dashboard Security Assessment"
+                                        class="btn-ajukan">
+                                        Ajukan Layanan
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                            <polyline points="12 5 19 12 12 19"></polyline>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="service-item"
+                                data-title="pengelolaan csirt cyber security incident response team">
+                                <div class="service-card" data-aos="fade-up">
+                                    <div class="service-icon-wrapper icon-emerald">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="service-title" style="font-size: 1.15rem;">Pengelolaan CSIRT</h3>
+                                    <p class="service-desc" style="font-size: 0.9rem;">Pengelolaan insiden keamanan
+                                        siber melalui tim CSIRT.</p>
+                                    <a href="form-layanan.html?layanan=Pengelolaan CSIRT" class="btn-ajukan">
+                                        Ajukan Layanan
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                            <polyline points="12 5 19 12 12 19"></polyline>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="service-item"
+                                data-title="penyusunan tata kelola di bidang persandian dan keamanan informasi">
+                                <div class="service-card" data-aos="fade-up">
+                                    <div class="service-icon-wrapper icon-emerald">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="service-title" style="font-size: 1.15rem;">Tata Kelola Keamanan</h3>
+                                    <p class="service-desc" style="font-size: 0.9rem;">Penyusunan tata kelola di bidang
+                                        persandian dan keamanan informasi.</p>
+                                    <a href="form-layanan.html?layanan=Tata Kelola Keamanan Informasi"
+                                        class="btn-ajukan">
+                                        Ajukan Layanan
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                            <polyline points="12 5 19 12 12 19"></polyline>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="service-item"
+                                data-title="layanan pengelolaan reset password tte tanda tangan elektronik csirt">
+                                <div class="service-card" data-aos="fade-up">
+                                    <div class="service-icon-wrapper icon-emerald">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <path
+                                                d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                                            <line x1="12" y1="9" x2="12" y2="13" />
+                                            <line x1="12" y1="17" x2="12.01" y2="17" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="service-title" style="font-size: 1.15rem;">Reset Password TTE</h3>
+                                    <p class="service-desc" style="font-size: 0.9rem;">Layanan pengelolaan permohonan
+                                        reset password Tanda Tangan Elektronik.</p>
+                                    <a href="form-layanan.html?layanan=Reset Password TTE" class="btn-ajukan">
+                                        Ajukan Layanan
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                            <polyline points="12 5 19 12 12 19"></polyline>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="service-item" data-title="kegiatan security awareness csirt">
+                                <div class="service-card" data-aos="fade-up">
+                                    <div class="service-icon-wrapper icon-emerald">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <path
+                                                d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                                            <line x1="12" y1="9" x2="12" y2="13" />
+                                            <line x1="12" y1="17" x2="12.01" y2="17" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="service-title" style="font-size: 1.15rem;">Security Awareness (CSIRT)
+                                    </h3>
+                                    <p class="service-desc" style="font-size: 0.9rem;">Kegiatan peningkatan kesadaran
+                                        keamanan siber oleh tim CSIRT.</p>
+                                    <a href="form-layanan.html?layanan=Security Awareness CSIRT" class="btn-ajukan">
+                                        Ajukan Layanan
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                            <polyline points="12 5 19 12 12 19"></polyline>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div> <!-- Data not found state -->
+                <div id="noDataMessage" class="text-center d-none" style="width: 100%;">
+                    <div
+                        style="width: 72px; height: 72px; background: var(--slate-100); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem;">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--slate-400)"
+                            stroke-width="2">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                    </div>
+                    <h4 class="text-slate-800 fw-bold mb-2">Layanan tidak ditemukan</h4>
+                    <p class="text-slate-500 mb-0">Coba gunakan kata kunci lain (seperti: magang, zoom).</p>
+                </div>
+
+            </div>
+            </div>
+        </section>
+
+        <!-- 3. FAQ Section -->
+        <section class="faq-section bg-slate-50" data-aos="fade-up">
+            <div class="container">
+                <div class="faq-header">
+                    <h2>Pertanyaan yang Sering Diajukan</h2>
+                    <p>Temukan jawaban cepat mengenai prosedur, syarat, dan ketentuan layanan di Diskominfo Kota Bogor.
+                    </p>
+                </div>
+
+                <div class="faq-container">
+                    <div class="accordion-premium" id="faqAccordion">
+                        <!-- FAQ 1 -->
+                        <div class="accordion-item" data-aos="fade-up" data-aos-delay="100">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-target="collapseOne">
+                                    Apakah seluruh layanan di Diskominfo ini berbayar?
+                                </button>
+                            </h2>
+                            <div id="collapseOne" class="accordion-collapse">
+                                <div class="accordion-body">
+                                    <strong>Tentu tidak.</strong> Seluruh layanan yang disediakan oleh Diskominfo Kota
+                                    Bogor (mulai dari Pendaftaran Magang, Izin Penelitian, hingga Fasilitasi Zoom)
+                                    adalah 100% <strong>gratis</strong> dan tidak dipungut biaya apa pun.
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- FAQ 2 -->
+                        <div class="accordion-item" data-aos="fade-up" data-aos-delay="200">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-target="collapseTwo">
+                                    Berapa lama estimasi proses permohonan layanan?
+                                </button>
+                            </h2>
+                            <div id="collapseTwo" class="accordion-collapse">
+                                <div class="accordion-body">
+                                    Estimasi waktu pemrosesan sangat bergantung pada jenis layanan yang Anda ajukan:
+                                    <ul class="mt-2 mb-0" style="padding-left: 1.25rem;">
+                                        <li><strong>Verifikasi Dokumen PDF:</strong> Berlangsung instan pada saat itu
+                                            juga melalui sistem.</li>
+                                        <li><strong>Pendaftaran Magang & PKL:</strong> Bergantung pada ketersediaan
+                                            kuota dan peninjauan oleh tim, biasanya maksimal 3-5 hari kerja.</li>
+                                        <li><strong>Fasilitasi Zoom & Penelitian:</strong> Diproses dalam 1-3 hari kerja
+                                            sejak surat permohonan diterima.</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- FAQ 3 -->
+                        <div class="accordion-item" data-aos="fade-up" data-aos-delay="300">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-target="collapseThree">
+                                    Siapa saja yang boleh mengajukan Pendaftaran Magang / PKL?
+                                </button>
+                            </h2>
+                            <div id="collapseThree" class="accordion-collapse">
+                                <div class="accordion-body">
+                                    Layanan magang / Praktik Kerja Lapangan (PKL) ditujukan untuk <strong>Siswa/i
+                                        jenjang SMK/Sederajat</strong> dan <strong>Mahasiswa/i jenjang Perguruan Tinggi
+                                        (D3/D4/S1)</strong> yang memiliki Surat Pengantar atau Rekomendasi Resmi dari
+                                    instansi pendidikannya.
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- FAQ 4 -->
+                        <div class="accordion-item" data-aos="fade-up" data-aos-delay="400">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-target="collapseFour">
+                                    Bagaimana saya tahu bahwa dokumen/surat pengajuan saya sudah disetujui?
+                                </button>
+                            </h2>
+                            <div id="collapseFour" class="accordion-collapse">
+                                <div class="accordion-body">
+                                    Admin kami akan menghubungi Anda melalui kontak <strong>WhatsApp</strong> atau
+                                    <strong>Email</strong> yang telah Anda isi pada formulir pengajuan. Pastikan nomor
+                                    kontak dan email yang Anda cantumkan dalam keadaan aktif. Jika terdapat kekurangan
+                                    dokumen, tim kami juga akan meminta perbaikan via kontak tersebut.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    </main>
+    <script>
+        // Logika Fitur Pencarian dan Kategori Interaktif
+        document.addEventListener('DOMContentLoaded', () => {
+            const searchInput = document.getElementById('searchInput');
+            const noDataMessage = document.getElementById('noDataMessage');
+            const categoryChips = document.querySelectorAll('.category-chip');
+
+            let currentCategory = 'all';
+
+            function filterServices() {
+                const query = (searchInput ? searchInput.value : '').toLowerCase().trim();
+                let totalVisibleCount = 0;
+
+                document.querySelectorAll('.category-section').forEach(section => {
+                    const sectionCategory = section.getAttribute('data-category-id');
+
+                    // Cek filter kategori
+                    if (currentCategory !== 'all' && sectionCategory !== currentCategory) {
+                        section.classList.add('d-none');
+                        return;
+                    }
+
+                    let sectionVisibleCount = 0;
+                    const serviceItems = section.querySelectorAll('.service-item');
+
+                    serviceItems.forEach(item => {
+                        const titleWords = item.getAttribute('data-title').toLowerCase();
+                        if (titleWords.includes(query)) {
+                            item.classList.remove('d-none');
+                            sectionVisibleCount++;
+                            totalVisibleCount++;
+                        } else {
+                            item.classList.add('d-none');
+                        }
+                    });
+
+                    // Sembunyikan kategori jika tidak ada layanan yang cocok
+                    if (sectionVisibleCount === 0) {
+                        section.classList.add('d-none');
+                    } else {
+                        section.classList.remove('d-none');
+                    }
+                });
+
+                // Tampilkan pesan jika tidak ada yang cocok sama sekali
+                if (totalVisibleCount === 0) {
+                    if (noDataMessage) noDataMessage.classList.remove('d-none');
+                } else {
+                    if (noDataMessage) noDataMessage.classList.add('d-none');
+                }
+
+                // Refresh AOS animations after layout changes
+                setTimeout(() => {
+                    if (typeof AOS !== 'undefined') {
+                        AOS.refresh();
+                    }
+                }, 50);
+            }
+
+            if (searchInput) {
+                searchInput.addEventListener('input', filterServices);
+            }
+
+            // Logic Klik Kategori
+            categoryChips.forEach(chip => {
+                chip.addEventListener('click', () => {
+                    // Hapus active dari semua chip
+                    categoryChips.forEach(c => c.classList.remove('active'));
+                    // Tambahkan active ke chip yang diklik
+                    chip.classList.add('active');
+
+                    currentCategory = chip.getAttribute('data-category');
+
+                    // Panggil filter ulang (ini akan mengombinasikan filter kategori + kata kunci pencarian yang ada)
+                    filterServices();
+                });
+            });
+        });
+
+        // Logika Custom Vanilla Accordion FAQ (Sesuai dengan Penelitian)
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('.accordion-button').forEach(button => {
+                button.addEventListener('click', () => {
+                    const targetId = button.getAttribute('data-target');
+                    const targetCollapse = document.getElementById(targetId);
+                    const isCollapsed = button.classList.contains('collapsed');
+
+                    // Close all accordion items
+                    document.querySelectorAll('.accordion-button').forEach(btn => {
+                        btn.classList.add('collapsed');
+                    });
+                    document.querySelectorAll('.accordion-collapse').forEach(collapse => {
+                        collapse.classList.remove('show');
+                        collapse.style.maxHeight = null;
+                    });
+
+                    if (isCollapsed) {
+                        button.classList.remove('collapsed');
+                        targetCollapse.classList.add('show');
+                        targetCollapse.style.maxHeight = targetCollapse.scrollHeight + "px";
+                    }
+                });
+            });
+        });
+    </script>
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+    <script>
+        AOS.init({ once: true, duration: 800, offset: 100, easing: 'ease-out-quart' });
+    </script>
+</body>
+
+</html>
