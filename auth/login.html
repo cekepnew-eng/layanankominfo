@@ -26,10 +26,6 @@
       box-sizing: border-box;
     }
 
-    html {
-      overflow-x: hidden;
-    }
-
     body {
       font-family: 'Inter', sans-serif;
       background-color: var(--slate-100);
@@ -319,6 +315,9 @@
 
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script>
+    // Hapus sesi lama setiap kali membuka halaman login
+    localStorage.removeItem('isLoggedIn');
+
     function simulateLogin() {
       Swal.fire({
         title: 'Memproses...',
@@ -337,6 +336,7 @@
           timer: 1500,
           showConfirmButton: false
         }).then(() => {
+          localStorage.setItem('isLoggedIn', 'true');
           window.location.href = "../index.html";
         });
       }, 1000);
