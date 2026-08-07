@@ -36,7 +36,6 @@
             display: none !important;
         }
 
-        html,
         body {
             overflow-x: hidden;
             width: 100%;
@@ -575,13 +574,19 @@
         }
 
         /* Modern & Elegant Mobile Responsiveness */
+        /* --- Profesional Responsive Adjustments --- */
+        
+        /* Tablet & Large Mobile */
         @media (max-width: 992px) {
             .portal-hero {
                 text-align: center;
+                padding: 40px 15px 50px;
             }
 
             .portal-hero p {
                 margin: 0 auto 2.5rem;
+                font-size: 1.1rem;
+                max-width: 600px;
             }
 
             .portal-hero .d-flex {
@@ -591,32 +596,52 @@
             .hero-image-wrapper {
                 margin-top: 3rem;
             }
+
+            .hero-image {
+                max-width: 70%; /* Limit size on tablet */
+                margin: 0 auto;
+                display: block;
+            }
+
+            .faq-header h2 {
+                font-size: 2rem;
+            }
         }
 
+        /* Mobile */
         @media (max-width: 768px) {
+            .container {
+                padding-left: 24px !important;
+                padding-right: 24px !important;
+            }
+
             .portal-hero {
-                padding: 40px 0 50px;
+                padding: 30px 0 40px; 
             }
 
             .portal-hero h1 {
-                font-size: clamp(2rem, 8vw, 2.5rem);
-                line-height: 1.15;
-                margin-bottom: 1rem;
+                font-size: clamp(1.75rem, 7.5vw, 2.2rem);
+                line-height: 1.25;
+                margin-bottom: 0.75rem;
             }
 
             .portal-hero p {
-                font-size: 1.05rem;
-                padding: 0 10px;
+                font-size: 0.95rem;
+                padding: 0;
                 color: var(--slate-600);
+            }
+
+            .hero-image {
+                max-width: 85%;
             }
 
             .btn-mulai-sekarang,
             .btn-lihat-layanan {
                 width: 100%;
                 justify-content: center;
-                padding: 1.1rem;
-                border-radius: 16px;
-                font-size: 1.1rem;
+                padding: 0.8rem;
+                border-radius: 12px;
+                font-size: 0.95rem;
             }
 
             .search-container-layanan {
@@ -625,17 +650,17 @@
             }
 
             .search-input-layanan {
-                padding: 1rem 1.25rem 1rem 3.5rem;
-                border-radius: 16px;
-                font-size: 1.05rem;
+                padding: 0.8rem 1rem 0.8rem 2.8rem;
+                border-radius: 12px;
+                font-size: 0.95rem;
                 border: none;
-                box-shadow: 0 8px 25px rgba(0, 0, 0, 0.04);
+                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.04);
             }
 
             .search-icon-layanan {
-                left: 1.3rem;
-                width: 22px;
-                height: 22px;
+                left: 1rem;
+                width: 18px;
+                height: 18px;
             }
 
             .category-scroll-wrapper {
@@ -654,14 +679,34 @@
 
             .services-grid {
                 grid-template-columns: 1fr;
-                gap: 1.2rem;
+                gap: 1.25rem;
+            }
+
+            .category-btn {
+                padding: 8px 16px;
+                font-size: 0.85rem;
+                border-radius: 20px;
             }
 
             .service-card {
-                padding: 1.5rem;
-                border-radius: 20px;
+                padding: 1.25rem;
+                border-radius: 16px;
                 box-shadow: 0 10px 30px rgba(0, 0, 0, 0.03);
                 border: 1px solid rgba(226, 232, 240, 0.5);
+            }
+
+            .service-icon {
+                width: 48px;
+                height: 48px;
+                font-size: 1.2rem;
+            }
+
+            .service-card h3 {
+                font-size: 1.1rem;
+            }
+
+            .service-card p {
+                font-size: 0.9rem;
             }
 
             .service-icon-wrapper {
