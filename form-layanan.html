@@ -179,7 +179,7 @@
 
         /* Mobile */
         @media (max-width: 768px) {
-            .container { padding-left: 0 !important; padding-right: 0 !important; }
+            .container { padding-left: 24px !important; padding-right: 24px !important; }
 
             .btn-back-sticky {
                 top: 24px;
@@ -191,12 +191,13 @@
             }
 
             .form-card {
-                padding: 2rem 24px;
-                margin: 70px 0 0 0;
-                border-radius: 24px 24px 0 0;
-                box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.05);
-                border: none;
-                border-top: 1px solid rgba(255, 255, 255, 0.9);
+                padding: 2rem 1.5rem;
+                margin: 80px auto 40px auto; /* Centered with top margin */
+                max-width: 100%; /* Override tablet 90% */
+                width: 100%; /* Take full available width */
+                border-radius: 20px; /* Floating rounded card */
+                box-shadow: 0 10px 40px rgba(0, 0, 0, 0.05);
+                border: 1px solid rgba(255, 255, 255, 0.8);
             }
 
             .btn-submit {
