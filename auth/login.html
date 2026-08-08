@@ -314,6 +314,8 @@
           </div>
         </div>
 
+        <!-- Role Selection Removed Temporarily -->
+
         <div class="form-options">
           <div class="form-check">
             <input class="form-check-input" type="checkbox" id="rememberMe">
@@ -339,8 +341,11 @@
   <script>
     // Hapus sesi lama setiap kali membuka halaman login
     localStorage.removeItem('isLoggedIn');
+    localStorage.removeItem('userRole');
 
     function simulateLogin() {
+      const selectedRole = 'pegawai'; // Default role to show all services
+
       Swal.fire({
         title: 'Memproses...',
         text: 'Sedang masuk ke akun Anda',
@@ -359,6 +364,7 @@
           showConfirmButton: false
         }).then(() => {
           localStorage.setItem('isLoggedIn', 'true');
+          localStorage.setItem('userRole', selectedRole);
           window.location.href = "../index.html";
         });
       }, 1000);
