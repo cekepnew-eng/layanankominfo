@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Persyaratan Layanan — Diskominfo Kota Bogor</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+
+    <style>
+        :root {
+            /* Diskominfo Brand Colors */
+            --primary: #0284c7;
+            --primary-dark: #0369a1;
+            --primary-light: #e0f2fe;
+            --primary-border: #bae6fd;
+            --accent: #0ea5e9;
+            
+            /* Neutral Colors */
+            --slate-50: #f8fafc;
+            --slate-100: #f1f5f9;
+            --slate-200: #e2e8f0;
+            --slate-300: #cbd5e1;
+            --slate-400: #94a3b8;
+            --slate-500: #64748b;
+            --slate-600: #475569;
+            --slate-700: #334155;
+            --slate-800: #1e293b;
+            --slate-900: #0f172a;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            overflow-x: hidden;
+            width: 100%;
+            background-color: var(--slate-50);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            color: var(--slate-800);
+            position: relative;
+        }
+
+        /* Subtle, elegant top background */
+        body::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 600px;
+            background: radial-gradient(circle at 50% 0%, var(--primary-light) 0%, rgba(248, 250, 252, 0) 70%);
+            z-index: -1;
+        }
+
+        /* Top Bar Layout */
+        .top-bar {
+            padding: 2rem 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Header Action Buttons */
+        .header-actions {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        .btn-header-solid {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: var(--primary);
+            color: white;
+            padding: 0.65rem 1.25rem;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            text-decoration: none;
+            transition: all 0.2s;
+            box-shadow: 0 4px 10px rgba(2, 132, 199, 0.2);
+        }
+        .btn-header-solid:hover {
+            background: var(--primary-dark);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(2, 132, 199, 0.3);
+        }
+
+        .btn-header-danger {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: #e11d48; /* Premium Rose Red */
+            color: white;
+            padding: 0.65rem 1.25rem;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            text-decoration: none;
+            transition: all 0.2s;
+            box-shadow: 0 4px 10px rgba(225, 29, 72, 0.2);
+        }
+        .btn-header-danger:hover {
+            background: #be123c;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(225, 29, 72, 0.3);
+        }
+
+        .btn-header-dark {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: var(--slate-800);
+            color: white;
+            padding: 0.65rem 1.25rem;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            text-decoration: none;
+            transition: all 0.2s;
+            box-shadow: 0 4px 10px rgba(30, 41, 59, 0.2);
+        }
+        .btn-header-dark:hover {
+            background: var(--slate-900);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(30, 41, 59, 0.3);
+        }
+
+        .btn-back {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--slate-700);
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.95rem;
+            background: white;
+            padding: 0.65rem 1.25rem;
+            border-radius: 50px;
+            border: 1px solid var(--slate-200);
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+        .btn-back:hover {
+            color: var(--primary);
+            border-color: var(--primary-border);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(2, 132, 199, 0.1);
+        }
+
+        /* Hero */
+        .hero-section {
+            padding: 1rem 0 4rem;
+            text-align: center;
+        }
+
+        .hero-title {
+            font-size: clamp(2rem, 4vw, 2.75rem);
+            font-weight: 800;
+            color: var(--slate-900);
+            letter-spacing: -0.02em;
+            margin-bottom: 1rem;
+        }
+
+        .hero-title span {
+            color: var(--primary);
+        }
+
+        .hero-subtitle {
+            font-size: 1.1rem;
+            color: var(--slate-500);
+            max-width: 650px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+        /* Category Sticky Nav */
+        .category-nav {
+            display: flex;
+            justify-content: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            margin: 0 auto 4rem;
+            max-width: 900px;
+        }
+        .cat-pill {
+            padding: 0.6rem 1.25rem;
+            background: white;
+            border: 1px solid var(--slate-200);
+            color: var(--slate-600);
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            text-decoration: none;
+            transition: all 0.3s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+        .cat-pill:hover, .cat-pill:focus {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(2, 132, 199, 0.2);
+        }
+
+        /* Section Styling */
+        .service-category-section {
+            padding-top: 3rem;
+            margin-bottom: 5rem;
+        }
+        
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .section-header h2 {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: var(--slate-800);
+            margin: 0;
+        }
+        
+        /* Premium Duotone Section Icon */
+        .section-icon {
+            width: 50px; height: 50px;
+            background: linear-gradient(135deg, #ffffff 0%, var(--primary-light) 100%);
+            border-radius: 14px;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 6px 15px rgba(2, 132, 199, 0.15), inset 0 2px 0 rgba(255,255,255,1);
+            border: 1px solid rgba(2, 132, 199, 0.1);
+            color: var(--primary);
+            position: relative;
+        }
+        .section-icon::after {
+            content: '';
+            position: absolute;
+            inset: -4px;
+            border-radius: 16px;
+            border: 1px dashed var(--primary-border);
+            z-index: -1;
+        }
+        .section-icon svg {
+            fill: white;
+            stroke: var(--primary);
+            stroke-width: 1.8;
+            width: 24px; height: 24px;
+        }
+
+        /* Grid Layout */
+        .req-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            gap: 1.75rem;
+        }
+
+        /* Unified Elegant Card */
+        .req-card {
+            background: #ffffff;
+            border-radius: 20px;
+            padding: 1.75rem;
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.02);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+            z-index: 1;
+            height: 100%;
+        }
+
+        .req-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 4px; height: 100%;
+            background: var(--primary);
+            opacity: 0.15;
+            transition: all 0.4s ease;
+        }
+
+        .req-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px -10px rgba(2, 132, 199, 0.12);
+            border-color: var(--primary-border);
+        }
+        .req-card:hover::before {
+            opacity: 1;
+            width: 6px;
+        }
+
+        .req-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--slate-900);
+            margin: 0 0 1.25rem 0;
+            line-height: 1.3;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .req-title::before {
+            content: '';
+            display: inline-block;
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--accent);
+        }
+
+        /* Detail List inside Cards */
+        .req-details {
+            background: var(--slate-50);
+            border-radius: 12px;
+            padding: 1.25rem;
+            border: 1px solid var(--slate-100);
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        .detail-item {
+            display: flex;
+            gap: 1rem;
+            align-items: flex-start;
+        }
+
+        /* Custom Duotone Icons for details */
+        .detail-icon-wrapper {
+            background: white;
+            padding: 8px;
+            border-radius: 10px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+            border: 1px solid var(--slate-100);
+            flex-shrink: 0;
+        }
+        
+        .detail-icon {
+            color: var(--primary);
+            width: 20px;
+            height: 20px;
+            fill: var(--primary-light);
+            stroke: var(--primary);
+            stroke-width: 1.5;
+            display: block;
+        }
+
+        .detail-content h5 {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--slate-500);
+            margin-bottom: 0.3rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 2px;
+        }
+
+        .detail-content p {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--slate-800);
+            margin: 0;
+        }
+
+        .doc-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .doc-list li {
+            position: relative;
+            padding-left: 1.15rem;
+            font-size: 0.85rem;
+            color: var(--slate-700);
+            margin-bottom: 0.4rem;
+            line-height: 1.4;
+        }
+        .doc-list li::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 6px;
+            width: 6px; height: 6px;
+            border-radius: 2px;
+            background: var(--primary);
+            transform: rotate(45deg);
+        }
+
+        /* Action Footer */
+        .bottom-action {
+            text-align: center;
+            padding: 4rem 0;
+            position: relative;
+        }
+        .bottom-action::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 50%; transform: translateX(-50%);
+            width: 150px; height: 4px;
+            background: var(--slate-200);
+            border-radius: 4px;
+        }
+
+        .btn-primary-custom {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: var(--primary);
+            color: white;
+            padding: 1rem 2.5rem;
+            border-radius: 50px;
+            font-weight: 700;
+            font-size: 1.05rem;
+            text-decoration: none;
+            box-shadow: 0 10px 25px -5px rgba(2, 132, 199, 0.4);
+            transition: all 0.3s;
+        }
+        .btn-primary-custom:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 30px -5px rgba(2, 132, 199, 0.5);
+            color: white;
+            background: var(--primary-dark);
+        }
+
+        /* Mobile Overlay Menu CSS (Adopted from index.html) */
+        .mobile-menu-btn {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--slate-200);
+            color: var(--slate-800);
+            padding: 8px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+            z-index: 95;
+            display: none;
+        }
+        .mobile-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100dvh;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(20px);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+            transform: translateY(-20px) scale(0.98);
+        }
+        .mobile-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateY(0) scale(1);
+        }
+        .mobile-overlay-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2rem;
+            width: 100%;
+            padding: 0 32px;
+        }
+        .mobile-nav-link {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--slate-800);
+            text-decoration: none;
+            transition: color 0.2s;
+            letter-spacing: -0.02em;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .mobile-nav-link:active {
+            color: var(--primary);
+        }
+        .mobile-nav-link.btn-solid {
+            background: var(--slate-900);
+            color: white;
+            padding: 14px 28px;
+            border-radius: 50px;
+            font-size: 1.05rem;
+            width: 100%;
+            text-align: center;
+            justify-content: center;
+            box-shadow: 0 10px 20px rgba(15, 23, 42, 0.2);
+            margin-top: 1rem;
+        }
+        .mobile-nav-link.btn-header-danger {
+            background: #e11d48;
+            box-shadow: 0 10px 20px rgba(225, 29, 72, 0.2);
+        }
+        .mobile-close-btn {
+            position: absolute;
+            top: 24px;
+            right: 24px;
+            background: var(--slate-100);
+            border: none;
+            color: var(--slate-800);
+            padding: 10px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        @media (max-width: 768px) {
+            .req-grid { grid-template-columns: 1fr; gap: 1.25rem;}
+            /* Restore row layout for mobile top bar so back button and hamburger are inline */
+            .top-bar { padding: 1.5rem 0; flex-direction: row; gap: 0; align-items: center; justify-content: space-between; }
+            .header-actions { display: none !important; }
+            .mobile-menu-btn { display: flex; }
+            
+            /* Responsive Font Sizes (Matched with index.html) */
+            .hero-section { padding: 1rem 0 2rem; }
+            .hero-title { font-size: clamp(1.75rem, 7.5vw, 2.2rem); }
+            .hero-subtitle { font-size: 0.95rem; line-height: 1.5; padding: 0 10px; }
+            
+            .section-header h2 { font-size: 1.4rem; }
+            .req-title { font-size: 1.15rem; }
+            .detail-content h5 { font-size: 0.8rem; }
+            .detail-content p { font-size: 0.95rem; }
+            .doc-list li { font-size: 0.9rem; }
+            
+            .category-nav { gap: 0.5rem; margin-bottom: 2rem; }
+            .cat-pill { padding: 0.6rem 1.2rem; font-size: 0.9rem; }
+            .btn-primary-custom { padding: 0.9rem 1.5rem; font-size: 1rem; }
+            .bottom-action h4 { font-size: 1.25rem; }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Mobile Overlay Menu -->
+    <div id="mobileOverlay" class="mobile-overlay d-md-none">
+        <button id="closeMenuBtn" class="mobile-close-btn">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+        <div class="mobile-overlay-content">
+            <a href="index.html" class="mobile-nav-link" onclick="closeMobileMenu()">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                Kembali ke Portal
+            </a>
+            <a href="index.html#daftar-layanan" class="mobile-nav-link" onclick="closeMobileMenu()">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                Mulai Pengajuan
+            </a>
+            <a href="auth/login.html" class="mobile-nav-link btn-solid" id="mobileAuthBtn">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                Masuk / Daftar
+            </a>
+            <a href="#" class="mobile-nav-link btn-solid btn-header-danger d-none" id="mobileLogoutBtn">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                <span id="mobileLogoutText">Keluar</span>
+            </a>
+        </div>
+    </div>
+
+    <div class="container">
+        
+        <!-- Clean Top Bar with Header Actions -->
+        <div class="top-bar" data-aos="fade-down">
+            <!-- Kiri: Tombol Kembali -->
+            <a href="index.html" class="btn-back">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                <span class="d-none d-md-inline">Kembali ke Portal</span>
+            </a>
+
+            <!-- Hamburger Button (Mobile Only) -->
+            <button id="mobileMenuBtn" class="mobile-menu-btn d-md-none">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            </button>
+
+            <!-- Kanan: Header Buttons (Tanpa Pelajari Persyaratan) -->
+            <div class="header-actions d-none d-md-flex">
+                <a href="index.html#daftar-layanan" class="btn-header-solid">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                    <span>Mulai Pengajuan</span>
+                </a>
+                <a href="auth/login.html" class="btn-header-danger" id="headerAuthBtn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                    <span>Keluar</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Hero Title -->
+        <section class="hero-section" data-aos="fade-up">
+            <h1 class="hero-title">Persyaratan <span>Layanan</span></h1>
+            <p class="hero-subtitle">
+                Pahami seluruh dokumen dan prosedur teknis dari setiap jenis layanan yang tersedia di Diskominfo Kota Bogor agar permohonan Anda dapat diproses dengan cepat.
+            </p>
+        </section>
+
+        <!-- Category Navigation -->
+        <div class="category-nav" data-aos="fade-up" data-aos-delay="100">
+            <a href="#umum" class="cat-pill">Layanan Umum & SDM</a>
+            <a href="#infrastruktur" class="cat-pill">Infrastruktur & TI</a>
+            <a href="#sistem" class="cat-pill">Tata Kelola & Aplikasi</a>
+            <a href="#keamanan" class="cat-pill">Keamanan & Siber</a>
+        </div>
+
+        <!-- REUSABLE SVG COMPONENTS (Hidden) for cleaner code -->
+        <svg width="0" height="0" class="d-none">
+            <defs>
+                <g id="icon-time">
+                    <circle cx="12" cy="12" r="9"></circle>
+                    <polyline points="12 7 12 12 15 15"></polyline>
+                </g>
+                <g id="icon-doc">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                </g>
+            </defs>
+        </svg>
+
+        <!-- ==========================================
+             CATEGORY 1: Layanan Umum & SDM
+        =========================================== -->
+        <section id="umum" class="service-category-section">
+            <div class="section-header" data-aos="fade-right">
+                <div class="section-icon">
+                    <svg viewBox="0 0 24 24" fill="white" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="9" cy="7" r="4"></circle>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    </svg>
+                </div>
+                <h2>Layanan Umum & SDM</h2>
+            </div>
+            
+            <div class="req-grid">
+                <!-- Magang -->
+                <div class="req-card" data-aos="fade-up">
+                    <h3 class="req-title">Magang & PKL</h3>
+                    <div class="req-details">
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-time"></use></svg>
+                            </div>
+                            <div class="detail-content"><h5>Waktu Proses</h5><p>Maksimal 3 - 5 Hari Kerja</p></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-doc"></use></svg>
+                            </div>
+                            <div class="detail-content">
+                                <h5>Persyaratan Dokumen</h5>
+                                <ul class="doc-list">
+                                    <li>Surat Rekomendasi Resmi dari Sekolah/Kampus.</li>
+                                    <li>Proposal Magang (Rencana Kegiatan/Penelitian).</li>
+                                    <li>CV atau Biodata Diri Peserta Magang.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Zoom -->
+                <div class="req-card" data-aos="fade-up" data-aos-delay="100">
+                    <h3 class="req-title">Fasilitasi Zoom Meeting</h3>
+                    <div class="req-details">
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-time"></use></svg>
+                            </div>
+                            <div class="detail-content"><h5>Waktu Proses</h5><p>1 - 2 Hari Kerja (Sesuai ketersediaan)</p></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-doc"></use></svg>
+                            </div>
+                            <div class="detail-content">
+                                <h5>Persyaratan Dokumen</h5>
+                                <ul class="doc-list">
+                                    <li>Surat Permohonan Peminjaman Akun Zoom.</li>
+                                    <li>Mencantumkan Jadwal lengkap (Tanggal & Jam).</li>
+                                    <li>Estimasi kapasitas/jumlah peserta rapat.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SDM -->
+                <div class="req-card" data-aos="fade-up" data-aos-delay="200">
+                    <h3 class="req-title">Peningkatan Kapasitas SDM</h3>
+                    <div class="req-details">
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-time"></use></svg>
+                            </div>
+                            <div class="detail-content"><h5>Waktu Proses</h5><p>Sesuai jadwal pelatihan internal</p></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-doc"></use></svg>
+                            </div>
+                            <div class="detail-content">
+                                <h5>Persyaratan Dokumen</h5>
+                                <ul class="doc-list">
+                                    <li>Surat Tugas Mengikuti Pelatihan.</li>
+                                    <li>Kesesuaian Bidang Tugas (Khusus Aparatur TI).</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- ==========================================
+             CATEGORY 2: Infrastruktur Jaringan & TI
+        =========================================== -->
+        <section id="infrastruktur" class="service-category-section">
+            <div class="section-header" data-aos="fade-right">
+                <div class="section-icon">
+                    <svg viewBox="0 0 24 24" fill="white" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
+                        <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
+                        <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+                        <line x1="12" y1="20" x2="12.01" y2="20"></line>
+                    </svg>
+                </div>
+                <h2>Infrastruktur & Jaringan TI</h2>
+            </div>
+            
+            <div class="req-grid">
+                <!-- Jaringan Intra -->
+                <div class="req-card" data-aos="fade-up">
+                    <h3 class="req-title">Jaringan Intra Pemerintah</h3>
+                    <div class="req-details">
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-time"></use></svg>
+                            </div>
+                            <div class="detail-content"><h5>Waktu Proses</h5><p>3 - 7 Hari Kerja (Tergantung lokasi)</p></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-doc"></use></svg>
+                            </div>
+                            <div class="detail-content">
+                                <h5>Persyaratan Dokumen</h5>
+                                <ul class="doc-list">
+                                    <li>Surat Pengantar dari Kepala Perangkat Daerah.</li>
+                                    <li>Detail Lokasi Titik Penarikan Jaringan.</li>
+                                    <li>Data Kontak PIC / Teknisi Lokal OPD.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Server Perangkat Daerah -->
+                <div class="req-card" data-aos="fade-up" data-aos-delay="100">
+                    <h3 class="req-title">Server Perangkat Daerah</h3>
+                    <div class="req-details">
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-time"></use></svg>
+                            </div>
+                            <div class="detail-content"><h5>Waktu Proses</h5><p>Maksimal 5 Hari Kerja</p></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-doc"></use></svg>
+                            </div>
+                            <div class="detail-content">
+                                <h5>Persyaratan Dokumen</h5>
+                                <ul class="doc-list">
+                                    <li>Surat Permohonan Alokasi Server / Colocation.</li>
+                                    <li>Spesifikasi Teknis Server (CPU, RAM, Storage).</li>
+                                    <li>Surat Keterangan Lolos Uji Keamanan (UKS).</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Wifi Gratis -->
+                <div class="req-card" data-aos="fade-up" data-aos-delay="200">
+                    <h3 class="req-title">Wifi Gratis Ruang Publik</h3>
+                    <div class="req-details">
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-time"></use></svg>
+                            </div>
+                            <div class="detail-content"><h5>Waktu Proses</h5><p>Tergantung pengadaan infrastruktur</p></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-doc"></use></svg>
+                            </div>
+                            <div class="detail-content">
+                                <h5>Persyaratan Dokumen</h5>
+                                <ul class="doc-list">
+                                    <li>Proposal Permohonan Instalasi Wifi Publik.</li>
+                                    <li>Surat Persetujuan Penggunaan Aset/Lokasi.</li>
+                                    <li>Denah Lokasi Pemasangan.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pengembangan Infrastruktur & Perangkat -->
+                <div class="req-card" data-aos="fade-up">
+                    <h3 class="req-title">Dukungan Perangkat Jaringan</h3>
+                    <div class="req-details">
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-time"></use></svg>
+                            </div>
+                            <div class="detail-content"><h5>Waktu Proses</h5><p>Sesuai hasil survey teknisi</p></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-doc"></use></svg>
+                            </div>
+                            <div class="detail-content">
+                                <h5>Persyaratan Dokumen</h5>
+                                <ul class="doc-list">
+                                    <li>Surat Laporan Gangguan atau Permohonan Perangkat.</li>
+                                    <li>Bukti Dokumentasi Kendala (Opsional).</li>
+                                    <li>Surat Berita Acara (jika terkait mutasi aset).</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- ==========================================
+             CATEGORY 3: Tata Kelola & Aplikasi
+        =========================================== -->
+        <section id="sistem" class="service-category-section">
+            <div class="section-header" data-aos="fade-right">
+                <div class="section-icon">
+                    <svg viewBox="0 0 24 24" fill="white" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="3" y1="9" x2="21" y2="9"></line>
+                        <line x1="9" y1="21" x2="9" y2="9"></line>
+                    </svg>
+                </div>
+                <h2>Tata Kelola & Aplikasi (SPBE)</h2>
+            </div>
+            
+            <div class="req-grid">
+                <!-- Kebijakan & Monev SPBE -->
+                <div class="req-card" data-aos="fade-up">
+                    <h3 class="req-title">Kebijakan & Monev SPBE</h3>
+                    <div class="req-details">
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-time"></use></svg>
+                            </div>
+                            <div class="detail-content"><h5>Waktu Proses</h5><p>Berkelanjutan (Agenda Rutin)</p></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-doc"></use></svg>
+                            </div>
+                            <div class="detail-content">
+                                <h5>Persyaratan Dokumen</h5>
+                                <ul class="doc-list">
+                                    <li>Dokumen Rencana Induk / Arsitektur SPBE OPD.</li>
+                                    <li>Laporan Evaluasi Internal Pelaksanaan SPBE.</li>
+                                    <li>Surat Permohonan Pendampingan Kebijakan.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Reset Password Email -->
+                <div class="req-card" data-aos="fade-up" data-aos-delay="100">
+                    <h3 class="req-title">Reset Password Email Pemkot</h3>
+                    <div class="req-details">
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-time"></use></svg>
+                            </div>
+                            <div class="detail-content"><h5>Waktu Proses</h5><p>1 Hari Kerja</p></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-doc"></use></svg>
+                            </div>
+                            <div class="detail-content">
+                                <h5>Persyaratan Dokumen</h5>
+                                <ul class="doc-list">
+                                    <li>Melampirkan NIP dan Fotokopi SK Pegawai.</li>
+                                    <li>Surat Permohonan Reset dari Atasan Langsung.</li>
+                                    <li>Alamat Email resmi yang didaftarkan.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Reset Password Website -->
+                <div class="req-card" data-aos="fade-up" data-aos-delay="200">
+                    <h3 class="req-title">Reset Password Website Pemkot</h3>
+                    <div class="req-details">
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-time"></use></svg>
+                            </div>
+                            <div class="detail-content"><h5>Waktu Proses</h5><p>1 Hari Kerja</p></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-doc"></use></svg>
+                            </div>
+                            <div class="detail-content">
+                                <h5>Persyaratan Dokumen</h5>
+                                <ul class="doc-list">
+                                    <li>Surat Pengantar Permohonan Reset Password Sistem.</li>
+                                    <li>Menyebutkan URL / Nama Domain Aplikasi.</li>
+                                    <li>Dokumen Serah Terima Akun Admin (Jika berganti).</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- ==========================================
+             CATEGORY 4: Keamanan Informasi & Siber
+        =========================================== -->
+        <section id="keamanan" class="service-category-section">
+            <div class="section-header" data-aos="fade-right">
+                <div class="section-icon">
+                    <svg viewBox="0 0 24 24" fill="white" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                    </svg>
+                </div>
+                <h2>Keamanan Informasi & Siber</h2>
+            </div>
+            
+            <div class="req-grid">
+                <!-- VAPT & UKS -->
+                <div class="req-card" data-aos="fade-up">
+                    <h3 class="req-title">VAPT & Uji Kesesuaian Sistem</h3>
+                    <div class="req-details">
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-time"></use></svg>
+                            </div>
+                            <div class="detail-content"><h5>Waktu Proses</h5><p>7 - 14 Hari Kerja</p></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-doc"></use></svg>
+                            </div>
+                            <div class="detail-content">
+                                <h5>Persyaratan Dokumen</h5>
+                                <ul class="doc-list">
+                                    <li>Formulir Permohonan Uji Penetrasi/UKS.</li>
+                                    <li>Dokumen Arsitektur Aplikasi / Source Code.</li>
+                                    <li>Akses Akun Testing (Role Admin & User).</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CSIRT & SOC -->
+                <div class="req-card" data-aos="fade-up" data-aos-delay="100">
+                    <h3 class="req-title">Monitoring SOC & Laporan CSIRT</h3>
+                    <div class="req-details">
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-time"></use></svg>
+                            </div>
+                            <div class="detail-content"><h5>Waktu Proses</h5><p>Cepat Tanggap (Sesuai insiden)</p></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-doc"></use></svg>
+                            </div>
+                            <div class="detail-content">
+                                <h5>Persyaratan Dokumen</h5>
+                                <ul class="doc-list">
+                                    <li>Formulir Pelaporan Insiden Keamanan (Siber).</li>
+                                    <li>Bukti Screenshot / Log Aktivitas Mencurigakan.</li>
+                                    <li>Informasi IP Address / URL yang terdampak.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Indeks KAMI & Tata Kelola Keamanan -->
+                <div class="req-card" data-aos="fade-up" data-aos-delay="200">
+                    <h3 class="req-title">Indeks KAMI & Tata Kelola</h3>
+                    <div class="req-details">
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-time"></use></svg>
+                            </div>
+                            <div class="detail-content"><h5>Waktu Proses</h5><p>Terjadwal Tahunan</p></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-doc"></use></svg>
+                            </div>
+                            <div class="detail-content">
+                                <h5>Persyaratan Dokumen</h5>
+                                <ul class="doc-list">
+                                    <li>Pengisian Kuesioner Mandiri Indeks KAMI (BSSN).</li>
+                                    <li>Melampirkan SK Penetapan Kebijakan Keamanan.</li>
+                                    <li>Dokumen Profil Risiko Keamanan Informasi.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Security Awareness & DSA -->
+                <div class="req-card" data-aos="fade-up">
+                    <h3 class="req-title">Security Awareness & DSA</h3>
+                    <div class="req-details">
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-time"></use></svg>
+                            </div>
+                            <div class="detail-content"><h5>Waktu Proses</h5><p>Sesuai Agenda Kegiatan</p></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-icon-wrapper">
+                                <svg class="detail-icon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-doc"></use></svg>
+                            </div>
+                            <div class="detail-content">
+                                <h5>Persyaratan Dokumen</h5>
+                                <ul class="doc-list">
+                                    <li>Surat Permohonan Narasumber/Edukasi Siber.</li>
+                                    <li>Data Peserta & Jabatan Teknis.</li>
+                                    <li>Surat Rekomendasi Akses Aplikasi Dashboard DSA.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- CTA Bottom -->
+        <div class="bottom-action" data-aos="fade-up">
+            <h4 class="fw-bold mb-3 text-slate-800">Sudah melengkapi semua dokumen?</h4>
+            <a href="index.html#daftar-layanan" class="btn-primary-custom">
+                Ajukan Permohonan Sekarang
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+            </a>
+        </div>
+
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+    <script>
+        AOS.init({ once: true, duration: 800, offset: 50, easing: 'ease-out-cubic' });
+
+        // Fungsi Logout Global
+        function handleLogout(e) {
+            if (e) e.preventDefault();
+            localStorage.removeItem('isLoggedIn');
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Berhasil Keluar',
+                    text: 'Sesi Anda telah diakhiri.',
+                    confirmButtonColor: '#0284c7',
+                    timer: 1500,
+                    showConfirmButton: false
+                }).then(() => {
+                    window.location.reload();
+                });
+            } else {
+                window.location.reload();
+            }
+        }
+
+        // Hamburger Menu Logic
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+        const closeMenuBtn = document.getElementById('closeMenuBtn');
+        const mobileOverlay = document.getElementById('mobileOverlay');
+
+        if(mobileMenuBtn && closeMenuBtn && mobileOverlay) {
+            mobileMenuBtn.addEventListener('click', () => {
+                mobileOverlay.classList.add('active');
+                document.body.style.overflow = 'hidden'; 
+            });
+
+            closeMenuBtn.addEventListener('click', closeMobileMenu);
+        }
+
+        function closeMobileMenu() {
+            if(mobileOverlay) {
+                mobileOverlay.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const isLoggedIn = localStorage.getItem('isLoggedIn');
+            const headerAuthBtn = document.getElementById('headerAuthBtn');
+            const mobileAuthBtn = document.getElementById('mobileAuthBtn');
+            const mobileLogoutBtn = document.getElementById('mobileLogoutBtn');
+
+            if (isLoggedIn === 'true') {
+                // Konfigurasi Desktop Menu
+                if (headerAuthBtn) {
+                    headerAuthBtn.href = "#";
+                    headerAuthBtn.className = "btn-header-danger d-none d-md-flex";
+                    headerAuthBtn.innerHTML = `
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                        <span>Keluar</span>
+                    `;
+                    headerAuthBtn.addEventListener('click', handleLogout);
+                }
+
+                // Konfigurasi Mobile Menu
+                if (mobileAuthBtn) mobileAuthBtn.classList.add('d-none');
+                if (mobileLogoutBtn) {
+                    mobileLogoutBtn.classList.remove('d-none');
+                    mobileLogoutBtn.addEventListener('click', handleLogout);
+                }
+
+            } else {
+                // Konfigurasi Desktop Menu
+                if (headerAuthBtn) {
+                    headerAuthBtn.href = "auth/login.html";
+                    headerAuthBtn.className = "btn-header-dark d-none d-md-flex";
+                    headerAuthBtn.innerHTML = `
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                        <span>Masuk / Daftar</span>
+                    `;
+                    headerAuthBtn.removeEventListener('click', handleLogout);
+                }
+
+                // Konfigurasi Mobile Menu
+                if (mobileAuthBtn) mobileAuthBtn.classList.remove('d-none');
+                if (mobileLogoutBtn) mobileLogoutBtn.classList.add('d-none');
+            }
+        });
+    </script>
+</body>
+</html>
