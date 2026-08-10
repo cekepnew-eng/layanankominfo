@@ -52,7 +52,7 @@
             content: '';
             position: absolute;
             top: 0; left: 0; width: 100%; height: 600px;
-            background: radial-gradient(circle at 50% 0%, var(--primary-light) 0%, rgba(248, 250, 252, 0) 70%);
+            background: linear-gradient(180deg, var(--primary-light) 0%, rgba(248, 250, 252, 0) 100%);
             z-index: -1;
         }
 
@@ -195,13 +195,17 @@
             padding: 0.6rem 1.25rem;
             background: white;
             border: 1px solid var(--slate-200);
-            color: var(--slate-600);
             border-radius: 50px;
+            color: var(--slate-600);
+            text-decoration: none;
             font-weight: 600;
             font-size: 0.95rem;
-            text-decoration: none;
-            transition: all 0.3s;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+            min-height: 44px; /* Touch target standar mobile */
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
         .cat-pill:hover, .cat-pill:focus {
             background: var(--primary);
@@ -213,46 +217,52 @@
 
         /* Section Styling */
         .service-category-section {
-            padding-top: 3rem;
-            margin-bottom: 5rem;
+            padding: 4rem 2.5rem;
+            margin-bottom: 3rem;
+            border-radius: 24px;
+            transition: background-color 0.3s ease;
+        }
+        .service-category-section:nth-of-type(odd) {
+            background-color: #ffffff;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.02);
+            border: 1px solid rgba(226, 232, 240, 0.5);
+        }
+        .service-category-section:nth-of-type(even) {
+            background-color: #f8fafc;
+            border: 1px solid #f1f5f9;
         }
         
         .section-header {
             display: flex;
             align-items: center;
             gap: 1rem;
-            margin-bottom: 2rem;
+            margin-bottom: 2.5rem;
         }
         .section-header h2 {
-            font-size: 1.5rem;
+            font-size: 1.85rem; /* DIPERBESAR sesuai request mentor */
             font-weight: 800;
-            color: var(--slate-800);
+            color: var(--slate-900);
             margin: 0;
+            letter-spacing: -0.02em;
         }
         
         /* Premium Duotone Section Icon */
         .section-icon {
-            width: 50px; height: 50px;
-            background: linear-gradient(135deg, #ffffff 0%, var(--primary-light) 100%);
-            border-radius: 14px;
-            display: flex; align-items: center; justify-content: center;
-            box-shadow: 0 6px 15px rgba(2, 132, 199, 0.15), inset 0 2px 0 rgba(255,255,255,1);
-            border: 1px solid rgba(2, 132, 199, 0.1);
-            color: var(--primary);
-            position: relative;
-        }
-        .section-icon::after {
-            content: '';
-            position: absolute;
-            inset: -4px;
-            border-radius: 16px;
-            border: 1px dashed var(--primary-border);
-            z-index: -1;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 10px 20px rgba(2, 132, 199, 0.2);
+            flex-shrink: 0;
+            color: white;
         }
         .section-icon svg {
-            fill: white;
-            stroke: var(--primary);
-            stroke-width: 1.8;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
             width: 24px; height: 24px;
         }
 
@@ -269,8 +279,8 @@
             border-radius: 20px;
             padding: 1.75rem;
             border: 1px solid rgba(226, 232, 240, 0.8);
-            transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.02);
+            transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1); /* 300ms animasi */
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03); /* shadow lebih halus */
             display: flex;
             flex-direction: column;
             position: relative;
@@ -289,8 +299,8 @@
         }
 
         .req-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 20px 40px -10px rgba(2, 132, 199, 0.12);
+            transform: translateY(-6px); /* Naik 6px */
+            box-shadow: 0 20px 40px -8px rgba(2, 132, 199, 0.15); /* Shadow bertambah */
             border-color: var(--primary-border);
         }
         .req-card:hover::before {
@@ -298,15 +308,55 @@
             width: 6px;
         }
 
+        /* HIGHLIGHT ALT CLASS (Tanpa badge tulisan, hanya aksen warna) */
+        .req-card.highlight-alt {
+            border: 2px solid #a5f3fc;
+            box-shadow: 0 10px 30px rgba(6, 182, 212, 0.08);
+            background: linear-gradient(180deg, #ffffff 0%, #ecfeff 600%);
+        }
+        .req-card.highlight-alt::before {
+            opacity: 1;
+            width: 6px;
+            background: #06b6d4;
+        }
+
+        /* HIGHLIGHT CLASS (Sesuai request mentor) */
+        .req-card.highlight {
+            border: 2px solid var(--primary-border);
+            box-shadow: 0 10px 30px rgba(2, 132, 199, 0.08);
+            background: linear-gradient(180deg, #ffffff 0%, var(--primary-light) 600%);
+        }
+        .req-card.highlight::before {
+            opacity: 1;
+            width: 6px;
+            background: var(--primary);
+        }
+        .req-card.highlight::after {
+            content: 'Layanan Utama';
+            position: absolute;
+            top: 1.75rem;
+            right: 1.75rem;
+            background: var(--primary-light);
+            color: var(--primary-dark);
+            font-size: 0.65rem;
+            font-weight: 800;
+            padding: 6px 12px;
+            border-radius: 50px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border: 1px solid var(--primary-border);
+        }
+
         .req-title {
-            font-size: 1.15rem;
-            font-weight: 700;
+            font-size: 1.35rem; /* DIPERBESAR - Hierarki lebih tegas */
+            font-weight: 800;
             color: var(--slate-900);
-            margin: 0 0 1.25rem 0;
+            margin: 0 0 0.5rem 0;
             line-height: 1.3;
             display: flex;
             align-items: center;
             gap: 0.5rem;
+            padding-right: 90px; /* Space for badge on highlight cards */
         }
         .req-title::before {
             content: '';
@@ -314,6 +364,15 @@
             width: 8px; height: 8px;
             border-radius: 50%;
             background: var(--accent);
+            flex-shrink: 0;
+        }
+
+        /* TAMBAHAN DESKRIPSI (Sesuai request mentor) */
+        .req-desc {
+            font-size: 0.95rem;
+            color: var(--slate-600);
+            margin: 0 0 1.5rem 0;
+            line-height: 1.5;
         }
 
         /* Detail List inside Cards */
@@ -334,38 +393,48 @@
             align-items: flex-start;
         }
 
-        /* Custom Duotone Icons for details */
         .detail-icon-wrapper {
             background: white;
-            padding: 8px;
-            border-radius: 10px;
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             box-shadow: 0 2px 6px rgba(0,0,0,0.03);
             border: 1px solid var(--slate-100);
             flex-shrink: 0;
+            transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
+        }
+        
+        .req-card:hover .detail-icon-wrapper {
+            transform: scale(1.1); /* Ikon sedikit membesar saat di-hover */
+            background: var(--primary-light);
+            border-color: var(--primary-border);
         }
         
         .detail-icon {
             color: var(--primary);
             width: 20px;
             height: 20px;
-            fill: var(--primary-light);
+            fill: none;
             stroke: var(--primary);
-            stroke-width: 1.5;
+            stroke-width: 2;
             display: block;
         }
 
         .detail-content h5 {
-            font-size: 0.75rem;
-            font-weight: 700;
-            color: var(--slate-500);
-            margin-bottom: 0.3rem;
+            font-size: 0.7rem; /* LEBIH KECIL (Metadata) - Hierarki lebih tegas */
+            font-weight: 800;
+            color: var(--slate-400);
+            margin-bottom: 0.4rem;
             text-transform: uppercase;
-            letter-spacing: 0.05em;
+            letter-spacing: 0.1em;
             margin-top: 2px;
         }
 
         .detail-content p {
-            font-size: 0.9rem;
+            font-size: 0.95rem; /* UKURAN MENENGAH */
             font-weight: 600;
             color: var(--slate-800);
             margin: 0;
@@ -379,7 +448,7 @@
         .doc-list li {
             position: relative;
             padding-left: 1.15rem;
-            font-size: 0.85rem;
+            font-size: 0.9rem; /* UKURAN MENENGAH */
             color: var(--slate-700);
             margin-bottom: 0.4rem;
             line-height: 1.4;
@@ -431,7 +500,7 @@
             background: var(--primary-dark);
         }
 
-        /* Mobile Overlay Menu CSS (Adopted from index.html) */
+        /* Mobile Overlay Menu CSS */
         .mobile-menu-btn {
             background: rgba(255, 255, 255, 0.8);
             backdrop-filter: blur(10px);
@@ -523,6 +592,8 @@
 
         @media (max-width: 768px) {
             .req-grid { grid-template-columns: 1fr; gap: 1.25rem;}
+            /* Mobile section adjustments */
+            .service-category-section { padding: 2rem 1.25rem; margin-bottom: 2rem; border-radius: 20px; }
             /* Restore row layout for mobile top bar so back button and hamburger are inline */
             .top-bar { padding: 1.5rem 0; flex-direction: row; gap: 0; align-items: center; justify-content: space-between; }
             .header-actions { display: none !important; }
@@ -533,14 +604,15 @@
             .hero-title { font-size: clamp(1.75rem, 7.5vw, 2.2rem); }
             .hero-subtitle { font-size: 0.95rem; line-height: 1.5; padding: 0 10px; }
             
-            .section-header h2 { font-size: 1.4rem; }
-            .req-title { font-size: 1.15rem; }
-            .detail-content h5 { font-size: 0.8rem; }
-            .detail-content p { font-size: 0.95rem; }
-            .doc-list li { font-size: 0.9rem; }
+            .section-header h2 { font-size: 1.5rem; }
+            .req-title { font-size: 1.2rem; }
+            .req-desc { font-size: 0.9rem; }
+            .detail-content h5 { font-size: 0.65rem; }
+            .detail-content p { font-size: 0.9rem; }
+            .doc-list li { font-size: 0.85rem; }
             
-            .category-nav { gap: 0.5rem; margin-bottom: 2rem; }
-            .cat-pill { padding: 0.6rem 1.2rem; font-size: 0.9rem; }
+            .category-nav { gap: 0.5rem; margin-bottom: 2rem; overflow-x: auto; padding-bottom: 0.5rem; flex-wrap: nowrap; white-space: nowrap; -webkit-overflow-scrolling: touch; }
+            .cat-pill { padding: 0.6rem 1.2rem; font-size: 0.9rem; min-height: 44px; }
             .btn-primary-custom { padding: 0.9rem 1.5rem; font-size: 1rem; }
             .bottom-action h4 { font-size: 1.25rem; }
         }
@@ -652,8 +724,9 @@
             
             <div class="req-grid">
                 <!-- Magang -->
-                <div class="req-card" data-aos="fade-up">
+                <div class="req-card highlight-alt" data-aos="fade-up">
                     <h3 class="req-title">Magang & PKL</h3>
+                    <p class="req-desc">Fasilitasi penerimaan siswa/mahasiswa untuk melaksanakan Praktik Kerja Lapangan di lingkungan Diskominfo.</p>
                     <div class="req-details">
                         <div class="detail-item">
                             <div class="detail-icon-wrapper">
@@ -678,8 +751,9 @@
                 </div>
 
                 <!-- Zoom -->
-                <div class="req-card" data-aos="fade-up" data-aos-delay="100">
+                <div class="req-card highlight-alt" data-aos="fade-up" data-aos-delay="100">
                     <h3 class="req-title">Fasilitasi Zoom Meeting</h3>
+                    <p class="req-desc">Peminjaman akun Zoom premium untuk mendukung rapat koordinasi virtual antar instansi di Kota Bogor.</p>
                     <div class="req-details">
                         <div class="detail-item">
                             <div class="detail-icon-wrapper">
@@ -706,6 +780,7 @@
                 <!-- SDM -->
                 <div class="req-card" data-aos="fade-up" data-aos-delay="200">
                     <h3 class="req-title">Peningkatan Kapasitas SDM</h3>
+                    <p class="req-desc">Pelatihan dan sertifikasi teknis khusus bagi aparatur sipil negara di bidang TIK.</p>
                     <div class="req-details">
                         <div class="detail-item">
                             <div class="detail-icon-wrapper">
@@ -748,9 +823,10 @@
             </div>
             
             <div class="req-grid">
-                <!-- Jaringan Intra -->
+                <!-- Jaringan Intra (HIGHLIGHT) -->
                 <div class="req-card" data-aos="fade-up">
                     <h3 class="req-title">Jaringan Intra Pemerintah</h3>
+                    <p class="req-desc">Penyediaan koneksi jaringan fiber optik tertutup yang aman untuk menghubungkan seluruh Perangkat Daerah.</p>
                     <div class="req-details">
                         <div class="detail-item">
                             <div class="detail-icon-wrapper">
@@ -777,6 +853,7 @@
                 <!-- Server Perangkat Daerah -->
                 <div class="req-card" data-aos="fade-up" data-aos-delay="100">
                     <h3 class="req-title">Server Perangkat Daerah</h3>
+                    <p class="req-desc">Layanan penyediaan ruang server (colocation) atau virtual machine terpusat untuk menunjang aplikasi OPD.</p>
                     <div class="req-details">
                         <div class="detail-item">
                             <div class="detail-icon-wrapper">
@@ -803,6 +880,7 @@
                 <!-- Wifi Gratis -->
                 <div class="req-card" data-aos="fade-up" data-aos-delay="200">
                     <h3 class="req-title">Wifi Gratis Ruang Publik</h3>
+                    <p class="req-desc">Pemasangan titik akses internet nirkabel gratis bagi masyarakat di area taman dan ruang publik Kota Bogor.</p>
                     <div class="req-details">
                         <div class="detail-item">
                             <div class="detail-icon-wrapper">
@@ -829,6 +907,7 @@
                 <!-- Pengembangan Infrastruktur & Perangkat -->
                 <div class="req-card" data-aos="fade-up">
                     <h3 class="req-title">Dukungan Perangkat Jaringan</h3>
+                    <p class="req-desc">Pemeliharaan, perbaikan, dan penyelesaian gangguan teknis mendadak terkait infrastruktur komputer.</p>
                     <div class="req-details">
                         <div class="detail-item">
                             <div class="detail-icon-wrapper">
@@ -874,6 +953,7 @@
                 <!-- Kebijakan & Monev SPBE -->
                 <div class="req-card" data-aos="fade-up">
                     <h3 class="req-title">Kebijakan & Monev SPBE</h3>
+                    <p class="req-desc">Evaluasi komprehensif dan pendampingan implementasi Sistem Pemerintahan Berbasis Elektronik (SPBE).</p>
                     <div class="req-details">
                         <div class="detail-item">
                             <div class="detail-icon-wrapper">
@@ -900,6 +980,7 @@
                 <!-- Reset Password Email -->
                 <div class="req-card" data-aos="fade-up" data-aos-delay="100">
                     <h3 class="req-title">Reset Password Email Pemkot</h3>
+                    <p class="req-desc">Layanan pemulihan akses akun email kedinasan resmi (@kotabogor.go.id) bagi pegawai pemerintahan.</p>
                     <div class="req-details">
                         <div class="detail-item">
                             <div class="detail-icon-wrapper">
@@ -926,6 +1007,7 @@
                 <!-- Reset Password Website -->
                 <div class="req-card" data-aos="fade-up" data-aos-delay="200">
                     <h3 class="req-title">Reset Password Website Pemkot</h3>
+                    <p class="req-desc">Pemulihan hak akses administrator atau pergantian pengelola pada sistem informasi milik Perangkat Daerah.</p>
                     <div class="req-details">
                         <div class="detail-item">
                             <div class="detail-icon-wrapper">
@@ -966,9 +1048,10 @@
             </div>
             
             <div class="req-grid">
-                <!-- VAPT & UKS -->
+                <!-- VAPT & UKS (HIGHLIGHT) -->
                 <div class="req-card" data-aos="fade-up">
                     <h3 class="req-title">VAPT & Uji Kesesuaian Sistem</h3>
+                    <p class="req-desc">Pengujian kerentanan keamanan (Penetration Testing) secara agresif sebelum aplikasi dirilis ke publik.</p>
                     <div class="req-details">
                         <div class="detail-item">
                             <div class="detail-icon-wrapper">
@@ -992,9 +1075,10 @@
                     </div>
                 </div>
 
-                <!-- CSIRT & SOC -->
+                <!-- CSIRT & SOC (HIGHLIGHT) -->
                 <div class="req-card" data-aos="fade-up" data-aos-delay="100">
                     <h3 class="req-title">Monitoring SOC & Laporan CSIRT</h3>
+                    <p class="req-desc">Pemantauan trafik keamanan jaringan 24/7 dan penanganan cepat tanggap terhadap insiden siber aktif.</p>
                     <div class="req-details">
                         <div class="detail-item">
                             <div class="detail-icon-wrapper">
@@ -1021,6 +1105,7 @@
                 <!-- Indeks KAMI & Tata Kelola Keamanan -->
                 <div class="req-card" data-aos="fade-up" data-aos-delay="200">
                     <h3 class="req-title">Indeks KAMI & Tata Kelola</h3>
+                    <p class="req-desc">Pengukuran tingkat kematangan dan kepatuhan sistem keamanan informasi berdasarkan standar nasional BSSN.</p>
                     <div class="req-details">
                         <div class="detail-item">
                             <div class="detail-icon-wrapper">
@@ -1047,6 +1132,7 @@
                 <!-- Security Awareness & DSA -->
                 <div class="req-card" data-aos="fade-up">
                     <h3 class="req-title">Security Awareness & DSA</h3>
+                    <p class="req-desc">Edukasi kesadaran keamanan informasi, literasi digital, dan pemanfaatan Tanda Tangan Elektronik.</p>
                     <div class="req-details">
                         <div class="detail-item">
                             <div class="detail-icon-wrapper">
