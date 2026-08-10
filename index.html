@@ -62,9 +62,16 @@
 
         /* Split Hero Section */
         .portal-hero {
-            padding: 80px 0 80px; /* Tambah padding atas sedikit untuk memberi ruang bagi profile chip */
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            padding: 120px 0 80px; /* Padding atas disesuaikan agar tidak menabrak header menu absolute */
             position: relative;
             background: linear-gradient(135deg, rgba(255, 255, 255, 1) 0%, rgba(240, 249, 255, 1) 100%);
+        }
+
+        .portal-hero .container {
+            width: 100%;
         }
 
         /* Modern User Profile Chip */
@@ -277,6 +284,29 @@
             background: #0369a1;
             color: white;
             border-color: #0369a1;
+        }
+
+        /* Dynamic Header Button Hover Styles */
+        .btn-header-dark {
+            background: var(--slate-800) !important;
+            border-color: var(--slate-800) !important;
+            color: white !important;
+        }
+        .btn-header-dark:hover {
+            background: var(--slate-900) !important;
+            border-color: var(--slate-900) !important;
+            color: white !important;
+        }
+
+        .btn-header-danger {
+            background: #dc2626 !important;
+            border-color: #dc2626 !important;
+            color: white !important;
+        }
+        .btn-header-danger:hover {
+            background: #b91c1c !important;
+            border-color: #b91c1c !important;
+            color: white !important;
         }
 
         .portal-hero h1 {
@@ -876,7 +906,9 @@
         @media (max-width: 992px) {
             .portal-hero {
                 text-align: center;
-                padding: 40px 15px 50px;
+                padding: 100px 15px 50px;
+                min-height: auto;
+                display: block;
             }
 
             .portal-hero p {
@@ -912,7 +944,9 @@
             }
 
             .portal-hero {
-                padding: 100px 0 40px; /* Push hero down so absolute navbar does not overlap */
+                padding: 120px 0 40px; /* Push hero down so absolute navbar does not overlap */
+                min-height: auto;
+                display: block;
             }
 
             .portal-hero h1 {
@@ -1074,6 +1108,16 @@
                 padding: 0 18px 18px !important;
                 font-size: 0.95rem !important;
             }
+
+            /* Sticky Header compact style on Mobile */
+            .sticky-filter-wrapper .search-container-layanan {
+                margin-top: 0 !important;
+                margin-bottom: 0 !important;
+            }
+            .sticky-filter-wrapper.is-stuck {
+                padding: 10px 16px !important;
+                border-radius: 0 0 16px 16px !important;
+            }
         }
     </style>
 </head>
@@ -1108,20 +1152,15 @@
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="me-2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
                 Masuk / Daftar
             </a>
+            <a href="#" class="mobile-nav-link btn-solid d-flex justify-content-center align-items-center d-none btn-header-danger" id="mobileLogoutBtn">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="me-2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                <span id="mobileLogoutText">Keluar</span>
+            </a>
         </div>
     </div>
 
     <main>
-        <!-- User Profile Chip (Hidden by default, shown if logged in) -->
-        <a href="auth/login.html" id="userProfileChip" class="user-profile-chip d-none" title="Klik untuk Ganti Akun">
-            <div class="avatar" id="profileAvatar">M</div>
-            <div class="user-info">
-                <span class="name" id="profileName">Masyarakat</span>
-                <span class="role" id="profileRole">Akses Publik</span>
-            </div>
-        </a>
-
-        <!-- Guest Menu (Shown before login) -->
+        <!-- Header Menu (Unified Navigation in top-right) -->
         <div id="guestMenu" class="guest-menu">
             <a href="#faq-section" class="btn-guest-outline">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
@@ -1131,9 +1170,9 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
                 <span><span class="d-none d-md-inline">Mulai </span>Pengajuan</span>
             </a>
-            <a href="auth/login.html" class="btn-guest-solid" style="background: var(--slate-800); border-color: var(--slate-800);">
+            <a href="auth/login.html" id="headerAuthBtn" class="btn-guest-solid btn-header-dark" style="transition: all 0.3s;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                <span>Masuk<span class="d-none d-md-inline"> / Daftar</span></span>
+                <span id="headerAuthText">Masuk / Daftar</span>
             </a>
         </div>
 
@@ -1175,16 +1214,30 @@
 
         <!-- 2. Daftar Layanan -->
         <section id="daftar-layanan" class="section-layanan mb-5 pb-5">
-            <div id="stickySentinel" style="height: 1px; width: 100%; pointer-events: none;"></div>
+            <!-- Header Layanan (Scrolls away naturally) -->
+            <div class="container mb-4">
+                <div class="services-header-info">
+                    <h2 class="section-title">Layanan Kami</h2>
+                    <p class="text-slate-500 mb-0">Pilih layanan yang Anda butuhkan di bawah ini.</p>
+                </div>
+            </div>
+
             <div class="container sticky-filter-wrapper" id="stickyWrapper">
-                <!-- Header Layanan & Search -->
-                <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end mb-4">
-                    <div>
-                        <h2 class="section-title">Layanan Kami</h2>
-                        <p class="text-slate-500 mb-0">Pilih layanan yang Anda butuhkan di bawah ini.</p>
+                <!-- Search & Category Filter (Stays sticky) -->
+                <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+                    <!-- Kategori Filter -->
+                    <div class="category-filter-container flex-grow-1 order-2 order-md-1">
+                        <div class="category-scroll-wrapper">
+                            <button class="category-chip active" data-category="all">Semua Layanan</button>
+                            <button class="category-chip" data-category="umum-sdm">Layanan Umum & SDM</button>
+                            <button class="category-chip" data-category="infrastruktur">Infrastruktur & TI</button>
+                            <button class="category-chip" data-category="sistem">Tata Kelola & Aplikasi</button>
+                            <button class="category-chip" data-category="keamanan">Keamanan & Siber</button>
+                        </div>
                     </div>
 
-                    <div class="search-container-layanan mt-3 mt-md-0">
+                    <!-- Search Input -->
+                    <div class="search-container-layanan order-1 order-md-2 mt-0">
                         <input type="text" id="searchInput" class="search-input-layanan"
                             placeholder="Cari layanan (contoh: magang)..." autocomplete="off">
                         <svg class="search-icon-layanan" width="20" height="20" viewBox="0 0 24 24" fill="none"
@@ -1192,15 +1245,6 @@
                             <circle cx="11" cy="11" r="8"></circle>
                             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                         </svg>
-                    </div>
-                </div> <!-- Kategori Filter -->
-                <div class="category-filter-container">
-                    <div class="category-scroll-wrapper">
-                        <button class="category-chip active" data-category="all">Semua Layanan</button>
-                        <button class="category-chip" data-category="umum-sdm">Layanan Umum & SDM</button>
-                        <button class="category-chip" data-category="infrastruktur">Infrastruktur & TI</button>
-                        <button class="category-chip" data-category="sistem" data-role="pegawai">Tata Kelola & Aplikasi</button>
-                        <button class="category-chip" data-category="keamanan" data-role="pegawai">Keamanan & Siber</button>
                     </div>
                 </div>
             </div> <!-- End Sticky Wrapper -->
@@ -1214,8 +1258,8 @@
                             <h3 class="fw-bold text-slate-800 mb-4" style="font-size: 1.5rem;">Layanan Umum & SDM</h3>
                             <div class="services-grid">
                                 <div class="service-item" data-role="masyarakat" data-title="magang pkl mahasiswa siswa pendaftaran aplikasi umum">
-                                    <div class="service-card highlight" data-aos="fade-up">
-                                    <div class="service-icon-wrapper icon-blue">
+                                    <div class="service-card" data-aos="fade-up">
+                                    <div class="service-icon-wrapper icon-cyan">
                                         <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
                                             stroke="currentColor" stroke-width="2" stroke-linecap="round"
                                             stroke-linejoin="round">
@@ -1912,9 +1956,27 @@
             </div>
         </section>
     </main>
-
-    </main>
     <script>
+        // Fungsi Logout Global
+        function handleLogout(e) {
+            if (e) e.preventDefault();
+            localStorage.removeItem('isLoggedIn');
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Berhasil Keluar',
+                    text: 'Sesi Anda telah diakhiri.',
+                    confirmButtonColor: '#0284c7',
+                    timer: 1500,
+                    showConfirmButton: false
+                }).then(() => {
+                    window.location.reload();
+                });
+            } else {
+                window.location.reload();
+            }
+        }
+
         // Logika Fitur Pencarian dan Kategori Interaktif
         document.addEventListener('DOMContentLoaded', () => {
             const searchInput = document.getElementById('searchInput');
@@ -1925,13 +1987,12 @@
 
             function filterServices() {
                 const query = (searchInput ? searchInput.value : '').toLowerCase().trim();
-                const userRole = localStorage.getItem('userRole'); // Dapatkan role saat ini
                 let totalVisibleCount = 0;
 
                 document.querySelectorAll('.category-section').forEach(section => {
                     const sectionCategory = section.getAttribute('data-category-id');
 
-                    // Filter Kategori Chips berdasarkan Role dinonaktifkan sementara
+                    // Tampilkan semua chip kategori
                     categoryChips.forEach(chip => {
                         chip.style.display = 'inline-block';
                     });
@@ -1947,12 +2008,8 @@
 
                     serviceItems.forEach(item => {
                         const titleWords = item.getAttribute('data-title').toLowerCase();
-                        const itemRole = item.getAttribute('data-role');
-                        
-                        // Cek Hak Akses (Role) dinonaktifkan sementara
-                        let roleMatch = true;
 
-                        if (roleMatch && titleWords.includes(query)) {
+                        if (titleWords.includes(query)) {
                             item.classList.remove('d-none');
                             sectionVisibleCount++;
                             totalVisibleCount++;
@@ -2005,37 +2062,75 @@
 
             // Dinamis Auth Button UI
             const isLoggedIn = localStorage.getItem('isLoggedIn');
-            const userRoleDisplay = localStorage.getItem('userRole');
             
+            const guestMenu = document.getElementById('guestMenu');
+            const headerAuthBtn = document.getElementById('headerAuthBtn');
+            const mobileAuthBtn = document.getElementById('mobileAuthBtn');
+            const mobileLogoutBtn = document.getElementById('mobileLogoutBtn');
+            const btnAuthMain = document.getElementById('btnAuthMain');
+
+            // Selalu tampilkan menu navigasi di header utama
+            if (guestMenu) {
+                guestMenu.classList.remove('d-none');
+            }
+
             if (isLoggedIn === 'true') {
-                const userProfileChip = document.getElementById('userProfileChip');
-                const profileAvatar = document.getElementById('profileAvatar');
-                const profileName = document.getElementById('profileName');
-                const profileRole = document.getElementById('profileRole');
-                const guestMenu = document.getElementById('guestMenu');
-                const mobileAuthBtn = document.getElementById('mobileAuthBtn');
-
-                // Sembunyikan guest menu & tombol login mobile, tampilkan user profile chip
-                if(guestMenu) guestMenu.classList.add('d-none');
-                if(userProfileChip) {
-                    userProfileChip.style.display = 'flex';
+                // Konfigurasi tombol Masuk/Daftar di desktop menjadi tombol Keluar (Log Out)
+                if (headerAuthBtn) {
+                    headerAuthBtn.href = "#";
+                    headerAuthBtn.classList.remove('btn-header-dark');
+                    headerAuthBtn.classList.add('btn-header-danger');
+                    
+                    headerAuthBtn.innerHTML = `
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="me-1">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                            <polyline points="16 17 21 12 16 7"></polyline>
+                            <line x1="21" y1="12" x2="9" y2="12"></line>
+                        </svg>
+                        <span>Keluar</span>
+                    `;
+                    headerAuthBtn.addEventListener('click', handleLogout);
                 }
-                if(mobileAuthBtn) mobileAuthBtn.classList.add('d-none');
 
-                if (userRoleDisplay === 'pegawai') {
-                    if(profileAvatar) {
-                        profileAvatar.textContent = 'P';
-                        profileAvatar.style.background = 'var(--slate-800)';
+                // Sembunyikan tombol login mobile & tampilkan tombol logout mobile
+                if (mobileAuthBtn) mobileAuthBtn.classList.add('d-none');
+                if (mobileLogoutBtn) {
+                    mobileLogoutBtn.classList.remove('d-none');
+                    const mobileLogoutText = document.getElementById('mobileLogoutText');
+                    if (mobileLogoutText) {
+                        mobileLogoutText.textContent = 'Keluar';
                     }
-                    if(profileName) profileName.textContent = 'Pegawai Pemkot';
-                    if(profileRole) profileRole.textContent = 'Akses Internal';
-                } else {
-                    if(profileAvatar) {
-                        profileAvatar.textContent = 'M';
-                        profileAvatar.style.background = 'var(--primary)';
-                    }
-                    if(profileName) profileName.textContent = 'Masyarakat Umum';
-                    if(profileRole) profileRole.textContent = 'Pemohon Layanan';
+                    mobileLogoutBtn.addEventListener('click', handleLogout);
+                }
+
+                // Ubah CTA utama di Hero menjadi Mulai Pengajuan & Scroll ke Layanan
+                if (btnAuthMain) {
+                    btnAuthMain.innerHTML = `Mulai Pengajuan <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>`;
+                    btnAuthMain.href = "#daftar-layanan";
+                }
+            } else {
+                // Konfigurasi tombol Masuk/Daftar di desktop dalam kondisi Guest
+                if (headerAuthBtn) {
+                    headerAuthBtn.href = "auth/login.html";
+                    headerAuthBtn.classList.remove('btn-header-danger');
+                    headerAuthBtn.classList.add('btn-header-dark');
+                    headerAuthBtn.innerHTML = `
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="me-1">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                        <span>Masuk<span class="d-none d-md-inline"> / Daftar</span></span>
+                    `;
+                }
+
+                // Tampilkan tombol login mobile, sembunyikan logout mobile
+                if (mobileAuthBtn) mobileAuthBtn.classList.remove('d-none');
+                if (mobileLogoutBtn) mobileLogoutBtn.classList.add('d-none');
+
+                // Kembalikan CTA utama ke login page
+                if (btnAuthMain) {
+                    btnAuthMain.innerHTML = `Mulai Sekarang <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>`;
+                    btnAuthMain.href = "auth/login.html";
                 }
             }
 
@@ -2090,20 +2185,24 @@
             }
         }
         // --- Luxury Morphing Sticky Header ---
-        const sentinel = document.getElementById('stickySentinel');
         const stickyWrapper = document.getElementById('stickyWrapper');
-        if (sentinel && stickyWrapper) {
-            // Ketika sentinel melewati batas atas viewport (0px), wrapper menempel
-            const observer = new IntersectionObserver((entries) => {
-                if (!entries[0].isIntersecting) {
+        const daftarLayanan = document.getElementById('daftar-layanan');
+        if (stickyWrapper && daftarLayanan) {
+            window.addEventListener('scroll', () => {
+                const rect = daftarLayanan.getBoundingClientRect();
+                // Morphing diaktifkan setelah judul Layanan Kami bergeser ke atas (-100px)
+                const shouldBeStuck = rect.top <= -100;
+                
+                // Gunakan optimasi performa agar tidak memicu repaint berulang
+                if (shouldBeStuck && !stickyWrapper.classList.contains('is-stuck')) {
                     stickyWrapper.classList.add('is-stuck');
-                } else {
+                } else if (!shouldBeStuck && stickyWrapper.classList.contains('is-stuck')) {
                     stickyWrapper.classList.remove('is-stuck');
                 }
-            }, { rootMargin: '0px' });
-            observer.observe(sentinel);
+            });
         }
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
     <script>

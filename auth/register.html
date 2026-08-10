@@ -37,22 +37,23 @@
     .page-wrapper {
       display: flex;
       flex-direction: column;
+      justify-content: center;
+      align-items: center;
       min-height: 100vh;
-      padding: 2rem 1.5rem;
+      padding: 1rem 1.5rem;
     }
 
     .auth-wrapper {
-      margin: auto; /* Ensures safe centering without top cut-off */
       background: white;
       width: 100%;
-      max-width: 1050px;
+      max-width: 1000px;
       border-radius: 24px;
       box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.08);
       display: flex;
       flex-direction: row-reverse; /* Banner di kanan */
       overflow: hidden;
       border: 1px solid white;
-      min-height: 650px;
+      min-height: auto;
     }
 
     /* Right Side (Banner with Illustration) */
@@ -69,9 +70,11 @@
     }
     
     .auth-banner img {
-      max-width: 85%;
+      max-width: 70%;
+      max-height: 180px;
+      object-fit: contain;
       height: auto;
-      margin-bottom: 2.5rem;
+      margin-bottom: 1.5rem;
       filter: drop-shadow(0 20px 30px rgba(2, 132, 199, 0.15));
       animation: float 6s ease-in-out infinite;
     }
@@ -101,7 +104,7 @@
     /* Left Side (Form) */
     .auth-form-container {
       flex: 1;
-      padding: 3.5rem 3.5rem;
+      padding: 2rem 2.5rem;
       display: flex;
       flex-direction: column;
       justify-content: center;
@@ -117,7 +120,7 @@
       text-decoration: none;
       font-size: 0.9rem;
       font-weight: 500;
-      margin-bottom: 2rem;
+      margin-bottom: 1rem;
       transition: color 0.2s;
     }
     .link-back-clean:hover {
@@ -126,13 +129,13 @@
 
     /* Logo at the top of the form */
     .brand-logo {
-      width: 150px;
-      margin-bottom: 2rem;
+      width: 95px;
+      margin-bottom: 1rem;
       display: block;
     }
 
     .auth-header {
-      margin-bottom: 2rem;
+      margin-bottom: 1rem;
     }
     .auth-header h2 {
       font-size: 1.8rem;
@@ -148,7 +151,7 @@
     /* Modern Form Inputs */
     .form-group-modern {
       position: relative;
-      margin-bottom: 1.25rem;
+      margin-bottom: 0.85rem;
     }
     .form-group-modern label {
       display: block;
@@ -174,10 +177,10 @@
     }
     .form-control {
       width: 100%;
-      padding: 0.85rem 1rem;
+      padding: 0.6rem 1rem;
       border-radius: 12px;
       border: 1px solid var(--slate-200);
-      font-size: 1rem;
+      font-size: 0.95rem;
       color: var(--slate-800);
       background-color: var(--slate-50);
       transition: all 0.2s;
@@ -193,12 +196,11 @@
       background: var(--primary);
       color: white;
       border: none;
-      padding: 0.9rem 1rem;
+      padding: 0.8rem 1rem;
       border-radius: 12px;
       font-weight: 700;
-      font-size: 1rem;
+      font-size: 0.95rem;
       width: 100%;
-      margin-top: 1rem;
       transition: all 0.3s;
       box-shadow: 0 4px 10px rgba(2, 132, 199, 0.3);
       display: flex;
@@ -214,7 +216,7 @@
 
     .auth-footer {
       text-align: center;
-      margin-top: 2rem;
+      margin-top: 1.25rem;
       font-size: 0.95rem;
       color: var(--slate-500);
     }

@@ -37,21 +37,22 @@
     .page-wrapper {
       display: flex;
       flex-direction: column;
+      justify-content: center;
+      align-items: center;
       min-height: 100vh;
-      padding: 2rem 1.5rem;
+      padding: 1rem 1.5rem;
     }
 
     .auth-wrapper {
-      margin: auto; /* Ensures safe centering without top cut-off */
       background: white;
       width: 100%;
-      max-width: 1050px;
+      max-width: 1000px;
       border-radius: 24px;
       box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.08);
       display: flex;
       overflow: hidden;
       border: 1px solid white;
-      min-height: 650px;
+      min-height: auto;
     }
 
     .auth-banner {
@@ -96,7 +97,7 @@
     /* Right Side (Form) */
     .auth-form-container {
       flex: 1;
-      padding: 4rem 3.5rem;
+      padding: 2rem 2.5rem;
       display: flex;
       flex-direction: column;
       justify-content: center;
@@ -112,7 +113,7 @@
       text-decoration: none;
       font-size: 0.9rem;
       font-weight: 500;
-      margin-bottom: 2rem;
+      margin-bottom: 1rem;
       transition: color 0.2s;
     }
     .link-back-clean:hover {
@@ -121,29 +122,30 @@
 
     /* Logo at the top of the form */
     .brand-logo {
-      width: 130px;
-      margin-bottom: 2rem;
+      width: 95px;
+      margin-bottom: 1rem;
       display: block;
     }
 
     .auth-header {
-      margin-bottom: 2.5rem;
+      margin-bottom: 1rem;
     }
     .auth-header h2 {
-      font-size: 1.8rem;
+      font-size: 1.6rem;
       font-weight: 800;
       color: var(--slate-900);
-      margin-bottom: 0.5rem;
+      margin-bottom: 0.25rem;
     }
     .auth-header p {
       color: var(--slate-500);
-      font-size: 0.95rem;
+      font-size: 0.9rem;
+      margin-bottom: 0;
     }
 
     /* Modern Form Inputs */
     .form-group-modern {
       position: relative;
-      margin-bottom: 1.5rem;
+      margin-bottom: 0.85rem;
     }
     .form-group-modern label {
       display: block;
@@ -169,10 +171,10 @@
     }
     .form-control {
       width: 100%;
-      padding: 0.85rem 1rem;
+      padding: 0.75rem 1rem;
       border-radius: 12px;
       border: 1px solid var(--slate-200);
-      font-size: 1rem;
+      font-size: 0.95rem;
       color: var(--slate-800);
       background-color: var(--slate-50);
       transition: all 0.2s;
@@ -188,8 +190,8 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 2rem;
-      font-size: 0.9rem;
+      margin-bottom: 1rem;
+      font-size: 0.85rem;
     }
     .form-check-label {
       color: var(--slate-600);
@@ -207,10 +209,10 @@
       background: var(--primary);
       color: white;
       border: none;
-      padding: 0.9rem 1rem;
+      padding: 0.8rem 1rem;
       border-radius: 12px;
       font-weight: 700;
-      font-size: 1rem;
+      font-size: 0.95rem;
       width: 100%;
       transition: all 0.3s;
       box-shadow: 0 4px 10px rgba(2, 132, 199, 0.3);
@@ -227,8 +229,8 @@
 
     .auth-footer {
       text-align: center;
-      margin-top: 2.5rem;
-      font-size: 0.95rem;
+      margin-top: 1rem;
+      font-size: 0.9rem;
       color: var(--slate-500);
     }
     .auth-footer a {
@@ -341,11 +343,8 @@
   <script>
     // Hapus sesi lama setiap kali membuka halaman login
     localStorage.removeItem('isLoggedIn');
-    localStorage.removeItem('userRole');
 
     function simulateLogin() {
-      const selectedRole = 'pegawai'; // Default role to show all services
-
       Swal.fire({
         title: 'Memproses...',
         text: 'Sedang masuk ke akun Anda',
@@ -364,7 +363,6 @@
           showConfirmButton: false
         }).then(() => {
           localStorage.setItem('isLoggedIn', 'true');
-          localStorage.setItem('userRole', selectedRole);
           window.location.href = "../index.html";
         });
       }, 1000);
