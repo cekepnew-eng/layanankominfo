@@ -458,7 +458,7 @@
         /* Sticky Header Wrappers */
         .sticky-filter-wrapper {
             position: sticky;
-            top: 0; /* Dibuat 0 agar tidak ada celah transparan di atasnya */
+            top: 0;
             z-index: 50;
             background: #ffffff;
             padding: 24px;
@@ -466,20 +466,19 @@
             border: 1px solid rgba(226, 232, 240, 0.6);
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
             margin-bottom: 2rem;
-            margin-top: 16px; /* Spacing awal */
             transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .sticky-filter-wrapper.is-stuck {
-            margin-top: 0; /* Hilangkan spacing saat menempel */
-            padding: 16px 24px;
-            border-radius: 0 0 24px 24px; /* Rata dengan atas layar */
+            border-radius: 0 0 24px 24px;
             border-top-color: transparent;
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
             box-shadow: 0 15px 40px -10px rgba(0, 0, 0, 0.1);
         }
+
+
 
         /* Grid Layanan */
         .category-section {
@@ -1110,12 +1109,14 @@
             }
 
             /* Sticky Header compact style on Mobile */
+            .sticky-filter-wrapper {
+                padding: 16px !important;
+            }
             .sticky-filter-wrapper .search-container-layanan {
                 margin-top: 0 !important;
                 margin-bottom: 0 !important;
             }
             .sticky-filter-wrapper.is-stuck {
-                padding: 10px 16px !important;
                 border-radius: 0 0 16px 16px !important;
             }
         }
@@ -1222,12 +1223,13 @@
                 </div>
             </div>
 
+            <!-- Sticky Filter Bar -->
             <div class="container sticky-filter-wrapper" id="stickyWrapper">
-                <!-- Search & Category Filter (Stays sticky) -->
-                <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
-                    <!-- Kategori Filter -->
-                    <div class="category-filter-container flex-grow-1 order-2 order-md-1">
-                        <div class="category-scroll-wrapper">
+                <div class="d-flex flex-column flex-lg-row align-items-lg-center gap-3">
+                    
+                    <!-- Kategori Filter (Takes remaining space) -->
+                    <div class="category-filter-container flex-grow-1 overflow-hidden w-100 order-2 order-lg-1">
+                        <div class="category-scroll-wrapper m-0 pb-0">
                             <button class="category-chip active" data-category="all">Semua Layanan</button>
                             <button class="category-chip" data-category="umum-sdm">Layanan Umum & SDM</button>
                             <button class="category-chip" data-category="infrastruktur">Infrastruktur & TI</button>
@@ -1236,8 +1238,8 @@
                         </div>
                     </div>
 
-                    <!-- Search Input -->
-                    <div class="search-container-layanan order-1 order-md-2 mt-0">
+                    <!-- Search Input (Fixed width on desktop, full width on mobile) -->
+                    <div class="search-container-layanan w-100 order-1 order-lg-2" style="max-width: 320px;">
                         <input type="text" id="searchInput" class="search-input-layanan"
                             placeholder="Cari layanan (contoh: magang)..." autocomplete="off">
                         <svg class="search-icon-layanan" width="20" height="20" viewBox="0 0 24 24" fill="none"
@@ -1246,6 +1248,7 @@
                             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                         </svg>
                     </div>
+
                 </div>
             </div> <!-- End Sticky Wrapper -->
 
