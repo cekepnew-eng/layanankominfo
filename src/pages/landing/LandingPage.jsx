@@ -44,27 +44,30 @@ export const LandingPage = () => {
     }
   }
   const completedOrWaiting = tickets ? tickets.filter(t => t.status === 'Selesai' || t.status === 'Menunggu Konfirmasi User') : [];
+  const completedTickets = tickets ? tickets.filter(t => t.status === 'Selesai') : [];
   const onSlaTickets = completedOrWaiting.filter(t => t.id !== 'REQ-2026-0117');
-  const sla = completedOrWaiting.length > 0 ? ((onSlaTickets.length / completedOrWaiting.length) * 100).toFixed(1) + '%' : '96.4%';
+  const sla = completedOrWaiting.length > 0 ? ((onSlaTickets.length / completedOrWaiting.length) * 100).toFixed(1) + '%' : '92.3%';
   const rating = ratings && ratings.length > 0
     ? (ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length).toFixed(2)
     : '4.85';
   
-  const app = completedOrWaiting.filter(t => 
-    t.service === 'Pengembangan & Pengelolaan Aplikasi' || 
-    t.service === 'Keamanan Aplikasi / VAPT' || 
-    t.service === 'Rekomendasi & Evaluasi Aplikasi' ||
-    t.service === 'Uji Kesesuaian Sistem (UKS)'
-  ).length;
+  const categoriesList = [
+    { name: 'Pengelolaan Aplikasi Informatika', services: ['Pengembangan & Pengelolaan Aplikasi', 'Rekomendasi & Evaluasi Aplikasi', 'Uji Kesesuaian Sistem (UKS)', 'Keamanan Aplikasi / VAPT'] },
+    { name: 'Pengelolaan Sumber Daya & Perangkat Informatika', services: ['Jaringan Intra Pemerintah', 'Server Perangkat Daerah', 'Infrastruktur TIK', 'Perangkat Jaringan & Komunikasi', 'Teleconference & Meeting', 'Video Conference / Zoom', 'CCTV & Video Monitoring', 'Wifi Publik'] },
+    { name: 'Penerapan Persandian & Keamanan Informasi', services: ['Keamanan Informasi & Persandian', 'Security Operation Center (SOC)', 'CSIRT / Respons Insiden', 'Security Awareness'] },
+    { name: 'Tata Kelola SPBE', services: ['Tata Kelola SPBE', 'Kebijakan SPBE', 'Arsitektur & Peta Rencana SPBE', 'Monev & Pelaporan SPBE', 'Integrasi & Interoperabilitas SPBE', 'Audit Teknologi Informasi'] },
+    { name: 'Statistik Sektoral', services: ['Statistik Sektoral'] },
+    { name: 'Satu Data Daerah', services: ['Satu Data Daerah'] },
+    { name: 'Informasi & Komunikasi Publik', services: ['Informasi & Komunikasi Publik', 'Pelayanan Informasi Publik'] },
+    { name: 'Domain & Infrastruktur Pendukung', services: ['Domain & Subdomain Pemerintah Daerah', 'Portal Pelayanan Digital', 'Pusat Kendali / Command Center', 'Peningkatan Kapasitas SDM TIK', 'Domain & Infrastruktur Pendukung'] }
+  ];
 
-  const wifi = completedOrWaiting.filter(t => 
-    t.service === 'Jaringan Intra Pemerintah' || 
-    t.service === 'Wifi Publik' || 
-    t.service === 'Infrastruktur TIK' ||
-    t.service === 'Perangkat Jaringan & Komunikasi'
-  ).length;
+  const categoryCounts = categoriesList.map(cat => {
+    const count = completedTickets.filter(t => cat.services.includes(t.service)).length;
+    return { name: cat.name, count };
+  }).sort((a, b) => b.count - a.count);
 
-  const server = completedOrWaiting.filter(t => t.service === 'Server Perangkat Daerah').length;
+  const topCategories = categoryCounts.slice(0, 3);
   const [activeSection, setActiveSection] = useState('beranda');
 
   const opds = ['Dinas Kesehatan', 'Dinas Pendidikan', 'Dinas PUPR', 'Kecamatan Bogor Tengah', 'DPMPTSP'];
@@ -412,33 +415,22 @@ export const LandingPage = () => {
                 <h4 className="font-extrabold text-slate-900 text-lg leading-tight">Layanan Paling Sering Digunakan</h4>
               </div>
               <div className="space-y-3.5 text-left">
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs font-bold text-slate-700">
-                    <span>Pengembangan Aplikasi</span>
-                    <span>{app} Tiket</span>
-                  </div>
-                  <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                    <div className="bg-sky-500 h-full rounded-full" style={{ width: `${(app + wifi + server) > 0 ? (app / (app + wifi + server) * 100).toFixed(0) : 0}%` }}></div>
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs font-bold text-slate-700">
-                    <span>Jaringan & Wifi</span>
-                    <span>{wifi} Tiket</span>
-                  </div>
-                  <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                    <div className="bg-sky-400 h-full rounded-full" style={{ width: `${(app + wifi + server) > 0 ? (wifi / (app + wifi + server) * 100).toFixed(0) : 0}%` }}></div>
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs font-bold text-slate-700">
-                    <span>Server & Hosting</span>
-                    <span>{server} Tiket</span>
-                  </div>
-                  <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                    <div className="bg-sky-300 h-full rounded-full" style={{ width: `${(app + wifi + server) > 0 ? (server / (app + wifi + server) * 100).toFixed(0) : 0}%` }}></div>
-                  </div>
-                </div>
+                {topCategories.map((item, idx) => {
+                  const barColors = ['bg-sky-500', 'bg-sky-400', 'bg-sky-300'];
+                  const color = barColors[idx % barColors.length];
+                  const pct = completedTickets.length > 0 ? (item.count / completedTickets.length * 100).toFixed(0) : 0;
+                  return (
+                    <div key={item.name} className="space-y-1">
+                      <div className="flex justify-between text-xs font-bold text-slate-700">
+                        <span className="truncate max-w-[240px]" title={item.name}>{item.name}</span>
+                        <span className="shrink-0">{item.count} Tiket</span>
+                      </div>
+                      <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                        <div className={`${color} h-full rounded-full`} style={{ width: `${pct}%` }}></div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>

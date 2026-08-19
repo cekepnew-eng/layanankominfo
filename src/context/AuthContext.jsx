@@ -41,7 +41,7 @@ export const AuthProvider = ({ children }) => {
         name: 'Dinas Pariwisata & Kebudayaan',
         rating: 4,
         service: 'Uji Kesesuaian Sistem (UKS)',
-        comment: 'Layanan uji kesesuaian sistem berjalan dengan baik. Koordinasi dari petugas sangat baik.',
+        comment: 'Layanan uji kesesuaian sistem sangat membantu kelancaran operasional aplikasi kami. Koordinasi baik meskipun ada kendala teknis minor di awal.',
         status: 'Selesai',
         selectedForLanding: true,
         aspects: { speed: 4, result: 4, communication: 4, quality: 4 }
@@ -131,7 +131,7 @@ export const AuthProvider = ({ children }) => {
         name: 'Dinas Pendidikan Kota Bogor',
         rating: 5,
         service: 'Jaringan Intra Pemerintah',
-        comment: '',
+        comment: 'Koneksi internet Wifi area lobby sudah stabil dan cepat kembali. Layanan Diskominfo mantap!',
         status: 'Selesai (On SLA)',
         selectedForLanding: false,
         aspects: { speed: 5, result: 5, communication: 5, quality: 5 }

@@ -12,7 +12,6 @@ import {
   FileText, 
   LogOut, 
   ChevronDown,
-  Bell,
   Star
 } from 'lucide-react';
 
@@ -160,11 +159,6 @@ export const DashboardLayout = () => {
           </div>
 
           <div className="flex items-center gap-4">
-            <button className="p-2.5 text-slate-400 hover:text-slate-650 hover:bg-slate-50 rounded-xl relative transition-all">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-rose-500"></span>
-            </button>
-
             <div className="relative">
               <button 
                 onClick={() => setShowRoleSelector(!showRoleSelector)}
