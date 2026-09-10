@@ -42,15 +42,27 @@ export const ManageRatings = () => {
         </div>
       </div>
 
-      <div className="bg-sky-50 border border-sky-100 rounded-2xl p-5 flex items-start gap-3">
-        <AlertCircle className="w-5 h-5 text-sky-600 shrink-0 mt-0.5" />
-        <div className="text-sm text-sky-850 space-y-1">
+      <div className={`p-5 rounded-2xl border flex items-start gap-3 transition-all ${
+        selectedRatingsCount === 10
+          ? 'bg-emerald-50 border-emerald-200'
+          : selectedRatingsCount > 10
+          ? 'bg-rose-50 border-rose-200'
+          : 'bg-sky-50 border-sky-100'
+      }`}>
+        <AlertCircle className={`w-5 h-5 shrink-0 mt-0.5 ${
+          selectedRatingsCount === 10 ? 'text-emerald-600' : selectedRatingsCount > 10 ? 'text-rose-600' : 'text-sky-600'
+        }`} />
+        <div className="text-sm space-y-1">
           <p className="font-bold text-slate-800">Aturan Tampilan Testimoni Landing Page</p>
-          <p className="leading-relaxed text-slate-650">Silakan pilih **tepat 10 ulasan komentar** di bawah ini untuk ditampilkan pada slider testimoni halaman depan. Saat ini terpilih **{selectedRatingsCount} ulasan**.</p>
+          <p className="leading-relaxed text-slate-650">
+            Kuota tampilan slider testimoni halaman depan dibatasi maksimal <strong>10 ulasan terpilih</strong>. 
+            Saat ini terpilih <strong className={`font-black ${selectedRatingsCount === 10 ? 'text-emerald-700' : selectedRatingsCount > 10 ? 'text-rose-700' : 'text-sky-700'}`}>{selectedRatingsCount} / 10 ulasan</strong>
+            {selectedRatingsCount === 10 && ' (Kuota Penuh).'}
+            {selectedRatingsCount > 10 && ' (Melebihi Kuota! Silakan batalkan salah satu ulasan).'}
+          </p>
         </div>
       </div>
 
-      {/* Filter Bintang Tabs */}
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200/60 pb-5">
         <span className="text-xs font-extrabold text-slate-400 uppercase tracking-wider mr-2">Filter Bintang:</span>
         <button
@@ -163,9 +175,12 @@ export const ManageRatings = () => {
                     onClick={() => toggleRatingForLanding(r.id)}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                       r.selectedForLanding 
-                        ? 'bg-sky-600 hover:bg-sky-700 text-white' 
-                        : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200'
+                        ? 'bg-sky-600 hover:bg-sky-700 text-white shadow-sm cursor-pointer' 
+                        : selectedRatingsCount >= 10
+                        ? 'bg-slate-100 text-slate-400 border border-slate-200 hover:bg-slate-200/60 cursor-pointer'
+                        : 'bg-slate-50 hover:bg-slate-100 text-slate-650 border border-slate-200 cursor-pointer'
                     }`}
+                    title={!r.selectedForLanding && selectedRatingsCount >= 10 ? 'Kuota 10 ulasan sudah penuh. Batalkan ulasan lain terlebih dahulu.' : ''}
                   >
                     {r.selectedForLanding ? (
                       <>

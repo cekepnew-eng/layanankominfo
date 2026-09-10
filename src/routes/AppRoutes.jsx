@@ -13,7 +13,17 @@ import { TaskList } from '../pages/dashboard/TaskList';
 import { CreateTicket } from '../pages/dashboard/CreateTicket';
 import { MyTickets } from '../pages/dashboard/MyTickets';
 import { TicketHistory } from '../pages/dashboard/TicketHistory';
+import { Profile } from '../pages/dashboard/Profile';
 import { ProtectedRoute } from './ProtectedRoute';
+import { useAuth } from '../context/AuthContext';
+
+const HistoryWrapper = () => {
+  const { user } = useAuth();
+  if (user?.role === 'user' || user?.role === 'masyarakat') {
+    return <MyTickets />;
+  }
+  return <TicketHistory />;
+};
 
 export const AppRoutes = () => {
   return (
@@ -65,13 +75,10 @@ export const AppRoutes = () => {
           } 
         />
 
-        
-
-        
         <Route 
           path="user/create-ticket" 
           element={
-            <ProtectedRoute allowedRoles={['user']}>
+            <ProtectedRoute allowedRoles={['user', 'masyarakat', 'helpdesk']}>
               <CreateTicket />
             </ProtectedRoute>
           } 
@@ -79,12 +86,20 @@ export const AppRoutes = () => {
         <Route 
           path="history" 
           element={
-            <ProtectedRoute allowedRoles={['admin', 'helpdesk', 'pegawai', 'user']}>
-              <TicketHistory />
+            <ProtectedRoute allowedRoles={['admin', 'helpdesk', 'pegawai', 'user', 'masyarakat']}>
+              <HistoryWrapper />
             </ProtectedRoute>
           } 
         />
 
+        <Route 
+          path="profile" 
+          element={
+            <ProtectedRoute allowedRoles={['admin', 'helpdesk', 'pegawai', 'user', 'masyarakat']}>
+              <Profile />
+            </ProtectedRoute>
+          } 
+        />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Route>
 

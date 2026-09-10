@@ -1,20 +1,66 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { Monitor, ArrowLeft, Lock, Mail, User, Building } from 'lucide-react';
+import { authService } from '../../services/authService';
+import { Monitor, ArrowLeft, Lock, Mail, User, ShieldCheck, QrCode, Copy } from 'lucide-react';
 
 export const Register = () => {
-  const { login } = useAuth();
+  const { login, users, setUsers } = useAuth();
   const navigate = useNavigate();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [department, setDepartment] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [otpStep, setOtpStep] = useState(1);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpError, setOtpError] = useState('');
+  const [targetRole, setTargetRole] = useState('masyarakat');
+  const [qrData, setQrData] = useState({ qrUrl: '', secretFormatted: '' });
 
-  const handleFormSubmit = (e) => {
+  const handleFormSubmit = async (e) => {
     e.preventDefault();
-    login('user');
-    navigate('/dashboard');
+    const emailLower = email.toLowerCase().trim();
+    if (!emailLower.endsWith('@gmail.com')) {
+      alert('Registrasi akun baru hanya dibuka untuk Masyarakat menggunakan e-mail Gmail (@gmail.com)!');
+      return;
+    }
+    if (password !== confirmPassword) {
+      alert('Konfirmasi kata sandi tidak cocok! Pastikan kata sandi dan konfirmasi kata sandi sama.');
+      return;
+    }
+    const data = await authService.getOtpSecret(emailLower);
+    setQrData(data);
+    setOtpStep(1);
+    setOtpCode('');
+    setOtpError('');
+    setTargetRole('masyarakat');
+    setShowOtpModal(true);
+  };
+
+  const handleOtpVerify = async (e) => {
+    e.preventDefault();
+    const result = await authService.verifyOtp(email, otpCode);
+    if (result.success) {
+      const newUser = {
+        id: (users || []).length + 1,
+        name: name.trim(),
+        email: email.toLowerCase().trim(),
+        role: targetRole,
+        roles: [targetRole],
+        department: 'Masyarakat Umum'
+      };
+      if (setUsers && users) {
+        setUsers([...users, newUser]);
+      }
+      login(newUser);
+      setShowOtpModal(false);
+      navigate('/dashboard');
+    } else {
+      setOtpError('Kode autentikasi salah! Masukkan 6 digit kode dari Google Authenticator (demo: 123456).');
+    }
   };
 
   return (
@@ -81,50 +127,32 @@ export const Register = () => {
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Dr. Rahmat Hidayat"
+                  placeholder="Nama lengkap Anda"
                   className="block w-full pl-11 pr-4 py-3 bg-transparent text-slate-800 text-base placeholder-slate-400 focus:outline-none"
                 />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <label htmlFor="department" className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Nama Dinas / OPD</label>
-              <div className="relative rounded-xl border border-slate-200 bg-slate-50/50 focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500/20 transition-all">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-450">
-                  <Building className="w-4 h-4" />
-                </div>
-                <input
-                  id="department"
-                  type="text"
-                  required
-                  value={department}
-                  onChange={(e) => setDepartment(e.target.value)}
-                  placeholder="Dinas Ketahanan Pangan"
-                  className="block w-full pl-11 pr-4 py-3 bg-transparent text-slate-800 text-base placeholder-slate-400 focus:outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label htmlFor="email" className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Email Resmi Pemerintah</label>
+              <label htmlFor="email" className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Email Gmail Aktif</label>
               <div className="relative rounded-xl border border-slate-200 bg-slate-50/50 focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500/20 transition-all">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-450">
                   <Mail className="w-4 h-4" />
                 </div>
                 <input
                   id="email"
-                  type="email"
+                  type="text"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="rahmat.hidayat@bogor.go.id"
+                  placeholder="Gmail Anda"
                   className="block w-full pl-11 pr-4 py-3 bg-transparent text-slate-800 text-base placeholder-slate-400 focus:outline-none"
                 />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <label htmlFor="password" className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Kata Sandi</label>
+              <label htmlFor="password" className="block text-xs font-bold text-slate-550 uppercase tracking-wider">Kata Sandi</label>
               <div className="relative rounded-xl border border-slate-200 bg-slate-50/50 focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500/20 transition-all">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-450">
                   <Lock className="w-4 h-4" />
@@ -135,7 +163,25 @@ export const Register = () => {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder="Masukkan kata sandi"
+                  className="block w-full pl-11 pr-4 py-3 bg-transparent text-slate-800 text-base placeholder-slate-400 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="confirmPassword" className="block text-xs font-bold text-slate-550 uppercase tracking-wider">Konfirmasi Kata Sandi</label>
+              <div className="relative rounded-xl border border-slate-200 bg-slate-50/50 focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500/20 transition-all">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-450">
+                  <Lock className="w-4 h-4" />
+                </div>
+                <input
+                  id="confirmPassword"
+                  type="password"
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Ulangi kata sandi Anda"
                   className="block w-full pl-11 pr-4 py-3 bg-transparent text-slate-800 text-base placeholder-slate-400 focus:outline-none"
                 />
               </div>
@@ -159,6 +205,89 @@ export const Register = () => {
           </div>
         </div>
       </div>
+
+      {showOtpModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white max-w-md w-full rounded-3xl p-8 border border-slate-100 shadow-2xl space-y-6 text-left animate-in fade-in zoom-in-95 duration-200">
+
+            {otpStep === 1 && (
+              <>
+                <div className="space-y-2">
+                  <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center border border-indigo-100/60 mb-3">
+                    <QrCode className="w-6 h-6 text-indigo-600" />
+                  </div>
+                  <h3 className="text-2xl font-black text-slate-900 tracking-tight">Daftarkan Perangkat 2FA</h3>
+                  <p className="text-slate-500 text-sm leading-relaxed">
+                    Selamat datang! Sebelum menggunakan layanan, daftarkan akun Anda ke <strong className="text-slate-800">Google Authenticator</strong> dengan memindai QR code di bawah ini.
+                  </p>
+                </div>
+
+                <div className="flex flex-col items-center gap-3">
+                  <div className="p-3 bg-white border-2 border-slate-200 rounded-2xl shadow-sm">
+                    {qrData.qrUrl ? (
+                      <img src={qrData.qrUrl} alt="QR Google Authenticator" className="w-48 h-48 object-contain" />
+                    ) : (
+                      <div className="w-48 h-48 flex items-center justify-center text-slate-400 text-xs">Memuat QR...</div>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500 text-center">Tidak bisa scan? Masukkan kode manual:</p>
+                  <div className="flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-xl border border-slate-200">
+                    <code className="text-sm font-black text-slate-800 tracking-widest">{qrData.secretFormatted}</code>
+                    <button
+                      type="button"
+                      onClick={() => navigator.clipboard?.writeText(qrData.secret || '')}
+                      className="text-slate-400 hover:text-sky-600 transition-all"
+                      title="Salin kode"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button type="button" onClick={() => setShowOtpModal(false)} className="flex-1 py-3 px-4 border border-slate-200 hover:bg-slate-50 rounded-xl text-base font-extrabold text-slate-700 transition-all">Batal</button>
+                  <button type="button" onClick={() => { setOtpError(''); setOtpStep(2); }} className="flex-1 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-base font-extrabold transition-all">Lanjut &rarr;</button>
+                </div>
+              </>
+            )}
+
+            {otpStep === 2 && (
+              <>
+                <div className="space-y-2">
+                  <div className="w-12 h-12 bg-sky-50 rounded-2xl flex items-center justify-center border border-sky-100/60 mb-3">
+                    <ShieldCheck className="w-6 h-6 text-sky-600" />
+                  </div>
+                  <h3 className="text-2xl font-black text-slate-900 tracking-tight">Verifikasi Akun Baru</h3>
+                  <p className="text-slate-500 text-sm leading-relaxed">
+                    Masukkan 6-digit kode dari <strong className="text-slate-800">Google Authenticator</strong> untuk mengaktifkan akun Anda.
+                  </p>
+                </div>
+
+                <form onSubmit={handleOtpVerify} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-550 uppercase tracking-wider">Kode OTP 6-Digit</label>
+                    <input
+                      type="text" required maxLength={6} value={otpCode}
+                      onChange={(e) => { setOtpCode(e.target.value); setOtpError(''); }}
+                      placeholder="Contoh: 123456" autoFocus
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-lg font-black tracking-widest text-center focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500"
+                    />
+                  </div>
+                  {otpError && <p className="text-sm font-bold text-rose-600 bg-rose-50 border border-rose-100 p-3.5 rounded-xl">{otpError}</p>}
+                  <div className="bg-sky-50 text-sky-850 p-4 rounded-xl border border-sky-100 text-sm leading-relaxed font-semibold">
+                    Demo prototipe: masukkan kode <strong className="text-sky-950 font-black">123456</strong>
+                  </div>
+                  <div className="flex gap-3">
+                    <button type="button" onClick={() => setOtpStep(1)} className="flex-1 py-3 px-4 border border-slate-200 hover:bg-slate-50 rounded-xl text-base font-extrabold text-slate-700 transition-all">&larr; Kembali</button>
+                    <button type="submit" className="flex-1 py-3 px-4 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-base font-extrabold transition-all">Aktifkan Akun</button>
+                  </div>
+                </form>
+              </>
+            )}
+
+          </div>
+        </div>
+      )}
     </div>
   );
 };

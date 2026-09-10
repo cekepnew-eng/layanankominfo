@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { 
   LayoutDashboard, 
   Users, 
+  User,
   Layers, 
   Briefcase, 
   ShieldCheck, 
@@ -12,11 +13,13 @@ import {
   FileText, 
   LogOut, 
   ChevronDown,
-  Star
+  ChevronRight,
+  Star,
+  Home
 } from 'lucide-react';
 
 export const DashboardLayout = () => {
-  const { user, login, logout } = useAuth();
+  const { user, setUser, login, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [showRoleSelector, setShowRoleSelector] = useState(false);
@@ -30,13 +33,15 @@ export const DashboardLayout = () => {
     { id: 'admin', label: 'Admin (Master Data)' },
     { id: 'helpdesk', label: 'Helpdesk (Validator)' },
     { id: 'pegawai', label: 'Pegawai (Teknisi)' },
-    { id: 'user', label: 'User (OPD / Dinas)' }
+    { id: 'user', label: 'User (OPD / Dinas)' },
+    { id: 'masyarakat', label: 'Masyarakat Umum' }
   ];
 
   const getHistoryLabel = () => {
     if (!user) return 'Daftar Tiket';
     switch (user.role) {
       case 'user':
+      case 'masyarakat':
         return 'Tiket Saya';
       case 'helpdesk':
         return 'Kelola Tiket';
@@ -52,19 +57,20 @@ export const DashboardLayout = () => {
   const getMenuLinks = () => {
     const home = { path: '/dashboard', label: 'Ringkasan', icon: LayoutDashboard };
     const history = { path: '/dashboard/history', label: getHistoryLabel(), icon: FileText };
+    const profile = { path: '/dashboard/profile', label: 'Profil Pengguna', icon: User };
 
     const adminLinks = [
       { path: '/dashboard/admin/users', label: 'Kelola User', icon: Users },
       { path: '/dashboard/admin/services', label: 'Kelola Layanan', icon: Layers },
       { path: '/dashboard/admin/teams', label: 'Kelola Tim Kerja', icon: Briefcase },
-      { path: '/dashboard/admin/ratings', label: 'Kelola Ulasan & Rating', icon: Star }
+      { path: '/dashboard/admin/ratings', label: 'Kelola Ulasan & Rating', icon: Star, disabled: true }
     ];
 
     const userLinks = [
       { path: '/dashboard/user/create-ticket', label: 'Ajukan Layanan', icon: PlusCircle }
     ];
 
-    if (!user) return [home, history];
+    if (!user) return [home, history, profile];
 
     switch (user.role) {
       case 'admin':
@@ -74,16 +80,18 @@ export const DashboardLayout = () => {
           adminLinks[1],
           adminLinks[2],
           history,
-          adminLinks[3]
+          adminLinks[3],
+          profile
         ];
       case 'helpdesk':
-        return [home, history];
+        return [home, userLinks[0], history, profile];
       case 'pegawai':
-        return [home, history];
+        return [home, history, profile];
       case 'user':
-        return [home, ...userLinks, history];
+      case 'masyarakat':
+        return [home, ...userLinks, history, profile];
       default:
-        return [home, history];
+        return [home, history, profile];
     }
   };
 
@@ -101,11 +109,47 @@ export const DashboardLayout = () => {
       ratings: 'Kelola Ulasan & Rating',
       tasks: 'Tugas Pengerjaan',
       'create-ticket': 'Ajukan Layanan',
+      profile: 'Profil Pengguna',
       history: getHistoryLabel()
     };
 
     return mapping[pageName] || pageName;
   };
+
+  const getProfileRoleLabel = () => {
+    if (!user) return '';
+    if (user.role === 'user') return 'OPD';
+    if (user.role === 'masyarakat') return 'Masyarakat';
+    if (user.role === 'admin') return 'Admin';
+    if (user.role === 'helpdesk') return 'Helpdesk';
+    if (user.role === 'pegawai') return 'Pegawai';
+    return user.role;
+  };
+
+  const getProfileDeptLabel = () => {
+    if (!user) return '';
+    if (user.role === 'masyarakat') return 'Masyarakat Umum';
+    return user.department || '';
+  };
+
+  const getProfileRoleBadgeClass = () => {
+    if (!user) return 'bg-slate-100 text-slate-700 border-slate-200';
+    switch (user.role) {
+      case 'admin':
+        return 'bg-rose-50 text-rose-700 border-rose-200';
+      case 'helpdesk':
+        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      case 'pegawai':
+        return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+      case 'masyarakat':
+        return 'bg-slate-100 text-slate-700 border-slate-200';
+      case 'user':
+      default:
+        return 'bg-sky-50 text-sky-700 border-sky-200';
+    }
+  };
+
+  const profileSubtitle = user ? `${getProfileRoleLabel()} • ${getProfileDeptLabel()}` : '';
 
   return (
     <div className="h-screen w-screen bg-slate-50 flex font-sans overflow-hidden">
@@ -118,10 +162,60 @@ export const DashboardLayout = () => {
           </div>
         </div>
 
-        <nav className="flex-1 px-4 py-6 space-y-1.5">
+        {user && user.roles && user.roles.length > 1 && (
+          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50">
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Ganti Dasbor</label>
+            <select
+              value={user.role}
+              onChange={(e) => {
+                const selectedRole = e.target.value;
+                setUser({ ...user, role: selectedRole });
+                navigate('/dashboard');
+              }}
+              className="w-full px-2.5 py-1.5 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+            >
+              {user.roles.map((r) => {
+                const labels = {
+                  admin: 'Dasbor Admin',
+                  helpdesk: 'Dasbor Helpdesk',
+                  pegawai: 'Dasbor Pegawai',
+                  user: 'Dasbor OPD',
+                  masyarakat: 'Dasbor Warga'
+                };
+                return <option key={r} value={r}>{labels[r] || r}</option>;
+              })}
+            </select>
+          </div>
+        )}
+
+        <nav className="flex-1 overflow-y-auto px-4 py-6 space-y-1.5">
+          <Link
+            to="/"
+            className="flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-all text-slate-550 hover:bg-slate-50 hover:text-slate-800 mb-3 border border-slate-200/60 bg-slate-50/40"
+          >
+            <Home className="w-5 h-5 text-slate-400" />
+            <span>Portal Layanan</span>
+          </Link>
           {menuLinks.map((link) => {
             const Icon = link.icon;
             const isActive = location.pathname === link.path;
+            if (link.disabled) {
+              return (
+                <div
+                  key={link.label}
+                  className="flex items-center justify-between px-4 py-3 rounded-xl text-sm font-semibold text-slate-400 bg-slate-50/70 border border-slate-200/60 opacity-60 cursor-not-allowed select-none"
+                  title="Fitur ulasan dinonaktifkan sementara"
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon className="w-5 h-5 text-slate-300" />
+                    <span className="line-through">{link.label}</span>
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 bg-slate-200 text-slate-500 rounded">
+                    Off
+                  </span>
+                </div>
+              );
+            }
             return (
               <Link
                 key={link.path}
@@ -153,7 +247,7 @@ export const DashboardLayout = () => {
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         <header className="h-20 shrink-0 bg-white border-b border-slate-200 flex items-center justify-between px-8 shadow-sm">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400 font-bold uppercase tracking-widest">Portal</span>
+            <Link to="/" className="text-xs text-slate-400 font-bold uppercase tracking-widest hover:text-sky-600 transition-colors">Portal</Link>
             <span className="text-slate-300 text-base">/</span>
             <span className="text-sm font-bold text-slate-850">{getBreadcrumb()}</span>
           </div>
@@ -188,17 +282,29 @@ export const DashboardLayout = () => {
               )}
             </div>
 
-            <div className="flex items-center gap-3 border-l border-slate-200 pl-4">
-              <div className="w-10 h-10 rounded-xl bg-sky-50 border border-sky-100 flex items-center justify-center text-sky-600 font-bold text-sm uppercase">
-                {user ? user.role.slice(0, 2) : 'Us'}
+            <Link 
+              to="/dashboard/profile"
+              className="flex items-center gap-3 bg-slate-50 hover:bg-sky-50/80 border border-slate-200 hover:border-sky-300 px-3.5 py-2 rounded-2xl transition-all shadow-xs hover:shadow-sm cursor-pointer group shrink-0"
+              title="Lihat & Kelola Profil Pengguna"
+            >
+              <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 group-hover:border-sky-300 flex items-center justify-center text-sky-600 shadow-2xs shrink-0 group-hover:scale-105 transition-all">
+                <User className="w-5 h-5 text-sky-600" />
               </div>
-              <div className="text-left hidden md:block">
-                <p className="text-sm font-bold text-slate-800 leading-none">{user ? user.name : 'Unknown'}</p>
-                <p className="text-xs text-slate-400 mt-1.5 uppercase font-semibold tracking-wider">
-                  {user ? `${user.role} • ${user.department.slice(0, 15)}...` : ''}
+              <div className="text-left hidden sm:block max-w-[160px] lg:max-w-[200px]">
+                <p className="text-sm font-black text-slate-800 leading-tight truncate group-hover:text-sky-700 transition-colors" title={user ? user.name : 'Unknown'}>
+                  {user ? user.name : 'Unknown'}
                 </p>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border leading-none shrink-0 ${getProfileRoleBadgeClass()}`}>
+                    {getProfileRoleLabel()}
+                  </span>
+                  <span className="text-[11px] font-semibold text-slate-400 truncate" title={getProfileDeptLabel()}>
+                    {getProfileDeptLabel()}
+                  </span>
+                </div>
               </div>
-            </div>
+              <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-sky-600 group-hover:translate-x-0.5 transition-all shrink-0 hidden md:block" />
+            </Link>
           </div>
         </header>
 

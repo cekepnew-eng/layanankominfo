@@ -12,24 +12,12 @@ import {
   Activity
 } from 'lucide-react';
 
-const getUserTeam = (u) => {
-  if (!u || !u.department) return '';
-  const dept = u.department;
-  if (dept.includes('Aplikasi')) return 'Tim Aplikasi & Sistem Informasi';
-  if (dept.includes('Jaringan') || dept.includes('Infrastruktur')) return 'Tim Infrastruktur & Jaringan TIK';
-  if (dept.includes('Sandi') || dept.includes('Keamanan')) return 'Tim Pengamanan Informasi & Sandi';
-  if (dept.includes('SPBE') || dept.includes('Tata Kelola')) return 'Tim Tata Kelola SPBE';
-  if (dept.includes('Satu Data') || dept.includes('Statistik')) return 'Tim Satu Data & Statistik';
-  if (dept.includes('Humas') || dept.includes('IKP')) return 'Tim Hubungan Masyarakat & IKP';
-  if (dept.includes('LPSE')) return 'Tim Layanan Pengadaan Secara Elektronik (LPSE)';
-  if (dept.includes('Support') || dept.includes('Helpdesk')) return 'Tim Support & Helpdesk Utama';
-  return '';
-};
+
 
 const getTicketTeam = (t) => {
   if (t.team) return t.team;
   const svc = t.service;
-  if (svc === 'Pengembangan & Pengelolaan Aplikasi' || svc === 'Rekomendasi & Evaluasi Aplikasi' || svc === 'Uji Kesesuaian Sistem (UKS)') {
+  if (svc === 'Pengembangan & Pengelolaan Aplikasi' || svc === 'Rekomendasi & Evaluasi Aplikasi' || svc === 'Uji Kesesuaian Sistem (UKS)' || svc === 'Pengelolaan Aplikasi Informatika') {
     return 'Tim Aplikasi & Sistem Informasi';
   }
   if (svc === 'Jaringan Intra Pemerintah' || svc === 'Server Perangkat Daerah' || svc === 'Infrastruktur TIK' || svc === 'Wifi Publik' || svc === 'Domain & Subdomain Pemerintah Daerah') {
@@ -59,6 +47,16 @@ const getTicketTeam = (t) => {
 export const Overview = () => {
   const { user, ratings: globalRatings, tickets, teams, users } = useAuth();
 
+  const getUserTeams = (u) => {
+    if (!u) return [];
+    return (teams || []).filter(t => (t.members && t.members.includes(u.name)) || t.leader === u.name);
+  };
+
+  const getUserTeam = (u) => {
+    const myTeams = getUserTeams(u);
+    return myTeams.length > 0 ? myTeams[0].name : '';
+  };
+
   const completedOrWaiting = tickets ? tickets.filter(t => t.status === 'Selesai' || t.status === 'Menunggu Konfirmasi User') : [];
   const completedTickets = tickets ? tickets.filter(t => t.status === 'Selesai') : [];
   const onSlaTickets = completedOrWaiting.filter(t => t.id !== 'REQ-2026-0117');
@@ -80,7 +78,7 @@ export const Overview = () => {
   ];
 
   const categoryCounts = categoriesList.map(cat => {
-    const count = completedTickets.filter(t => cat.services.includes(t.service)).length;
+    const count = completedTickets.filter(t => t.service === cat.name || cat.services.includes(t.service)).length;
     return { name: cat.name, count };
   }).sort((a, b) => b.count - a.count);
 
@@ -99,7 +97,7 @@ export const Overview = () => {
   const renderAdminDashboard = () => (
     <div className="space-y-8 text-left">
       <div className="space-y-1.5">
-        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Dashboard Administrator</h2>
+        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Dasbor Administrator</h2>
         <p className="text-slate-505 text-base leading-relaxed">Kelola data master, konfigurasi layanan SPBE, dan hak akses pengguna sistem.</p>
       </div>
 
@@ -191,7 +189,7 @@ export const Overview = () => {
   const renderHelpdeskDashboard = () => (
     <div className="space-y-8 text-left">
       <div className="space-y-1.5">
-        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Dashboard Helpdesk Hub</h2>
+        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Dasbor Helpdesk Hub</h2>
         <p className="text-slate-500 text-base leading-relaxed">Pantau permohonan masuk, verifikasi syarat berkas, dan delegasikan pengerjaan ke tim.</p>
       </div>
 
@@ -277,20 +275,79 @@ export const Overview = () => {
   );
 
   const renderPegawaiDashboard = () => {
-    const userTeam = getUserTeam(user);
-    const pegawaiTickets = (tickets || []).filter(t => getTicketTeam(t) === userTeam);
+    const myTeams = getUserTeams(user);
+    const myTeamNames = myTeams.map(t => t.name);
+    const pegawaiTickets = (tickets || []).filter(t => myTeamNames.includes(t.team || getTicketTeam(t)));
     const activeTasks = pegawaiTickets.filter(t => t.status === 'Diproses');
     const priorityTask = activeTasks.length > 0 
       ? [...activeTasks].sort((a, b) => (a.remainingDays !== undefined ? a.remainingDays : 99) - (b.remainingDays !== undefined ? b.remainingDays : 99))[0]
       : null;
 
+    const subtitleText = myTeams.length > 1
+      ? `Kelola tiket tugas pengerjaan yang ditugaskan kepada ${myTeams.length} Tim Kerja Anda (${myTeams.map(t => t.name).join(', ')}), perbarui progres, dan laporkan BAST.`
+      : myTeams.length === 1
+        ? `Kelola tiket tugas pengerjaan yang ditugaskan kepada ${myTeams[0].name}, perbarui progres, dan laporkan BAST.`
+        : 'Kelola tiket tugas pengerjaan teknis, perbarui progres, dan laporkan BAST.';
+
     return (
       <div className="space-y-8 text-left">
         <div className="space-y-1.5">
-          <h2 className="text-3xl font-black text-slate-900 tracking-tight">Dashboard Tim Kerja Teknis</h2>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tight">Dasbor Tim Kerja Teknis</h2>
           <p className="text-slate-500 text-base leading-relaxed font-semibold">
-            Kelola tiket tugas pengerjaan yang ditugaskan kepada {userTeam}, perbarui progres, dan laporkan BAST.
+            {subtitleText}
           </p>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-7 space-y-5">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center shrink-0 shadow-2xs">
+                <Briefcase className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
+                  Penugasan Tim Kerja Pelaksana
+                </h3>
+                <p className="text-sm text-slate-500 font-medium mt-0.5">
+                  {myTeams.length > 0 
+                    ? `Anda terdaftar aktif pada ${myTeams.length} tim kerja teknis di bawah Diskominfo Kota Bogor.`
+                    : 'Anda belum terdaftar pada tim kerja pelaksana mana pun.'}
+                </p>
+              </div>
+            </div>
+            <span className="px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-black uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200">
+              {myTeams.length} Tim Kerja Aktif
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
+            {myTeams.map((t) => {
+              const teamActiveTasks = tickets.filter(tk => (tk.team || getTicketTeam(tk)) === t.name && tk.status === 'Diproses').length;
+              return (
+                <div 
+                  key={t.id} 
+                  className="p-5 rounded-2xl bg-slate-50/80 border border-slate-200/90 space-y-3 hover:border-indigo-300 hover:bg-indigo-50/20 transition-all flex flex-col justify-between shadow-2xs"
+                >
+                  <div className="space-y-1.5">
+                    <h4 className="text-base font-black text-slate-900 leading-snug tracking-tight">
+                      {t.name}
+                    </h4>
+                    {t.services && t.services.length > 0 && (
+                      <p className="text-xs sm:text-sm text-slate-500 font-medium leading-relaxed">
+                        Layanan: {t.services.join(', ')}
+                      </p>
+                    )}
+                  </div>
+                  <div className="pt-3 border-t border-slate-200/70 flex items-center justify-between text-xs sm:text-sm font-semibold">
+                    <span className="text-slate-500">{t.members ? t.members.length : 1} Personel</span>
+                    <span className="text-indigo-600 font-extrabold bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100">
+                      {teamActiveTasks} Tugas Aktif
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
@@ -344,11 +401,8 @@ export const Overview = () => {
                       Diajukan oleh: {priorityTask.opd} | Penanggung Jawab: {priorityTask.team || userTeam}
                     </p>
                   </div>
-                  <div className="flex items-center gap-4 self-stretch md:self-auto">
-                    <div className="flex-1 md:w-32 bg-slate-200 h-2.5 rounded-full overflow-hidden">
-                      <div className="bg-amber-500 h-full" style={{ width: `${priorityTask.progress || 0}%` }}></div>
-                    </div>
-                    <span className="text-base font-bold text-slate-700">{priorityTask.progress || 0}% Progres</span>
+                  <div className="flex items-center gap-2 self-stretch md:self-auto">
+                    <span className="inline-block px-2.5 py-1 rounded bg-amber-100 text-amber-800 text-xs font-bold uppercase tracking-wider">Sedang Diproses</span>
                   </div>
                 </div>
               ) : (
@@ -363,27 +417,19 @@ export const Overview = () => {
     );
   };
 
-  const userTickets = (tickets || []).filter(t => t.opd.includes('Dinas Kesehatan'));
+  const userTickets = (tickets || []).filter(t => t.opd === user?.department);
   const userTotalCount = userTickets.length;
-  const userInProgressCount = userTickets.filter(t => t.status === 'Diproses' || t.status === 'Verifikasi' || t.status === 'Menunggu Validasi').length;
-  const userConfirmCount = userTickets.filter(t => t.status === 'Menunggu Konfirmasi User').length;
-  const userFinishedCount = userTickets.filter(t => t.status === 'Selesai').length;
+  const userInProgressCount = userTickets.filter(t => t.status === 'Diproses' || t.status === 'Verifikasi' || t.status === 'Pending').length;
+  const userConfirmCount = userTickets.filter(t => t.status === 'Selesai' && !t.rating).length;
+  const userFinishedCount = userTickets.filter(t => t.status === 'Selesai' && t.rating).length;
 
-  const userConfirmTicket = userTickets.find(t => t.status === 'Menunggu Konfirmasi User') || {
-    title: 'Pemasangan Jaringan Wifi Ruang Rapat A',
-    desc: 'Pemasangan wifi ruang rapat utama Gedung Dinas Kesehatan Kota Bogor.'
-  };
-
-  const userInProgressTicket = userTickets.find(t => t.status === 'Diproses' && t.progress === 60) || {
-    title: 'Permohonan Hosting Server & Database',
-    progress: 60,
-    desc: 'Permohonan alokasi Virtual Machine dan pembagian alokasi kapasitas RAM/CPU untuk server cadangan.'
-  };
+  const userConfirmTicket = userTickets.find(t => t.status === 'Selesai' && !t.rating);
+  const userInProgressTicket = userTickets.find(t => t.status === 'Diproses' || t.status === 'Verifikasi' || t.status === 'Pending');
 
   const renderUserDashboard = () => (
-    <div className="space-y-8 text-left">
+    <div className="space-y-8 text-left animate-in fade-in duration-200">
       <div className="space-y-1.5">
-        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Dashboard Layanan OPD</h2>
+        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Dasbor Layanan {user?.role === 'masyarakat' ? 'Masyarakat' : 'OPD'}</h2>
         <p className="text-slate-505 text-base leading-relaxed">Ajukan permohonan fasilitas TIK, integrasi SPBE, data sektoral, serta pantau pengerjaan secara berkala.</p>
       </div>
 
@@ -413,7 +459,7 @@ export const Overview = () => {
             <AlertCircle className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Butuh Konfirmasi</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Belum Dinilai / SKM</p>
             <p className="text-xl font-black text-slate-800 mt-0.5">{userConfirmCount} Tiket</p>
           </div>
         </div>
@@ -431,23 +477,43 @@ export const Overview = () => {
         <div className="md:col-span-12 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
           <h3 className="font-extrabold text-base text-slate-800 uppercase tracking-wider">Pelacakan Tiket Terakhir</h3>
           <div className="space-y-6 text-left">
-            <div className="flex items-start gap-4 hover:bg-slate-50/50 p-2.5 rounded-xl transition-all">
-              <div className="w-3.5 h-3.5 rounded-full bg-indigo-500 mt-1.5 border-2 border-white ring-2 ring-indigo-100 animate-pulse"></div>
-              <div className="space-y-1">
-                <p className="text-sm font-bold text-indigo-600 uppercase tracking-wider">Butuh Konfirmasi Penyelesaian</p>
-                <h4 className="font-bold text-slate-850 text-base">{userConfirmTicket.title}</h4>
-                <p className="text-base text-slate-500 leading-relaxed">Status: Selesai dikerjakan oleh Tim Jaringan | Berita Acara (BAST) terunggah. Silakan klik tiket di menu navigasi untuk menyetujui & menilai layanan.</p>
-              </div>
-            </div>
-            
-            <div className="flex items-start gap-4 hover:bg-slate-50/50 p-2.5 rounded-xl transition-all">
-              <div className="w-3.5 h-3.5 rounded-full bg-sky-500 mt-1.5 border-2 border-white ring-2 ring-sky-100"></div>
-              <div className="space-y-1">
-                <p className="text-sm font-bold text-sky-600 uppercase tracking-wider">Dalam Pengerjaan ({userInProgressTicket.progress}%)</p>
-                <h4 className="font-bold text-slate-850 text-base">{userInProgressTicket.title}</h4>
-                <p className="text-base text-slate-500 leading-relaxed">Status: Konfigurasi Virtual Machine dan pembagian alokasi kapasitas RAM/CPU | Target SLA: 2 hari kerja.</p>
-              </div>
-            </div>
+            {!userConfirmTicket && !userInProgressTicket ? (
+              <p className="text-slate-400 font-semibold text-sm">Tidak ada tiket pengajuan aktif saat ini.</p>
+            ) : (
+              <>
+                {userConfirmTicket && (
+                  <div className="flex items-start gap-4 hover:bg-slate-50/50 p-2.5 rounded-xl transition-all">
+                    <div className="w-3.5 h-3.5 rounded-full bg-indigo-500 mt-1.5 border-2 border-white ring-2 ring-indigo-100 animate-pulse"></div>
+                    <div className="space-y-1">
+                      <p className="text-sm font-bold text-indigo-600 uppercase tracking-wider">Butuh Evaluasi SKM & Rating</p>
+                      <h4 className="font-bold text-slate-850 text-base">{userConfirmTicket.title}</h4>
+                      <p className="text-base text-slate-500 leading-relaxed">
+                        Status: Pekerjaan telah selesai dikerjakan | BAST terunggah. Silakan klik menu "Tiket Saya" untuk mengisi kuesioner SKM dan memberikan ulasan bintang.
+                      </p>
+                    </div>
+                  </div>
+                )}
+                
+                {userInProgressTicket && (
+                  <div className="flex items-start gap-4 hover:bg-slate-50/50 p-2.5 rounded-xl transition-all">
+                    <div className={`w-3.5 h-3.5 rounded-full mt-1.5 border-2 border-white ring-2 ${
+                      userInProgressTicket.status === 'Pending' ? 'bg-amber-500 ring-amber-100' : 'bg-sky-500 ring-sky-100'
+                    }`}></div>
+                    <div className="space-y-1">
+                      <p className={`text-sm font-bold uppercase tracking-wider ${
+                        userInProgressTicket.status === 'Pending' ? 'text-amber-600' : 'text-sky-600'
+                      }`}>
+                        {userInProgressTicket.status === 'Pending' ? 'Ditangguhkan (Pending)' : 'Sedang Diproses'}
+                      </p>
+                      <h4 className="font-bold text-slate-850 text-base">{userInProgressTicket.title}</h4>
+                      <p className="text-base text-slate-500 leading-relaxed">
+                        Status: {userInProgressTicket.status === 'Pending' ? 'Berkas permohonan kurang lengkap / ditangguhkan.' : `Pekerjaan teknis sedang berjalan | SLA: ${userInProgressTicket.slaDuration} Hari (Sisa ${userInProgressTicket.slaRemainingDays} Hari)`}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -464,6 +530,7 @@ export const Overview = () => {
     case 'pegawai':
       return renderPegawaiDashboard();
     case 'user':
+    case 'masyarakat':
       return renderUserDashboard();
     default:
       return <p className="text-center py-12 text-rose-500 font-bold text-base">Role tidak dikenal...</p>;

@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { getCurrentLogTimeFormatted, formatLogDateDisplay } from '../../utils/dateUtils';
+import { TicketDetailModal } from '../../components/TicketDetailModal';
 import { 
   FileText, 
   Search, 
@@ -9,7 +11,10 @@ import {
   Clock, 
   CheckCircle2, 
   XCircle, 
-  Eye 
+  Eye,
+  Upload,
+  Check,
+  AlertTriangle
 } from 'lucide-react';
 
 const getServiceSlaDays = (serviceName) => {
@@ -81,12 +86,30 @@ export const TicketHistory = () => {
   const [tempProgress, setTempProgress] = useState(0);
   const [progressNote, setProgressNote] = useState('');
   const [tempRemainingDays, setTempRemainingDays] = useState(3);
+  const [isFinished, setIsFinished] = useState(false);
+  const [fileName, setFileName] = useState('');
+  const [bastFileSize, setBastFileSize] = useState('');
+  const [bastFileUrl, setBastFileUrl] = useState('/bast_selesai.pdf');
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const bastInputRef = useRef(null);
+
+  const handleBastFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setFileName(file.name);
+      setBastFileSize((file.size / 1024).toFixed(1) + ' KB');
+      const url = URL.createObjectURL(file);
+      setBastFileUrl(url);
+    }
+  };
 
   useEffect(() => {
     if (selectedTicket) {
       setTempProgress(selectedTicket.progress || 0);
       setProgressNote('');
       setTempRemainingDays(selectedTicket.remainingDays !== undefined ? selectedTicket.remainingDays : 3);
+      setIsFinished(selectedTicket.status === 'Selesai');
+      setFileName('');
     }
   }, [selectedTicket?.id]);
 
@@ -96,25 +119,31 @@ export const TicketHistory = () => {
   };
 
   const handleUpdateProgress = (ticketId) => {
-    if (!progressNote.trim()) {
-      alert('Silakan tulis catatan laporan pekerjaan terlebih dahulu.');
-      return;
-    }
+    const autoLogText = isFinished
+      ? (progressNote.trim() || (fileName ? 'Pekerjaan teknis selesai dikerjakan 100% oleh Pegawai dan berkas BAST telah diunggah.' : 'Pekerjaan teknis selesai dikerjakan 100% oleh Pegawai.'))
+      : (progressNote.trim() || 'Pekerjaan teknis sedang diproses dan dikerjakan oleh Pegawai Tim Pelaksana.');
+
     setTickets(prev => prev.map(t => {
       if (t.id === ticketId) {
-        const isFinished = tempProgress === 100;
+        const waitingLog = {
+          date: getCurrentLogTimeFormatted(1),
+          text: 'Menunggu konfirmasi penyelesaian dan pengisian Survei SKM oleh Pemohon.'
+        };
+        const stage4Log = {
+          date: getCurrentLogTimeFormatted(0),
+          text: autoLogText
+        };
+        const updatedLogs = isFinished
+          ? [waitingLog, stage4Log, ...(t.logs || [])]
+          : [{ date: getCurrentLogTimeFormatted(0), text: autoLogText }, ...(t.logs || [])];
+
         const updated = {
           ...t,
-          progress: tempProgress,
-          remainingDays: isFinished ? 0 : tempRemainingDays,
-          status: isFinished ? 'Menunggu Konfirmasi User' : 'Diproses',
-          logs: [
-            { 
-              date: '18 Agt 09:30', 
-              text: progressNote.trim()
-            },
-            ...t.logs
-          ]
+          progress: isFinished ? 100 : t.progress,
+          status: isFinished ? 'Selesai' : 'Diproses',
+          bastFile: isFinished ? (fileName || null) : t.bastFile,
+          bastFileUrl: isFinished ? (fileName ? bastFileUrl : null) : t.bastFileUrl,
+          logs: updatedLogs
         };
         if (isFinished) {
           setSelectedTicket(null);
@@ -126,12 +155,17 @@ export const TicketHistory = () => {
       return t;
     }));
     setProgressNote('');
-    alert('Progres pekerjaan dan laporan berhasil diperbarui!');
+    alert(isFinished ? (fileName ? 'Tugas berhasil diselesaikan 100% dan berkas BAST diunggah! Pemohon dapat mengisi survei SKM & rating.' : 'Tugas berhasil diselesaikan 100%! Pemohon dapat mengisi survei SKM & rating.') : 'Progres pekerjaan berhasil diperbarui!');
   };
 
   const handleConfirmAndRate = (ticketId) => {
     setTickets(prev => prev.map(t => {
       if (t.id === ticketId) {
+        const stage5Log = {
+          date: getCurrentLogTimeFormatted(0),
+          text: 'Pemohon telah mengonfirmasi penyelesaian, mengisi Survei SKM, dan memberikan ulasan bintang.'
+        };
+        const cleanedLogs = (t.logs || []).filter(l => !l.text.includes('Menunggu konfirmasi'));
         const updated = {
           ...t,
           status: 'Selesai',
@@ -144,9 +178,10 @@ export const TicketHistory = () => {
             quality: rateQuality,
             comment: rateComment
           },
+          selectedForLanding: false,
           logs: [
-            { date: '18 Agt 08:30', text: `User mengonfirmasi selesai & mengisi survei rating ${rateOverall} bintang` },
-            ...t.logs
+            stage5Log,
+            ...cleanedLogs
           ]
         };
         setSelectedTicket(updated);
@@ -186,14 +221,24 @@ export const TicketHistory = () => {
   const handleApprove = (ticketId) => {
     setTickets(prev => prev.map(t => {
       if (t.id === ticketId) {
+        const stage2Log = {
+          date: getCurrentLogTimeFormatted(0),
+          text: `Tiket permohonan telah diverifikasi oleh Helpdesk dan diteruskan ke ${selectedTeam || 'Tim Teknis'}.`
+        };
+        const stage3Log = {
+          date: getCurrentLogTimeFormatted(1),
+          text: 'Pekerjaan teknis mulai diproses dan dikerjakan oleh Pegawai Tim Pelaksana.'
+        };
         return {
           ...t,
           status: 'Diproses',
-          progress: 20,
+          progress: 25,
           team: selectedTeam,
+          slaRemainingDays: t.slaDuration || 7,
           logs: [
-            { date: '17 Agt 22:52', text: `Permohonan disetujui & dialihkan ke ${selectedTeam} oleh Helpdesk` },
-            ...t.logs
+            stage3Log,
+            stage2Log,
+            ...(t.logs || [])
           ]
         };
       }
@@ -205,17 +250,21 @@ export const TicketHistory = () => {
 
   const handleReject = (ticketId) => {
     if (!rejectReason.trim()) {
-      alert('Silakan isi alasan penolakan terlebih dahulu.');
+      alert('Silakan isi alasan penangguhan terlebih dahulu.');
       return;
     }
     setTickets(prev => prev.map(t => {
       if (t.id === ticketId) {
+        const stage2RejectLog = {
+          date: getCurrentLogTimeFormatted(0),
+          text: `Permohonan diverifikasi & ditangguhkan oleh Helpdesk. Alasan: ${rejectReason.trim()}`
+        };
         return {
           ...t,
-          status: 'Ditolak',
+          status: 'Pending',
           logs: [
-            { date: '17 Agt 22:52', text: `Permohonan ditolak oleh Helpdesk. Alasan: ${rejectReason}` },
-            ...t.logs
+            stage2RejectLog,
+            ...(t.logs || [])
           ]
         };
       }
@@ -224,38 +273,42 @@ export const TicketHistory = () => {
     setSelectedTicket(null);
     setRejectReason('');
     setShowRejectForm(false);
-    alert('Tiket berhasil ditolak.');
+    alert('Tiket berhasil dipending.');
   };
 
   const getRoleTabs = () => {
     if (!user) return [];
     switch (user.role) {
       case 'user':
+      case 'masyarakat':
         return [
+          { id: 'semua', label: 'Semua Tiket' },
           { id: 'proses', label: 'Proses Pengerjaan' },
-          { id: 'selesai', label: 'Selesai (Menunggu Rating)' },
+          { id: 'selesai', label: 'Selesai (Menunggu SKM)' },
           { id: 'dirating', label: 'Sudah Dirating' },
-          { id: 'ditolak', label: 'Ditolak' }
+          { id: 'pending', label: 'Pending' }
         ];
       case 'helpdesk':
         return [
+          { id: 'semua', label: 'Semua Tiket' },
           { id: 'antrean', label: 'Antrean Validasi' },
           { id: 'proses', label: 'Dalam Pengerjaan' },
-          { id: 'konfirmasi', label: 'Menunggu Konfirmasi User' },
           { id: 'dinilai', label: 'Selesai & Dinilai' },
-          { id: 'ditolak', label: 'Ditolak' }
+          { id: 'pending', label: 'Pending' }
         ];
       case 'pegawai':
         return [
+          { id: 'semua', label: 'Semua Tugas' },
           { id: 'aktif', label: 'Tugas Aktif' },
-          { id: 'selesai', label: 'Selesai Pengerjaan' },
-          { id: 'dinilai', label: 'Selesai & Dinilai' }
+          { id: 'pending', label: 'Tertunda / Sanggahan' },
+          { id: 'selesai', label: 'Selesai' }
         ];
       case 'admin':
         return [
+          { id: 'semua', label: 'Semua Tiket' },
           { id: 'proses', label: 'Tiket Proses' },
           { id: 'selesai', label: 'Tiket Selesai' },
-          { id: 'ditolak', label: 'Tiket Ditolak' }
+          { id: 'pending', label: 'Tiket Pending' }
         ];
       default:
         return [];
@@ -272,27 +325,23 @@ export const TicketHistory = () => {
     }
   }, [user?.role]);
 
+  const getUserTeams = (u) => {
+    if (!u) return [];
+    return (teams || []).filter(t => (t.members && t.members.includes(u.name)) || t.leader === u.name);
+  };
+
   const getUserTeam = (u) => {
-    if (!u || !u.department) return '';
-    const dept = u.department;
-    if (dept.includes('Aplikasi')) return 'Tim Aplikasi & Sistem Informasi';
-    if (dept.includes('Jaringan') || dept.includes('Infrastruktur')) return 'Tim Infrastruktur & Jaringan TIK';
-    if (dept.includes('Sandi') || dept.includes('Keamanan')) return 'Tim Pengamanan Informasi & Sandi';
-    if (dept.includes('SPBE') || dept.includes('Tata Kelola')) return 'Tim Tata Kelola SPBE';
-    if (dept.includes('Satu Data') || dept.includes('Statistik')) return 'Tim Satu Data & Statistik';
-    if (dept.includes('Humas') || dept.includes('IKP')) return 'Tim Hubungan Masyarakat & IKP';
-    if (dept.includes('LPSE')) return 'Tim Layanan Pengadaan Secara Elektronik (LPSE)';
-    if (dept.includes('Support') || dept.includes('Helpdesk')) return 'Tim Support & Helpdesk Utama';
-    return '';
+    const myTeams = getUserTeams(u);
+    return myTeams.length > 0 ? myTeams[0].name : '';
   };
 
   const getTicketTeam = (t) => {
     if (t.team) return t.team;
     const svc = t.service;
-    if (svc === 'Pengembangan & Pengelolaan Aplikasi' || svc === 'Rekomendasi & Evaluasi Aplikasi' || svc === 'Uji Kesesuaian Sistem (UKS)') {
+    if (svc === 'Pengembangan & Pengelolaan Aplikasi' || svc === 'Rekomendasi & Evaluasi Aplikasi' || svc === 'Uji Kesesuaian Sistem (UKS)' || svc === 'Pengelolaan Aplikasi Informatika') {
       return 'Tim Aplikasi & Sistem Informasi';
     }
-    if (svc === 'Jaringan Intra Pemerintah' || svc === 'Server Perangkat Daerah' || svc === 'Infrastruktur TIK' || svc === 'Wifi Publik' || svc === 'Domain & Subdomain Pemerintah Daerah') {
+    if (svc === 'Jaringan Intra Pemerintah' || svc === 'Server Perangkat Daerah' || svc === 'Infrastruktur TIK' || svc === 'Wifi Publik' || svc === 'Domain & Subdomain Pemerintah Daerah' || svc === 'Pengelolaan Sumber Daya & Perangkat Informatika') {
       return 'Tim Infrastruktur & Jaringan TIK';
     }
     if (svc === 'Keamanan Informasi & Persandian' || svc === 'Keamanan Aplikasi / VAPT' || svc === 'CSIRT / Respons Insiden') {
@@ -319,36 +368,36 @@ export const TicketHistory = () => {
   const getTabCount = (tabId) => {
     if (!user) return 0;
     let base = tickets || [];
-    if (user.role === 'user') {
-      base = (tickets || []).filter(t => t.opd.includes('Dinas Kesehatan') || t.id === 'REQ-2026-0120');
+    if (user.role === 'user' || user.role === 'masyarakat') {
+      base = (tickets || []).filter(t => t.opd === user.department);
     } else if (user.role === 'pegawai') {
-      const userTeam = getUserTeam(user);
-      base = (tickets || []).filter(t => getTicketTeam(t) === userTeam);
+      const myTeamNames = getUserTeams(user).map(t => t.name);
+      base = (tickets || []).filter(t => myTeamNames.includes(t.team || getTicketTeam(t)));
     }
     
     switch (user.role) {
       case 'user':
+      case 'masyarakat':
         if (tabId === 'proses') return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status === 'Diproses').length;
-        if (tabId === 'selesai') return base.filter(t => t.status === 'Menunggu Konfirmasi User').length;
-        if (tabId === 'dirating') return base.filter(t => t.status === 'Selesai').length;
-        if (tabId === 'ditolak') return base.filter(t => t.status === 'Ditolak').length;
+        if (tabId === 'selesai') return base.filter(t => t.status === 'Selesai' && !t.rating).length;
+        if (tabId === 'dirating') return base.filter(t => t.status === 'Selesai' && t.rating).length;
+        if (tabId === 'pending') return base.filter(t => t.status === 'Pending').length;
         return base.length;
       case 'helpdesk':
         if (tabId === 'antrean') return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi').length;
         if (tabId === 'proses') return base.filter(t => t.status === 'Diproses').length;
-        if (tabId === 'konfirmasi') return base.filter(t => t.status === 'Menunggu Konfirmasi User').length;
         if (tabId === 'dinilai') return base.filter(t => t.status === 'Selesai').length;
-        if (tabId === 'ditolak') return base.filter(t => t.status === 'Ditolak').length;
+        if (tabId === 'pending') return base.filter(t => t.status === 'Pending').length;
         return base.length;
       case 'pegawai':
         if (tabId === 'aktif') return base.filter(t => t.status === 'Diproses').length;
-        if (tabId === 'selesai') return base.filter(t => t.status === 'Menunggu Konfirmasi User').length;
-        if (tabId === 'dinilai') return base.filter(t => t.status === 'Selesai').length;
+        if (tabId === 'pending') return base.filter(t => t.status === 'Pending').length;
+        if (tabId === 'selesai') return base.filter(t => t.status === 'Selesai').length;
         return base.length;
       case 'admin':
-        if (tabId === 'proses') return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status === 'Diproses' || t.status === 'Menunggu Konfirmasi User').length;
+        if (tabId === 'proses') return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status === 'Diproses').length;
         if (tabId === 'selesai') return base.filter(t => t.status === 'Selesai').length;
-        if (tabId === 'ditolak') return base.filter(t => t.status === 'Ditolak').length;
+        if (tabId === 'pending') return base.filter(t => t.status === 'Pending').length;
         return base.length;
       default:
         return 0;
@@ -359,26 +408,27 @@ export const TicketHistory = () => {
     if (!user) return [];
     
     let base = tickets;
-    if (user.role === 'user') {
-      base = tickets.filter(t => t.opd.includes('Dinas Kesehatan') || t.id === 'REQ-2026-0120');
+    if (user.role === 'user' || user.role === 'masyarakat') {
+      base = tickets.filter(t => t.opd === user.department);
     } else if (user.role === 'pegawai') {
-      const userTeam = getUserTeam(user);
-      base = tickets.filter(t => getTicketTeam(t) === userTeam);
+      const myTeamNames = getUserTeams(user).map(t => t.name);
+      base = tickets.filter(t => myTeamNames.includes(t.team || getTicketTeam(t)));
     }
 
     switch (user.role) {
       case 'user':
+      case 'masyarakat':
         if (activeTab === 'proses') {
           return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status === 'Diproses');
         }
         if (activeTab === 'selesai') {
-          return base.filter(t => t.status === 'Menunggu Konfirmasi User');
+          return base.filter(t => t.status === 'Selesai' && !t.rating);
         }
         if (activeTab === 'dirating') {
-          return base.filter(t => t.status === 'Selesai');
+          return base.filter(t => t.status === 'Selesai' && t.rating);
         }
-        if (activeTab === 'ditolak') {
-          return base.filter(t => t.status === 'Ditolak');
+        if (activeTab === 'pending') {
+          return base.filter(t => t.status === 'Pending');
         }
         return base;
 
@@ -389,14 +439,11 @@ export const TicketHistory = () => {
         if (activeTab === 'proses') {
           return base.filter(t => t.status === 'Diproses');
         }
-        if (activeTab === 'konfirmasi') {
-          return base.filter(t => t.status === 'Menunggu Konfirmasi User');
-        }
         if (activeTab === 'dinilai') {
           return base.filter(t => t.status === 'Selesai');
         }
-        if (activeTab === 'ditolak') {
-          return base.filter(t => t.status === 'Ditolak');
+        if (activeTab === 'pending') {
+          return base.filter(t => t.status === 'Pending');
         }
         return base;
 
@@ -404,23 +451,23 @@ export const TicketHistory = () => {
         if (activeTab === 'aktif') {
           return base.filter(t => t.status === 'Diproses');
         }
-        if (activeTab === 'selesai') {
-          return base.filter(t => t.status === 'Menunggu Konfirmasi User');
+        if (activeTab === 'pending') {
+          return base.filter(t => t.status === 'Pending');
         }
-        if (activeTab === 'dinilai') {
+        if (activeTab === 'selesai') {
           return base.filter(t => t.status === 'Selesai');
         }
         return base;
 
       case 'admin':
         if (activeTab === 'proses') {
-          return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status === 'Diproses' || t.status === 'Menunggu Konfirmasi User');
+          return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status === 'Diproses');
         }
         if (activeTab === 'selesai') {
           return base.filter(t => t.status === 'Selesai');
         }
-        if (activeTab === 'ditolak') {
-          return base.filter(t => t.status === 'Ditolak');
+        if (activeTab === 'pending') {
+          return base.filter(t => t.status === 'Pending');
         }
         return base;
 
@@ -523,33 +570,36 @@ export const TicketHistory = () => {
                         <span className="text-xs bg-sky-50 text-sky-700 border border-sky-100 px-2 py-0.5 rounded font-semibold">
                           {t.requestType}
                         </span>
+                        {(t.team || getTicketTeam(t)) && (
+                          <span className="text-xs bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded font-semibold">
+                            {t.team || getTicketTeam(t)}
+                          </span>
+                        )}
                       </div>
-                      {t.status === 'Diproses' && t.progress !== undefined && (
-                        <div className="flex items-center gap-3 mt-3">
-                          <div className="w-24 bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                            <div className="bg-sky-500 h-full rounded-full" style={{ width: `${t.progress}%` }}></div>
-                          </div>
-                          <span className="text-xs font-black text-slate-700">{t.progress}% Progres</span>
-                        </div>
-                      )}
+                      {/* Progress bar removed dynamically */}
 
-                      <div className="text-xs text-slate-450 font-bold mt-2.5 flex items-center gap-1.5">
+                      <div className="text-xs text-slate-450 font-bold mt-2.5 flex items-center gap-1.5 flex-wrap">
                         <Clock className="w-3.5 h-3.5 text-slate-400" />
-                        <span>
-                          {t.status === 'Diproses' ? `Estimasi: Sisa ${t.remainingDays !== undefined ? t.remainingDays : 3} Hari (Target ${getTargetShortDate(calculateTargetDate(t.date, t.service))})` :
-                           t.status === 'Selesai' ? `Selesai dalam ${t.id === 'REQ-2026-0120' ? '2 Hari' : '4 Hari'} (On SLA)` :
-                           t.status === 'Menunggu Konfirmasi User' ? 'Selesai 100% (Menunggu Konfirmasi)' :
-                           t.status === 'Verifikasi' ? `SLA Standar: ${t.service === 'Server Perangkat Daerah' ? '5 Hari Kerja' : '3 Hari Kerja'}` :
-                           'Pengajuan Dibatalkan'}
-                        </span>
+                        <span>SLA Standar: {t.slaDuration || 7} Hari</span>
+                        <span className="text-slate-300">|</span>
+                        {t.status === 'Verifikasi' ? (
+                          <span className="text-slate-400 font-semibold">Belum Berjalan (Menunggu Verifikasi)</span>
+                        ) : t.status === 'Pending' ? (
+                          <span className="text-amber-600 font-semibold">Tertangguh (Menunggu Revisi)</span>
+                        ) : (
+                          <span className={(t.slaRemainingDays !== undefined ? t.slaRemainingDays : t.remainingDays) < 0 ? 'text-rose-600 font-extrabold' : 'text-emerald-600 font-extrabold'}>
+                            {(t.slaRemainingDays !== undefined ? t.slaRemainingDays : t.remainingDays) < 0 
+                              ? `Terlewat ${Math.abs(t.slaRemainingDays !== undefined ? t.slaRemainingDays : t.remainingDays)} Hari` 
+                              : `Sisa ${t.slaRemainingDays !== undefined ? t.slaRemainingDays : t.remainingDays} Hari`}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex md:flex-col items-center md:items-end gap-3 self-stretch md:self-auto justify-between shrink-0">
                       <span className={`px-2.5 py-1 rounded text-xs font-extrabold uppercase tracking-wider ${
                         t.status === 'Selesai' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                        t.status === 'Ditolak' ? 'bg-rose-50 text-rose-700 border border-rose-100' :
+                        t.status === 'Pending' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
                         t.status === 'Diproses' ? 'bg-sky-50 text-sky-700 border border-sky-100' :
-                        t.status === 'Menunggu Konfirmasi User' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100 animate-pulse' :
                         'bg-slate-100 text-slate-600 border border-slate-200'
                       }`}>
                         {t.status}
@@ -574,7 +624,7 @@ export const TicketHistory = () => {
                   <span className="text-xs font-bold text-sky-655 uppercase tracking-widest bg-sky-50 px-2 py-0.5 rounded inline-block">{selectedTicket.id}</span>
                   <span className={`px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${
                     selectedTicket.status === 'Selesai' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                    selectedTicket.status === 'Ditolak' ? 'bg-rose-50 text-rose-700 border border-rose-100' :
+                    selectedTicket.status === 'Pending' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
                     selectedTicket.status === 'Diproses' ? 'bg-sky-50 text-sky-700 border border-sky-100' :
                     'bg-slate-100 text-slate-600'
                   }`}>
@@ -583,122 +633,113 @@ export const TicketHistory = () => {
                 </div>
                 <h3 className="font-extrabold text-lg text-slate-800 tracking-tight leading-snug">{selectedTicket.title}</h3>
                 <p className="text-base text-slate-500 leading-relaxed">{selectedTicket.desc}</p>
-                {selectedTicket.status === 'Diproses' && selectedTicket.progress !== undefined && (
-                  <div className="flex items-center gap-3 pt-2">
-                    <div className="w-32 bg-slate-100 h-2 rounded-full overflow-hidden">
-                      <div className="bg-sky-500 h-full rounded-full" style={{ width: `${selectedTicket.progress}%` }}></div>
-                    </div>
-                    <span className="text-sm font-bold text-slate-700">{selectedTicket.progress}% Progres</span>
-                  </div>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setShowDetailModal(true)}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-sky-50/90 hover:bg-sky-100 text-sky-800 border border-sky-200/80 rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-2xs hover:shadow-xs group cursor-pointer"
+                >
+                  <FileText className="w-4 h-4 text-sky-600 group-hover:scale-110 transition-transform" />
+                  <span>Lihat Formulir Pengajuan Tiket</span>
+                </button>
               </div>
 
               <div className="grid grid-cols-2 gap-4 bg-slate-50 border border-slate-200/60 rounded-2xl p-4 text-left">
                 <div>
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Standar SLA Layanan</span>
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Durasi SLA</span>
                   <p className="text-sm font-extrabold text-slate-700 mt-0.5">
-                    {selectedTicket.service === 'Server Perangkat Daerah' ? '5 Hari Kerja' :
-                     selectedTicket.service === 'Jaringan Intra Pemerintah' ? '3 Hari Kerja' :
-                     selectedTicket.service === 'Pengembangan & Pengelolaan Aplikasi' ? '7 Hari Kerja' :
-                     '4 Hari Kerja'}
+                    {selectedTicket.slaDuration || 7} Hari
                   </p>
                 </div>
                 <div>
-                  {selectedTicket.status === 'Diproses' && (
-                    <>
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Batas Waktu Selesai</span>
-                      <p className="text-sm font-extrabold text-amber-600 mt-0.5">
-                        {calculateTargetDate(selectedTicket.date, selectedTicket.service)}
-                      </p>
-                    </>
-                  )}
-                  {selectedTicket.status === 'Selesai' && (
-                    <>
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Durasi Aktual Pengerjaan</span>
-                      <p className="text-sm font-extrabold text-emerald-600 mt-0.5">
-                        {selectedTicket.id === 'REQ-2026-0120' ? '2 Hari Kerja (On SLA)' :
-                         selectedTicket.id === 'REQ-2026-0121' ? '4 Hari Kerja (On SLA)' :
-                         selectedTicket.id === 'REQ-2026-0122' ? '3 Hari Kerja (On SLA)' :
-                         'Tepat Waktu (On SLA)'}
-                      </p>
-                    </>
-                  )}
-                  {selectedTicket.status === 'Verifikasi' && (
-                    <>
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Estimasi Pengerjaan</span>
-                      <p className="text-sm font-extrabold text-slate-600 mt-0.5">Akan ditentukan setelah disetujui</p>
-                    </>
-                  )}
-                  {selectedTicket.status === 'Ditolak' && (
-                    <>
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Status SLA</span>
-                      <p className="text-sm font-extrabold text-rose-600 mt-0.5">Dibatalkan/Ditolak</p>
-                    </>
-                  )}
-                  {selectedTicket.status === 'Menunggu Konfirmasi User' && (
-                    <>
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Durasi Pengerjaan</span>
-                      <p className="text-sm font-extrabold text-indigo-600 mt-0.5">3 Hari Kerja (Siap BAST)</p>
-                    </>
-                  )}
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Status SLA</span>
+                  <p className={`text-sm font-black mt-0.5 ${(selectedTicket.status === 'Diproses' && selectedTicket.slaRemainingDays < 0) ? 'text-rose-600' : 'text-slate-700'}`}>
+                    {selectedTicket.status === 'Verifikasi' 
+                      ? 'Belum Berjalan (Menunggu Verifikasi)' 
+                      : selectedTicket.status === 'Pending'
+                      ? 'Tertangguh (Menunggu Revisi)'
+                      : (selectedTicket.slaRemainingDays !== undefined ? selectedTicket.slaRemainingDays : selectedTicket.remainingDays) < 0 
+                      ? `Terlewat ${Math.abs(selectedTicket.slaRemainingDays !== undefined ? selectedTicket.slaRemainingDays : selectedTicket.remainingDays)} Hari` 
+                      : `${selectedTicket.slaRemainingDays !== undefined ? selectedTicket.slaRemainingDays : selectedTicket.remainingDays} Hari Tersisa`}
+                  </p>
                 </div>
               </div>
 
               {selectedTicket.files && selectedTicket.files.length > 0 && (
-                <div className="space-y-2.5">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Dokumen Lampiran</span>
+                <div className="space-y-2.5 text-left">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Dokumen Lampiran Pengajuan</span>
                   <div className="space-y-2">
                     {selectedTicket.files.map((file, idx) => (
-                      <div key={idx} className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                        <FileText className="w-4 h-4 text-sky-600" />
-                        <span className="text-sm font-bold text-slate-700">{file}</span>
+                      <div key={idx} className="flex items-center justify-between gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold">
+                        <div className="flex items-center gap-2 text-slate-700 min-w-0">
+                          <FileText className="w-4 h-4 text-sky-600 shrink-0" />
+                          <span className="truncate">{file}</span>
+                        </div>
+                        <a
+                          href={selectedTicket.fileUrl || '/dokumen_permohonan.pdf'}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-bold text-sky-600 hover:underline px-2.5 py-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-all shrink-0"
+                        >
+                          Buka PDF
+                        </a>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {selectedTicket.rating && (
-                <div className="bg-amber-50/50 border border-amber-100 rounded-2xl p-5 space-y-3.5 text-left">
-                  <div className="flex justify-between items-center border-b border-amber-250 pb-3">
-                    <h4 className="font-extrabold text-amber-800 text-sm uppercase tracking-wider">Riwayat Rating Layanan</h4>
-                    <div className="flex items-center gap-1.5 bg-amber-100/60 border border-amber-200/60 px-2 py-0.5 rounded-lg">
-                      <span className="text-slate-700 font-bold text-xs uppercase tracking-wider">Overall</span>
-                      {renderRatingStars(selectedTicket.rating.overall || Math.round((selectedTicket.rating.speed + selectedTicket.rating.result + selectedTicket.rating.communication + selectedTicket.rating.quality) / 4))}
+              {selectedTicket.bastFile && (
+                <div className="space-y-2.5 text-left">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Lampiran Penyelesaian Pegawai (BAST)</span>
+                  <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200 text-sm font-semibold">
+                    <div className="flex items-center gap-2 text-slate-700">
+                      <FileText className="w-4 h-4 text-emerald-600" />
+                      <span className="truncate max-w-[200px]" title={selectedTicket.bastFile}>{selectedTicket.bastFile}</span>
                     </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-y-2.5 text-sm border-b border-amber-100/50 pb-3">
-                    <div className="flex justify-between items-center pr-3 border-r border-amber-100/30">
-                      <span className="text-slate-500 font-bold text-xs uppercase tracking-wider">Kecepatan</span>
-                      {renderRatingStars(selectedTicket.rating.speed)}
-                    </div>
-                    <div className="flex justify-between items-center pl-3">
-                      <span className="text-slate-500 font-bold text-xs uppercase tracking-wider">Kesesuaian</span>
-                      {renderRatingStars(selectedTicket.rating.result)}
-                    </div>
-                    <div className="flex justify-between items-center pr-3 border-r border-amber-100/30">
-                      <span className="text-slate-500 font-bold text-xs uppercase tracking-wider">Komunikasi</span>
-                      {renderRatingStars(selectedTicket.rating.communication)}
-                    </div>
-                    <div className="flex justify-between items-center pl-3">
-                      <span className="text-slate-500 font-bold text-xs uppercase tracking-wider">Kualitas</span>
-                      {renderRatingStars(selectedTicket.rating.quality)}
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Komentar / Masukan OPD</span>
-                    <p className="text-base text-slate-700 italic leading-relaxed">
-                      "{selectedTicket.rating.comment}"
-                    </p>
+                    <a
+                      href={selectedTicket.bastFileUrl || '/bast_selesai.pdf'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-bold text-sky-600 hover:underline px-2.5 py-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-all shrink-0"
+                    >
+                      Unduh BAST (PDF)
+                    </a>
                   </div>
                 </div>
               )}
 
-              {user?.role === 'helpdesk' && selectedTicket.status === 'Verifikasi' && (
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
-                  <h4 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider">Tindakan Validasi Helpdesk</h4>
+
+
+              {(user?.role === 'helpdesk' || user?.role === 'admin') && (selectedTicket.status === 'Verifikasi' || selectedTicket.status === 'Pending') && (
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4 text-left">
+                  <div className="flex justify-between items-center">
+                    <h4 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider">
+                      {selectedTicket.status === 'Pending' ? 'Tindakan Validasi Tiket Pending' : 'Tindakan Validasi Helpdesk'}
+                    </h4>
+                    {selectedTicket.status === 'Pending' && (
+                      <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-black uppercase tracking-wider">
+                        Status: Pending
+                      </span>
+                    )}
+                  </div>
+
+                  {selectedTicket.status === 'Pending' && selectedTicket.logs && selectedTicket.logs.length > 0 && (
+                    <div className="p-3 bg-amber-50/80 border border-amber-200/80 rounded-xl text-xs space-y-1">
+                      <span className="font-bold text-amber-900 block uppercase tracking-wider">Catatan Riwayat Terakhir:</span>
+                      <p className="text-slate-700 italic">
+                        "{selectedTicket.logs[0]?.text}"
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedTicket.revisionNote && (
+                    <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-1">
+                      <span className="font-extrabold text-amber-900 block uppercase tracking-wider">Catatan Perbaikan dari Pemohon:</span>
+                      <p className="text-slate-800 font-medium italic">
+                        "{selectedTicket.revisionNote}"
+                      </p>
+                    </div>
+                  )}
                   
                   {!showRejectForm ? (
                     <div className="space-y-4">
@@ -720,34 +761,34 @@ export const TicketHistory = () => {
                           onClick={() => handleApprove(selectedTicket.id)}
                           className="flex-1 px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm font-bold transition-all"
                         >
-                          Setujui & Tugaskan
+                          {selectedTicket.status === 'Pending' ? 'Setujui & Lanjutkan Tiket' : 'Setujui & Tugaskan'}
                         </button>
                         <button 
                           onClick={() => setShowRejectForm(true)}
-                          className="px-4 py-2.5 border border-rose-200 hover:bg-rose-50 hover:border-rose-300 text-rose-600 rounded-xl text-sm font-bold transition-all"
+                          className="px-4 py-2.5 border border-amber-200 hover:bg-amber-50 hover:border-amber-300 text-amber-600 rounded-xl text-sm font-bold transition-all"
                         >
-                          Tolak
+                          {selectedTicket.status === 'Pending' ? 'Perbarui Alasan Pending' : 'Pending'}
                         </button>
                       </div>
                     </div>
                   ) : (
                     <div className="space-y-4">
                       <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Alasan Penolakan</label>
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Alasan Penangguhan / Pending</label>
                         <textarea 
                           value={rejectReason}
                           onChange={(e) => setRejectReason(e.target.value)}
-                          placeholder="Tuliskan alasan berkas permohonan tidak lengkap..."
-                          className="w-full h-24 px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 resize-none"
+                          placeholder="Tuliskan alasan penangguhan..."
+                          className="w-full h-24 px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-550/20 focus:border-amber-500 resize-none"
                         />
                       </div>
 
                       <div className="flex gap-3">
                         <button 
                           onClick={() => handleReject(selectedTicket.id)}
-                          className="flex-1 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-sm font-bold transition-all"
+                          className="flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-bold transition-all"
                         >
-                          Kirim Penolakan
+                          Tangguhkan Tiket
                         </button>
                         <button 
                           onClick={() => {
@@ -764,70 +805,142 @@ export const TicketHistory = () => {
                 </div>
               )}
 
+              {user?.role === 'pegawai' && selectedTicket.status === 'Pending' && (
+                <div className="bg-rose-50/50 border border-rose-200 rounded-2xl p-5 space-y-4 text-left animate-in fade-in duration-200">
+                  <div className="flex gap-2.5 text-rose-800">
+                    <AlertTriangle className="w-5 h-5 shrink-0 text-rose-600 mt-0.5" />
+                    <div className="text-sm">
+                      <p className="font-extrabold text-rose-900">Pekerjaan Ditangguhkan / Disanggah</p>
+                      <p className="mt-1 text-slate-650 leading-relaxed font-semibold">
+                        Catatan penangguhan: 
+                        <span className="italic text-slate-800 block mt-1 p-2.5 bg-white rounded-xl border border-rose-100/60 font-medium">
+                          "{selectedTicket.logs?.[0]?.text || 'Tidak ada catatan'}"
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = tickets.map(t => {
+                        if (t.id === selectedTicket.id) {
+                          return {
+                            ...t,
+                            status: 'Diproses',
+                            logs: [
+                              { date: getCurrentLogTimeFormatted(0), text: 'Pegawai memulai kembali perbaikan pekerjaan teknis pasca sanggahan pemohon.' },
+                              ...(t.logs || [])
+                            ]
+                          };
+                        }
+                        return t;
+                      });
+                      setTickets(updated);
+                      setSelectedTicket(updated.find(t => t.id === selectedTicket.id));
+                      alert('Tiket berhasil diaktifkan kembali! Silakan lanjutkan pekerjaan teknis.');
+                    }}
+                    className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-sm font-bold transition-all shadow-sm shadow-rose-500/10"
+                  >
+                    Mulai Kerjakan Kembali Tiket Ini
+                  </button>
+                </div>
+              )}
+
               {user?.role === 'pegawai' && selectedTicket.status === 'Diproses' && (
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4 text-left">
-                  <h4 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider">Perbarui Progres Pekerjaan</h4>
-                  <p className="text-sm text-slate-500 leading-relaxed">
-                    Geser slider di bawah untuk memperbarui progres pengerjaan teknis tiket ini dan berikan catatan laporan pekerjaan terbaru Anda.
-                  </p>
+                  <h4 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider">Perbarui Status Pekerjaan</h4>
                   
-                  <div className="space-y-4 bg-white border border-slate-200/60 rounded-xl p-4 shadow-sm">
-                    <div className="flex justify-between items-center text-sm font-bold">
-                      <span className="text-slate-500">Progres Kerja</span>
-                      <span className="text-sky-600 font-extrabold text-base">{tempProgress}%</span>
-                    </div>
-                    
-                    <input 
-                      type="range" 
-                      min="0" 
-                      max="100" 
-                      step="5" 
-                      value={tempProgress}
-                      onChange={(e) => setTempProgress(Number(e.target.value))}
-                      className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-sky-600"
+                  <div className="flex items-center gap-3 p-3 bg-white border border-slate-200/60 rounded-xl">
+                    <input
+                      type="checkbox"
+                      id="isFinishedPegawai"
+                      checked={isFinished}
+                      onChange={(e) => {
+                        setIsFinished(e.target.checked);
+                        setFileName('');
+                      }}
+                      className="w-5 h-5 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
                     />
-                    
-                    <div className="flex justify-between text-[10px] text-slate-400 font-bold px-1">
-                      <span>0%</span>
-                      <span>25%</span>
-                      <span>50%</span>
-                      <span>75%</span>
-                      <span>100% (Selesai)</span>
-                    </div>
+                    <label htmlFor="isFinishedPegawai" className="text-sm font-bold text-slate-700 cursor-pointer select-none">
+                      Tandai Pekerjaan Selesai (100%)
+                    </label>
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Estimasi Sisa Waktu Pengerjaan</label>
-                    <select 
-                      value={tempRemainingDays} 
-                      onChange={(e) => setTempRemainingDays(Number(e.target.value))}
-                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/25"
-                    >
-                      {Array.from({ length: getServiceSlaDays(selectedTicket.service) }).map((_, i) => {
-                        const day = i + 1;
-                        return (
-                          <option key={day} value={day}>Sisa {day} Hari</option>
-                        );
-                      })}
-                      <option value={0}>Selesai (0 Hari)</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Catatan Laporan Pekerjaan</label>
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Catatan Tambahan (Opsional - Terisi Otomatis)</label>
                     <textarea 
                       value={progressNote}
                       onChange={(e) => setProgressNote(e.target.value)}
-                      placeholder="Jelaskan progres pekerjaan yang telah dilakukan (misal: Selesai menarik kabel FO di lantai 3)..."
+                      placeholder="Opsional: sistem otomatis mencatat log progres pengerjaan..."
                       className="w-full h-24 px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 resize-none"
                     />
                   </div>
 
+                  {isFinished && (
+                    <div className="bg-sky-50/30 p-4 rounded-xl border border-sky-100 space-y-3">
+                      <div className="flex gap-2 text-sky-700">
+                        <Upload className="w-4 h-4 shrink-0 mt-0.5" />
+                        <div className="text-xs space-y-1">
+                          <p className="font-bold">Unggah Berkas BAST (Opsional)</p>
+                          <p className="text-slate-600 leading-relaxed">Opsional: Unggah berkas Berita Acara Serah Terima jika ada.</p>
+                        </div>
+                      </div>
+                      <input
+                        type="file"
+                        ref={bastInputRef}
+                        accept=".pdf,application/pdf"
+                        onChange={handleBastFileChange}
+                        className="hidden"
+                      />
+                      {fileName ? (
+                        <div className="flex justify-between items-center p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800">
+                          <div className="flex items-center gap-2 truncate">
+                            <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span className="truncate">{fileName} ({bastFileSize || 'Valid PDF'})</span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <a
+                              href={bastFileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-2.5 py-1 bg-white border border-emerald-300 text-emerald-700 rounded-lg hover:bg-emerald-100 transition-all"
+                            >
+                              Lihat PDF
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => bastInputRef.current?.click()}
+                              className="text-slate-500 hover:text-slate-700 underline text-[11px]"
+                            >
+                              Ganti
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setFileName(''); setBastFileSize(''); }}
+                              className="text-rose-500 hover:text-rose-700 underline text-[11px] ml-1"
+                            >
+                              Hapus
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => bastInputRef.current?.click()}
+                          className="w-full py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+                        >
+                          <Upload className="w-3.5 h-3.5 text-sky-600" />
+                          <span>Pilih Berkas BAST (.PDF) - Opsional</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+
                   <button 
                     onClick={() => handleUpdateProgress(selectedTicket.id)}
-                    className="w-full px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm font-bold transition-all shadow-sm shadow-sky-500/10"
+                    className="w-full px-4 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white rounded-xl text-sm font-bold transition-all shadow-sm shadow-sky-500/10"
                   >
-                    Simpan Laporan & Progres
+                    {isFinished ? 'Selesaikan Tugas' : 'Simpan Laporan'}
                   </button>
                 </div>
               )}
@@ -930,7 +1043,7 @@ export const TicketHistory = () => {
 
                   <button 
                     onClick={() => handleConfirmAndRate(selectedTicket.id)}
-                    className="w-full px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-indigo-150"
+                    className="w-full px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-indigo-500/20"
                   >
                     Konfirmasi Selesai & Kirim Ulasan
                   </button>
@@ -949,7 +1062,7 @@ export const TicketHistory = () => {
                             ? 'bg-emerald-500 ring-4 ring-emerald-100 animate-pulse'
                             : 'bg-slate-300'
                         }`}></div>
-                        <span className="text-xs text-slate-400 font-bold block">{log.date}</span>
+                        <span className="text-xs text-slate-400 font-bold block">{formatLogDateDisplay(log.date)}</span>
                         <p className={`text-base mt-0.5 leading-relaxed ${isNewest ? 'font-bold text-slate-800' : 'text-slate-500'}`}>{log.text}</p>
                       </div>
                     );
@@ -965,6 +1078,12 @@ export const TicketHistory = () => {
           )}
         </div>
       </div>
+
+      <TicketDetailModal 
+        isOpen={showDetailModal} 
+        onClose={() => setShowDetailModal(false)} 
+        ticket={selectedTicket} 
+      />
     </div>
   );
 };

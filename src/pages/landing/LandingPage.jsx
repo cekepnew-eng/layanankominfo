@@ -63,7 +63,7 @@ export const LandingPage = () => {
   ];
 
   const categoryCounts = categoriesList.map(cat => {
-    const count = completedTickets.filter(t => cat.services.includes(t.service)).length;
+    const count = completedTickets.filter(t => t.service === cat.name || cat.services.includes(t.service)).length;
     return { name: cat.name, count };
   }).sort((a, b) => b.count - a.count);
 
@@ -76,7 +76,7 @@ export const LandingPage = () => {
 
   useEffect(() => {
     const handleScroll = () => {
-      const sections = ['beranda', 'statistik', 'alur', 'layanan', 'testimoni', 'faq'];
+      const sections = ['beranda', 'statistik', 'alur', 'layanan', 'faq'];
       const scrollPosition = window.scrollY + 160;
 
       if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 10) {
@@ -288,7 +288,6 @@ export const LandingPage = () => {
             <a href="#statistik" className={`text-base font-bold tracking-wider ${activeSection === 'statistik' ? 'text-sky-600' : 'text-slate-600 hover:text-sky-600'}`}>Statistik</a>
             <a href="#alur" className={`text-base font-bold tracking-wider ${activeSection === 'alur' ? 'text-sky-600' : 'text-slate-600 hover:text-sky-600'}`}>Alur</a>
             <a href="#layanan" className={`text-base font-bold tracking-wider ${activeSection === 'layanan' ? 'text-sky-600' : 'text-slate-600 hover:text-sky-600'}`}>Layanan SPBE</a>
-            <a href="#testimoni" className={`text-base font-bold tracking-wider ${activeSection === 'testimoni' ? 'text-sky-600' : 'text-slate-600 hover:text-sky-600'}`}>Ulasan</a>
             <a href="#faq" className={`text-base font-bold tracking-wider ${activeSection === 'faq' ? 'text-sky-600' : 'text-slate-600 hover:text-sky-600'}`}>FAQ</a>
           </nav>
 
@@ -393,18 +392,17 @@ export const LandingPage = () => {
 
             <div className="md:col-span-4 bg-slate-50 p-8 rounded-3xl border border-slate-200 flex flex-col justify-between gap-8 hover:border-slate-350 transition-all">
               <div className="space-y-3 text-left">
-                <span className="block text-xs font-bold text-slate-400 uppercase tracking-wider">User Satisfaction</span>
-                <h4 className="font-extrabold text-slate-900 text-lg leading-tight">Kepuasan OPD Terhadap Staf Teknis</h4>
+                <span className="block text-xs font-bold text-slate-400 uppercase tracking-wider">Digital Transformation</span>
+                <h4 className="font-extrabold text-slate-900 text-lg leading-tight">Layanan Digital SPBE Terpadu</h4>
               </div>
               <div className="space-y-3 text-left">
-                <div className="flex gap-1 text-amber-500">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Star key={i} className={`w-4 h-4 ${i < Math.round(parseFloat(rating) || 5) ? 'fill-amber-500 text-amber-500' : 'text-slate-200'}`} />
-                  ))}
+                <div className="flex items-center gap-2 text-sky-600 font-bold text-xs uppercase tracking-wider bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-100 w-fit">
+                  <CheckCircle className="w-4 h-4" />
+                  <span>53 Sub-Layanan</span>
                 </div>
                 <div>
-                  <p className="text-2xl font-black text-slate-900">{rating} / 5.00</p>
-                  <p className="text-sm text-slate-500">Dari total {ratings ? ratings.length : 100} responden</p>
+                  <p className="text-2xl font-black text-slate-900">100% Digital</p>
+                  <p className="text-sm text-slate-500">Terhubung di 8 Kategori SPBE Resmi</p>
                 </div>
               </div>
             </div>
@@ -538,58 +536,7 @@ export const LandingPage = () => {
       </div>
     </section>
 
-      <section id="testimoni" className="scroll-mt-[120px] py-24 bg-slate-100 border-t border-slate-200">
-        <div className="max-w-7xl mx-auto px-8 space-y-16">
-          <div className="text-center max-w-2xl mx-auto space-y-3">
-            <h3 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight">Apa Kata Pengguna Kami?</h3>
-            <p className="text-slate-505 text-base">Ulasan dan rating kepuasan yang dikirimkan langsung oleh perwakilan dinas/OPD setelah penyelesaian tiket.</p>
-          </div>
-
-          <div className="relative w-full overflow-hidden py-4 select-none">
-            <div className="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-slate-100 to-transparent z-10 pointer-events-none"></div>
-            <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-slate-100 to-transparent z-10 pointer-events-none"></div>
-            
-            <div className="animate-marquee flex gap-8">
-              {paddedTestimonials.map((t, idx) => (
-                <div key={`copy1-${t.id || idx}`} className="w-[380px] shrink-0 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between hover:border-slate-350 transition-all select-none pointer-events-none text-left">
-                  <div className="space-y-4">
-                    <div className="flex gap-1 text-amber-500">
-                      {Array.from({ length: 5 }).map((_, i) => (
-                        <Star key={i} className={`w-4 h-4 ${i < t.rating ? 'fill-amber-500 text-amber-500' : 'text-slate-200'}`} />
-                      ))}
-                    </div>
-                    <p className="text-base text-slate-600 leading-relaxed italic">
-                      "{t.comment}"
-                    </p>
-                  </div>
-                  <div className="border-t border-slate-100 pt-3 flex justify-between items-center text-sm text-slate-400 font-bold uppercase tracking-wider mt-4">
-                    <span className="text-slate-700">{t.name}</span>
-                    <span className="text-emerald-600">{t.status || 'Selesai'}</span>
-                  </div>
-                </div>
-              ))}
-              {paddedTestimonials.map((t, idx) => (
-                <div key={`copy2-${t.id || idx}`} className="w-[380px] shrink-0 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between hover:border-slate-350 transition-all select-none pointer-events-none text-left">
-                  <div className="space-y-4">
-                    <div className="flex gap-1 text-amber-500">
-                      {Array.from({ length: 5 }).map((_, i) => (
-                        <Star key={i} className={`w-4 h-4 ${i < t.rating ? 'fill-amber-500 text-amber-500' : 'text-slate-200'}`} />
-                      ))}
-                    </div>
-                    <p className="text-base text-slate-600 leading-relaxed italic">
-                      "{t.comment}"
-                    </p>
-                  </div>
-                  <div className="border-t border-slate-100 pt-3 flex justify-between items-center text-sm text-slate-400 font-bold uppercase tracking-wider mt-4">
-                    <span className="text-slate-700">{t.name}</span>
-                    <span className="text-emerald-600">{t.status || 'Selesai'}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>      <section id="faq" className="scroll-mt-[120px] py-24 bg-white border-t border-slate-200 relative z-20">
+      <section id="faq" className="scroll-mt-[120px] py-24 bg-white border-t border-slate-200 relative z-20">
         <div className="max-w-4xl mx-auto px-8 space-y-16">
           <div className="text-center space-y-3">
             <h3 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight">Pertanyaan Umum (FAQ)</h3>
