@@ -165,7 +165,7 @@ export const Overview = () => {
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">SLA Compliance Rate</span>
               <p className="text-2xl font-black text-slate-800 mt-1">{slaCompliancePct}</p>
-              <p className="text-sm text-slate-500 mt-0.5">Rasio penyelesaian tepat waktu dari total {completedOrWaiting.length} tiket selesai.</p>
+              <p className="text-sm text-slate-500 mt-0.5">Rasio penyelesaian tepat waktu dari total {completedTickets.length} tiket selesai.</p>
             </div>
 
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
@@ -225,7 +225,7 @@ export const Overview = () => {
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Telah Selesai</p>
             <p className="text-xl font-black text-slate-800 mt-0.5">
-              {(tickets || []).filter(t => t.status === 'Selesai' || t.status === 'Menunggu Konfirmasi User').length} Tiket
+              {(tickets || []).filter(t => t.status === 'Selesai').length} Tiket
             </p>
           </div>
         </div>

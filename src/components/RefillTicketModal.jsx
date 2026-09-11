@@ -3,6 +3,7 @@ import { X, FileText, Upload, AlertCircle, FileCheck, Clock, Eye } from 'lucide-
 import { useAuth } from '../context/AuthContext';
 import { getCurrentLogTimeFormatted } from '../utils/dateUtils';
 import { SopModal } from './SopModal';
+import { ActionModal } from './ActionModal';
 
 export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
   const { services } = useAuth();
@@ -26,6 +27,8 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
   const [fileSize, setFileSize] = useState('');
   const [fileUrl, setFileUrl] = useState(ticket.fileUrl || '/dokumen_permohonan.pdf');
   const [showSopModal, setShowSopModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -57,29 +60,13 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
     }
   };
 
-  const handleSubmit = (e) => {
+  const handlePreSubmit = (e) => {
     e.preventDefault();
-    if (!title.trim() || !description.trim()) {
-      alert('Harap lengkapi judul dan deskripsi permohonan!');
-      return;
-    }
+    setShowConfirmModal(true);
+  };
 
-    if (subServiceName === 'Pembuatan Aplikasi Baru (Web/Mobile)') {
-      if (!appName.trim() || !targetUsers.trim()) {
-        alert('Harap lengkapi nama aplikasi dan target pengguna!');
-        return;
-      }
-    } else if (subServiceName === 'Integrasi Single Sign-On (SSO) TND') {
-      if (!appName.trim() || !callbackUrl.trim()) {
-        alert('Harap lengkapi nama platform dan callback URL!');
-        return;
-      }
-    } else if (subServiceName === 'Uji Celah Keamanan (Vulnerability Assessment)') {
-      if (!appName.trim() || !targetIp.trim()) {
-        alert('Harap lengkapi domain / nama aplikasi dan alamat IP server!');
-        return;
-      }
-    }
+  const handleConfirmSubmit = () => {
+    setShowConfirmModal(false);
 
     const note = revisionNote.trim();
     const logMessage = `Pemohon telah mengisi ulang formulir permohonan dan mengajukan kembali ke Helpdesk.${note ? ` Catatan Perbaikan: ${note}` : ''}${fileName ? ` (Lampiran: ${fileName})` : ''}`;
@@ -111,7 +98,11 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
     };
 
     onSave(updatedTicket);
-    alert('Formulir permohonan berhasil diperbarui dan diajukan kembali ke Helpdesk! Status tiket kini kembali ke tahap Verifikasi.');
+    setShowSuccessModal(true);
+  };
+
+  const handleFinishSuccess = () => {
+    setShowSuccessModal(false);
     onClose();
   };
 
@@ -121,19 +112,28 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
     l.text.toLowerCase().includes('alasan:')
   ) || ticket.logs?.[0];
 
+  React.useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, []);
+
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200 font-sans">
+    <div className="fixed inset-0 z-50 bg-slate-900/65 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-hidden animate-in fade-in duration-200 font-sans">
       <div 
-        className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-6 text-left"
+        className="relative w-full max-w-3xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden text-left max-h-[92vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 bg-slate-50/80">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-2xl bg-sky-100 text-sky-700 flex items-center justify-center shrink-0 shadow-2xs">
+        <div className="flex items-center justify-between px-7 py-5 border-b border-slate-100 bg-slate-50/90 shrink-0">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="w-11 h-11 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center shrink-0 shadow-xs">
               <FileText className="w-5 h-5" />
             </div>
             <div className="min-w-0">
-              <h3 className="text-lg font-black text-slate-900 tracking-tight leading-tight">
+              <h3 className="text-xl font-black text-slate-900 tracking-tight leading-tight">
                 Formulir Pengajuan Layanan
               </h3>
               <p className="text-xs text-slate-500 font-bold mt-0.5 truncate">
@@ -150,7 +150,7 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
+        <form onSubmit={handlePreSubmit} className="p-6 sm:p-7 space-y-6 max-h-[75vh] overflow-y-auto">
           {pendingLog && (
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs space-y-1">
               <div className="flex items-center gap-1.5 text-slate-700 font-bold uppercase tracking-wider">
@@ -417,30 +417,31 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Catatan Perbaikan
+                Catatan Perbaikan <span className="text-rose-500">*</span>
               </label>
-              <span className="text-[11px] font-semibold text-slate-400">Opsional</span>
+              <span className="text-[11px] font-semibold text-sky-600">Wajib Diisi</span>
             </div>
             <textarea
-              rows={3}
+              required
+              rows={4}
               value={revisionNote}
               onChange={(e) => setRevisionNote(e.target.value)}
-              placeholder="Tuliskan catatan atau penjelasan perbaikan untuk Helpdesk (opsional)..."
-              className="w-full px-4 py-3 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold text-slate-800 resize-none leading-relaxed"
+              placeholder="Jelaskan detail perbaikan yang telah dilakukan dan informasi klarifikasi untuk Helpdesk..."
+              className="w-full px-5 py-3.5 border-2 border-slate-300 rounded-2xl text-base focus:outline-none focus:ring-2 focus:ring-sky-500 font-semibold text-slate-800 resize-none leading-relaxed"
             />
           </div>
 
-          <div className="flex gap-3 pt-3 border-t border-slate-100">
+          <div className="flex gap-3 pt-4 border-t border-slate-100">
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-3 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-bold transition-all cursor-pointer"
+              className="px-6 py-3 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-sm sm:text-base font-bold transition-all cursor-pointer"
             >
               Batal
             </button>
             <button
               type="submit"
-              className="flex-1 py-3.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 text-base font-extrabold text-white shadow-md shadow-sky-500/10 hover:shadow-lg hover:shadow-sky-500/15 transition-all flex items-center justify-center cursor-pointer"
+              className="flex-1 py-3 px-5 rounded-xl bg-sky-600 hover:bg-sky-700 text-sm sm:text-base font-bold text-white shadow-md hover:shadow-lg transition-all flex items-center justify-center cursor-pointer"
             >
               Kirim Permohonan
             </button>
@@ -453,6 +454,27 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
           serviceName={subServiceName}
           sopFileName={sopFile}
           fileUrl="/sop_layanan.pdf"
+        />
+
+        <ActionModal
+          isOpen={showConfirmModal}
+          onClose={() => setShowConfirmModal(false)}
+          type="confirm"
+          title="Konfirmasi Pengajuan Perbaikan"
+          message="Apakah seluruh berkas dan rincian formulir perbaikan sudah lengkap dan sesuai untuk diajukan kembali ke Helpdesk?"
+          confirmText="Ya, Ajukan Perbaikan"
+          cancelText="Periksa Kembali"
+          onConfirm={handleConfirmSubmit}
+        />
+
+        <ActionModal
+          isOpen={showSuccessModal}
+          onClose={handleFinishSuccess}
+          type="success"
+          title="Perbaikan Berhasil Diajukan"
+          message="Formulir permohonan berhasil diperbarui dan dialihkan kembali ke Helpdesk. Status tiket kini berada pada tahap Verifikasi."
+          confirmText="Selesai & Kembali"
+          onConfirm={handleFinishSuccess}
         />
       </div>
     </div>

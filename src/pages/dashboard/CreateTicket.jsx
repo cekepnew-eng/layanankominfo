@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { getCurrentDateFormatted, getCurrentLogTimeFormatted } from '../../utils/dateUtils';
 import { SkmModal } from '../../components/SkmModal';
 import { SopModal } from '../../components/SopModal';
+import { ActionModal } from '../../components/ActionModal';
 
 export const CreateTicket = () => {
   const { user, tickets, setTickets, services } = useAuth();
@@ -29,6 +30,10 @@ export const CreateTicket = () => {
   const fileInputRef = useRef(null);
   const [hoveredIdx, setHoveredIdx] = useState(null);
   const [helpdeskInstansi, setHelpdeskInstansi] = useState('');
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [createdTicketId, setCreatedTicketId] = useState('');
+  const [inactiveCategoryNotice, setInactiveCategoryNotice] = useState('');
 
   const unratedTicket = (user?.role === 'user' || user?.role === 'masyarakat') 
     ? tickets.find(t => t.opd === user?.department && t.status === 'Selesai' && !t.rating)
@@ -182,8 +187,13 @@ export const CreateTicket = () => {
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleFormPreSubmit = (e) => {
     e.preventDefault();
+    setShowConfirmModal(true);
+  };
+
+  const handleExecuteSubmit = () => {
+    setShowConfirmModal(false);
     const serviceObj = (services || []).find(s => s.name === selectedSubService);
     const slaParsed = serviceObj && serviceObj.sla ? parseInt(serviceObj.sla) || 7 : 7;
     const needsVerification = serviceObj ? (serviceObj.requiresHelpdesk !== false) : true;
@@ -200,8 +210,9 @@ export const CreateTicket = () => {
           { date: getCurrentLogTimeFormatted(0), text: 'Tiket permohonan layanan berhasil dibuat dan diajukan oleh Pemohon.' }
         ];
 
+    const generatedId = `REQ-2026-0${Math.floor(132 + Math.random() * 800)}`;
     const newTicket = {
-      id: `REQ-2026-0${Math.floor(132 + Math.random() * 800)}`,
+      id: generatedId,
       opd: user?.role === 'helpdesk' ? (helpdeskInstansi.trim() || 'Masyarakat Umum') : (user?.department || 'Masyarakat Umum'),
       userName: user?.name || 'Pemohon Layanan',
       userEmail: user?.email || '',
@@ -226,7 +237,8 @@ export const CreateTicket = () => {
     };
 
     setTickets([newTicket, ...tickets]);
-    navigate('/dashboard/history');
+    setCreatedTicketId(generatedId);
+    setShowSuccessModal(true);
   };
 
   if (unratedTicket) {
@@ -300,7 +312,7 @@ export const CreateTicket = () => {
                     if (active) {
                       handleSelectCategory(cat);
                     } else {
-                      alert(`Layanan kategori "${cat.title}" saat ini masih dalam tahap pengembangan!`);
+                      setInactiveCategoryNotice(cat.title);
                     }
                   }}
                   className={`bg-white p-6 rounded-2xl border border-slate-200 shadow-sm transition-all flex justify-between items-center group ${
@@ -497,7 +509,7 @@ export const CreateTicket = () => {
       )}
 
       {step === 3 && (
-        <form onSubmit={handleSubmit} className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6 animate-in fade-in duration-200">
+        <form onSubmit={handleFormPreSubmit} className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6 animate-in fade-in duration-200">
           <div className="flex justify-between items-center border-b border-slate-100 pb-4">
             <div>
               <button
@@ -751,6 +763,65 @@ export const CreateTicket = () => {
         serviceName={viewingSop?.name}
         sopFileName={viewingSop?.sop}
         fileUrl="/sop_layanan.pdf"
+      />
+
+      <ActionModal
+        isOpen={showConfirmModal}
+        onClose={() => setShowConfirmModal(false)}
+        type="confirm"
+        title="Konfirmasi Pengajuan Layanan"
+        message="Pastikan data permohonan dan dokumen kelengkapan yang Anda masukkan sudah lengkap dan sesuai dengan SOP layanan."
+        confirmText="Ya, Kirim Permohonan"
+        cancelText="Periksa Kembali"
+        onConfirm={handleExecuteSubmit}
+      >
+        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2 text-xs font-semibold text-slate-700">
+          <div className="flex justify-between">
+            <span className="text-slate-400">Sub-layanan:</span>
+            <span className="font-bold text-slate-800 text-right">{selectedSubService}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-400">Instansi / Asal:</span>
+            <span className="font-bold text-slate-800 text-right">
+              {user?.role === 'helpdesk' ? (helpdeskInstansi.trim() || 'Masyarakat Umum') : (user?.department || 'Masyarakat Umum')}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-400">Judul Ringkas:</span>
+            <span className="font-bold text-slate-800 text-right truncate max-w-[200px]">{title || '-'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-400">Lampiran:</span>
+            <span className="font-bold text-sky-700 text-right">{uploadedFile || 'Surat_Permohonan_Layanan.pdf'}</span>
+          </div>
+        </div>
+      </ActionModal>
+
+      <ActionModal
+        isOpen={showSuccessModal}
+        onClose={() => {
+          setShowSuccessModal(false);
+          navigate('/dashboard/history');
+        }}
+        type="success"
+        title="Permohonan Berhasil Diajukan"
+        message={`Tiket permohonan Anda (${createdTicketId}) telah berhasil diterbitkan dan masuk ke sistem Diskominfo Kota Bogor.`}
+        confirmText="Buka Riwayat Tiket"
+        onConfirm={() => {
+          setShowSuccessModal(false);
+          navigate('/dashboard/history');
+        }}
+      />
+
+      <ActionModal
+        isOpen={!!inactiveCategoryNotice}
+        onClose={() => setInactiveCategoryNotice('')}
+        type="warning"
+        title="Layanan Tahap Pengembangan"
+        message={`Kategori layanan "${inactiveCategoryNotice}" saat ini masih dalam proses standardisasi teknis dan belum dibuka untuk pengajuan umum.`}
+        confirmText="Mengerti"
+        cancelText=""
+        onConfirm={() => setInactiveCategoryNotice('')}
       />
     </div>
   );

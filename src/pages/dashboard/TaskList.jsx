@@ -3,6 +3,7 @@ import { CheckSquare, Clock, FileText, Check, AlertCircle, Upload, ChevronRight,
 import { useAuth } from '../../context/AuthContext';
 import { getCurrentLogTimeFormatted } from '../../utils/dateUtils';
 import { TicketDetailModal } from '../../components/TicketDetailModal';
+import { ActionModal } from '../../components/ActionModal';
 
 export const TaskList = () => {
   const { user, tickets, setTickets, teams } = useAuth();
@@ -14,6 +15,18 @@ export const TaskList = () => {
   const [fileName, setFileName] = useState('');
   const [bastFileUrl, setBastFileUrl] = useState('');
   const bastInputRef = useRef(null);
+
+  const [modalConfig, setModalConfig] = useState({
+    isOpen: false,
+    type: 'confirm',
+    title: '',
+    message: '',
+    confirmText: 'Lanjutkan',
+    cancelText: 'Batal',
+    onConfirm: null
+  });
+
+  const closeModal = () => setModalConfig(prev => ({ ...prev, isOpen: false }));
 
   const getUserTeam = (u) => {
     if (!u) return '';
@@ -69,8 +82,7 @@ export const TaskList = () => {
     }
   };
 
-  const handleUpdateProgress = (e) => {
-    e.preventDefault();
+  const executeUpdateProgress = () => {
     if (!selectedTask) return;
 
     const autoLogText = isFinished
@@ -108,21 +120,57 @@ export const TaskList = () => {
     
     if (isFinished) {
       setSelectedTask(null);
-      alert('Tugas berhasil diselesaikan! Tiket telah ditutup langsung dan siap untuk diulas & diberi nilai SKM oleh OPD / Pelapor.');
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: 'Tugas Berhasil Diselesaikan',
+        message: 'Pekerjaan teknis telah selesai 100%! Tiket ditutup langsung dan siap untuk diulas serta diberi nilai survei SKM oleh pemohon.',
+        confirmText: 'Selesai & Tutup',
+        onConfirm: closeModal
+      });
     } else {
       const updatedSelected = updated.find(t => t.id === selectedTask.id);
       setSelectedTask(updatedSelected);
-      alert('Log pembaruan aktivitas pengerjaan berhasil disimpan.');
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: 'Aktivitas Berhasil Diperbarui',
+        message: 'Catatan log progres pengerjaan teknis berhasil disimpan.',
+        confirmText: 'Selesai & Tutup',
+        onConfirm: closeModal
+      });
     }
     
     setLogText('');
+  };
+
+  const handleUpdateProgress = (e) => {
+    e.preventDefault();
+    if (!selectedTask) return;
+
+    if (isFinished) {
+      setModalConfig({
+        isOpen: true,
+        type: 'confirm',
+        title: 'Konfirmasi Penyelesaian Tugas',
+        message: 'Apakah Anda yakin pekerjaan teknis untuk tiket tugas ini telah selesai dikerjakan 100%?',
+        confirmText: 'Ya, Selesaikan Tugas',
+        cancelText: 'Periksa Kembali',
+        onConfirm: () => {
+          closeModal();
+          executeUpdateProgress();
+        }
+      });
+    } else {
+      executeUpdateProgress();
+    }
   };
 
   const handleSimulateUpload = () => {
     setFileName('BAST_Pekerjaan_Selesai.pdf');
   };
 
-  const handleResumeTask = (ticketId) => {
+  const executeResumeTask = (ticketId) => {
     const updated = tickets.map(t => {
       if (t.id === ticketId) {
         return {
@@ -139,7 +187,29 @@ export const TaskList = () => {
 
     setTickets(updated);
     setSelectedTask(updated.find(t => t.id === ticketId));
-    alert('Tiket berhasil diaktifkan kembali! Silakan lanjutkan pekerjaan teknis.');
+    setModalConfig({
+      isOpen: true,
+      type: 'success',
+      title: 'Pengerjaan Dilanjutkan',
+      message: 'Status pekerjaan telah diaktifkan kembali menjadi Diproses untuk perbaikan tindak lanjut.',
+      confirmText: 'Selesai & Tutup',
+      onConfirm: closeModal
+    });
+  };
+
+  const handleResumeTask = (ticketId) => {
+    setModalConfig({
+      isOpen: true,
+      type: 'confirm',
+      title: 'Konfirmasi Tindak Lanjut Tugas',
+      message: 'Apakah Anda siap menindaklanjuti perbaikan tugas ini pasca sanggahan dari pemohon?',
+      confirmText: 'Ya, Mulai Perbaikan',
+      cancelText: 'Batal',
+      onConfirm: () => {
+        closeModal();
+        executeResumeTask(ticketId);
+      }
+    });
   };
 
   const [selectedTeamFilter, setSelectedTeamFilter] = useState('all');
@@ -408,6 +478,17 @@ export const TaskList = () => {
         isOpen={showDetailModal}
         onClose={() => setShowDetailModal(false)}
         ticket={selectedTask}
+      />
+
+      <ActionModal
+        isOpen={modalConfig.isOpen}
+        onClose={closeModal}
+        type={modalConfig.type}
+        title={modalConfig.title}
+        message={modalConfig.message}
+        confirmText={modalConfig.confirmText}
+        cancelText={modalConfig.cancelText}
+        onConfirm={modalConfig.onConfirm}
       />
     </div>
   );

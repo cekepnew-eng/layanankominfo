@@ -5,6 +5,7 @@ import { getCurrentLogTimeFormatted, formatLogDateDisplay } from '../../utils/da
 import { TicketDetailModal } from '../../components/TicketDetailModal';
 import { RefillTicketModal } from '../../components/RefillTicketModal';
 import { SkmModal } from '../../components/SkmModal';
+import { ActionModal } from '../../components/ActionModal';
 
 export const MyTickets = () => {
   const { tickets, setTickets, user } = useAuth();
@@ -27,6 +28,16 @@ export const MyTickets = () => {
 
   const [showDisputeForm, setShowDisputeForm] = useState(false);
   const [disputeReason, setDisputeReason] = useState('');
+
+  const [modalConfig, setModalConfig] = useState({
+    isOpen: false,
+    type: 'confirm',
+    title: '',
+    message: '',
+    confirmText: 'Lanjutkan',
+    cancelText: 'Batal',
+    onConfirm: null
+  });
 
   const selectTicket = (ticket) => {
     setSelectedTicket(ticket);
@@ -63,14 +74,43 @@ export const MyTickets = () => {
       rating: { completed: true },
       skmCompleted: true
     });
-    alert('Terima kasih! Konfirmasi pengisian survei SKM MenPAN-RB berhasil dicatat.');
+    setModalConfig({
+      isOpen: true,
+      type: 'success',
+      title: 'Survei SKM Berhasil Dicatat',
+      message: 'Terima kasih atas partisipasi Anda! Konfirmasi pengisian Survei Kepuasan Masyarakat (SKM) MenPAN-RB telah berhasil dicatat ke dalam sistem.',
+      confirmText: 'Tutup & Selesai',
+      cancelText: '',
+      onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+    });
   };
 
-  const handleDisputeTicket = (id, reason) => {
+  const handlePreDisputeTicket = (id, reason) => {
     if (!reason.trim()) {
-      alert('Harap isi alasan sanggahan terlebih dahulu!');
+      setModalConfig({
+        isOpen: true,
+        type: 'warning',
+        title: 'Alasan Sanggahan Belum Diisi',
+        message: 'Mohon cantumkan rincian alasan sanggahan sebelum mengirimkan permohonan evaluasi ulang.',
+        confirmText: 'Lengkapi Alasan',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
       return;
     }
+
+    setModalConfig({
+      isOpen: true,
+      type: 'warning',
+      title: 'Konfirmasi Sanggahan Hasil Layanan',
+      message: 'Apakah Anda yakin ingin menyanggah hasil pekerjaan ini? Status tiket akan dialihkan kembali menjadi Pending/Ditangguhkan untuk dievaluasi ulang oleh tim pelaksana teknis.',
+      confirmText: 'Ya, Ajukan Sanggahan',
+      cancelText: 'Periksa Kembali',
+      onConfirm: () => executeDisputeTicket(id, reason)
+    });
+  };
+
+  const executeDisputeTicket = (id, reason) => {
     const updatedTickets = tickets.map(t => {
       if (t.id === id) {
         const cleanedLogs = (t.logs || []).filter(l => !l.text.includes('Menunggu konfirmasi'));
@@ -87,10 +127,17 @@ export const MyTickets = () => {
     });
     setTickets(updatedTickets);
     setSelectedTicket(updatedTickets.find(t => t.id === id));
-    setShowSurvey(false);
     setShowDisputeForm(false);
     setDisputeReason('');
-    alert('Sanggahan berhasil dikirim! Status tiket diubah kembali menjadi Pending untuk ditinjau pegawai.');
+    setModalConfig({
+      isOpen: true,
+      type: 'success',
+      title: 'Sanggahan Berhasil Diajukan',
+      message: 'Sanggahan hasil pengerjaan berhasil dikirim. Tim teknis pelaksana akan meninjau catatan Anda dan menindaklanjuti perbaikan yang diperlukan.',
+      confirmText: 'Selesai & Tutup',
+      cancelText: '',
+      onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+    });
   };
 
   const handleNextSurveyStep = () => {
@@ -127,9 +174,15 @@ export const MyTickets = () => {
 
     setTickets(updatedTickets);
     setSelectedTicket(updatedTickets.find(t => t.id === selectedTicket.id));
-    setShowSurvey(false);
-    setSurveyStep(1);
-    alert('Survei SKM & Rating berhasil dikirimkan! Terima kasih atas penilaian dan masukan Anda.');
+    setModalConfig({
+      isOpen: true,
+      type: 'success',
+      title: 'Survei SKM & Rating Berhasil',
+      message: 'Survei Kepuasan Masyarakat dan penilaian ulasan Anda berhasil dikirimkan. Terima kasih atas masukan berharga Anda bagi peningkatan kualitas layanan SPBE.',
+      confirmText: 'Tutup & Selesai',
+      cancelText: '',
+      onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+    });
   };
 
   const renderStars = (rating, setRating) => {
@@ -480,7 +533,7 @@ export const MyTickets = () => {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleDisputeTicket(selectedTicket.id, disputeReason)}
+                          onClick={() => handlePreDisputeTicket(selectedTicket.id, disputeReason)}
                           className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-all cursor-pointer"
                         >
                           Kirim Sanggahan
@@ -570,6 +623,17 @@ export const MyTickets = () => {
         onClose={() => setShowSkmModal(false)}
         ticket={selectedTicket}
         onConfirm={handleConfirmSkm}
+      />
+
+      <ActionModal
+        isOpen={modalConfig.isOpen}
+        onClose={() => setModalConfig(prev => ({ ...prev, isOpen: false }))}
+        type={modalConfig.type}
+        title={modalConfig.title}
+        message={modalConfig.message}
+        confirmText={modalConfig.confirmText}
+        cancelText={modalConfig.cancelText}
+        onConfirm={modalConfig.onConfirm}
       />
     </div>
   );

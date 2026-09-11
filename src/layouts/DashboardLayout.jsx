@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { ActionModal } from '../components/ActionModal';
 import { 
   LayoutDashboard, 
   Users, 
@@ -23,8 +24,14 @@ export const DashboardLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [showRoleSelector, setShowRoleSelector] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const handleLogout = () => {
+    setShowLogoutConfirm(true);
+  };
+
+  const handleConfirmLogout = () => {
+    setShowLogoutConfirm(false);
     logout();
     navigate('/');
   };
@@ -312,6 +319,17 @@ export const DashboardLayout = () => {
           <Outlet />
         </main>
       </div>
+
+      <ActionModal
+        isOpen={showLogoutConfirm}
+        onClose={() => setShowLogoutConfirm(false)}
+        type="danger"
+        title="Konfirmasi Keluar Sistem"
+        message="Apakah Anda yakin ingin keluar dari sesi akun ini? Anda akan diminta melakukan autentikasi 2FA Google Authenticator saat ingin masuk kembali ke dasbor."
+        confirmText="Ya, Keluar Akun"
+        cancelText="Batal"
+        onConfirm={handleConfirmLogout}
+      />
     </div>
   );
 };

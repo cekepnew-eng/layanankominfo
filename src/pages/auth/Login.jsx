@@ -42,6 +42,20 @@ export const Login = () => {
     setShowOtpModal(true);
   };
 
+  useEffect(() => {
+    if (showOtpModal) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, [showOtpModal]);
+
   const handleGmailSubmit = (e) => {
     if (e) e.preventDefault();
     if (!identifier.trim()) {
@@ -275,55 +289,56 @@ export const Login = () => {
       </div>
 
       {showOtpModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white max-w-md w-full rounded-3xl p-8 border border-slate-100 shadow-2xl space-y-6 text-left animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-hidden animate-in fade-in duration-200 font-sans">
+          <div className="relative bg-white max-w-md sm:max-w-lg w-full rounded-3xl p-6 sm:p-8 border border-slate-100 shadow-2xl space-y-5 text-left animate-in zoom-in-95 duration-200">
 
             {otpStep === 1 && (
               <>
                 <div className="space-y-2">
-                  <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center border border-indigo-100/60 mb-3">
+                  <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center border border-indigo-100/60 mb-1">
                     <QrCode className="w-6 h-6 text-indigo-600" />
                   </div>
-                  <h3 className="text-2xl font-black text-slate-900 tracking-tight">Daftarkan Perangkat 2FA</h3>
-                  <p className="text-slate-500 text-sm leading-relaxed">
+                  <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight leading-tight">Daftarkan Perangkat 2FA</h3>
+                  <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
                     Buka aplikasi <strong className="text-slate-800">Google Authenticator</strong> di ponsel Anda, lalu pindai QR code di bawah ini untuk mendaftarkan akun.
                   </p>
                 </div>
 
-                <div className="flex flex-col items-center gap-3">
-                  <div className="p-3 bg-white border-2 border-slate-200 rounded-2xl shadow-sm">
-                    {qrData.qrUrl ? (
-                      <img src={qrData.qrUrl} alt="QR Google Authenticator" className="w-48 h-48 object-contain" />
-                    ) : (
-                      <div className="w-48 h-48 flex items-center justify-center text-slate-400 text-xs">Memuat QR...</div>
-                    )}
+                <div className="flex flex-col items-center gap-2.5 pt-1">
+                  <div className="p-3 bg-white border border-slate-200 rounded-2xl shadow-xs">
+                    <img 
+                      src={qrData.qrUrl || '/google_authenticator_qr.png'} 
+                      onError={(e) => { e.target.src = '/google_authenticator_qr.png'; }}
+                      alt="QR Google Authenticator" 
+                      className="w-48 h-48 sm:w-52 sm:h-52 object-contain" 
+                    />
                   </div>
-                  <p className="text-xs text-slate-500 text-center">Tidak bisa scan? Masukkan kode manual:</p>
-                  <div className="flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-xl border border-slate-200">
-                    <code className="text-sm font-black text-slate-800 tracking-widest">{qrData.secretFormatted}</code>
+                  <p className="text-xs sm:text-sm text-slate-500 font-medium text-center">Tidak bisa scan? Masukkan kode manual:</p>
+                  <div className="flex items-center gap-2.5 px-4 py-1.5 bg-slate-100 rounded-xl border border-slate-200">
+                    <code className="text-sm font-black text-slate-800 tracking-wider font-mono">{qrData.secretFormatted}</code>
                     <button
                       type="button"
                       onClick={() => navigator.clipboard?.writeText(qrData.secret || '')}
-                      className="text-slate-400 hover:text-sky-600 transition-all"
+                      className="text-slate-400 hover:text-sky-600 transition-all cursor-pointer p-0.5"
                       title="Salin kode"
                     >
-                      <Copy className="w-3.5 h-3.5" />
+                      <Copy className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
 
-                <div className="flex gap-3">
+                <div className="flex gap-3 pt-2">
                   <button
                     type="button"
                     onClick={() => setShowOtpModal(false)}
-                    className="flex-1 py-3 px-4 border border-slate-200 hover:bg-slate-50 rounded-xl text-base font-extrabold text-slate-700 transition-all"
+                    className="flex-1 py-3 px-5 border border-slate-200 hover:bg-slate-50 rounded-xl text-sm sm:text-base font-bold text-slate-700 transition-all cursor-pointer"
                   >
                     Batal
                   </button>
                   <button
                     type="button"
                     onClick={() => { setOtpError(''); setOtpStep(2); }}
-                    className="flex-1 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-base font-extrabold transition-all"
+                    className="flex-1 py-3 px-5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md shadow-indigo-500/20 cursor-pointer"
                   >
                     Lanjut &rarr;
                   </button>
@@ -334,18 +349,18 @@ export const Login = () => {
             {otpStep === 2 && (
               <>
                 <div className="space-y-2">
-                  <div className="w-12 h-12 bg-sky-50 rounded-2xl flex items-center justify-center border border-sky-100/60 mb-3">
+                  <div className="w-12 h-12 bg-sky-50 rounded-2xl flex items-center justify-center border border-sky-100/60 mb-1">
                     <ShieldCheck className="w-6 h-6 text-sky-600" />
                   </div>
-                  <h3 className="text-2xl font-black text-slate-900 tracking-tight">Verifikasi 2FA</h3>
-                  <p className="text-slate-500 text-sm leading-relaxed">
+                  <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight leading-tight">Verifikasi 2FA</h3>
+                  <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
                     Buka <strong className="text-slate-800">Google Authenticator</strong> dan masukkan 6-digit kode yang tampil untuk akun <strong className="text-slate-800">SPBE Diskominfo</strong>.
                   </p>
                 </div>
 
                 <form onSubmit={handleOtpVerify} className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="block text-xs font-bold text-slate-550 uppercase tracking-wider">Kode OTP 6-Digit</label>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Kode OTP 6-Digit</label>
                     <input
                       type="text"
                       required
@@ -354,31 +369,31 @@ export const Login = () => {
                       onChange={(e) => { setOtpCode(e.target.value); setOtpError(''); }}
                       placeholder="Contoh: 123456"
                       autoFocus
-                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-lg font-black tracking-widest text-center focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500"
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-xl sm:text-2xl font-black tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                     />
                   </div>
 
                   {otpError && (
-                    <p className="text-sm font-bold text-rose-600 bg-rose-50 border border-rose-100 p-3.5 rounded-xl">
+                    <p className="text-xs sm:text-sm font-bold text-rose-600 bg-rose-50 border border-rose-100 p-3 rounded-xl">
                       {otpError}
                     </p>
                   )}
 
-                  <div className="bg-sky-50 text-sky-850 p-4 rounded-xl border border-sky-100 text-sm leading-relaxed font-semibold">
+                  <div className="bg-sky-50 text-sky-850 p-3 rounded-xl border border-sky-100 text-xs sm:text-sm leading-relaxed font-semibold">
                     Demo prototipe: masukkan kode <strong className="text-sky-950 font-black">123456</strong>
                   </div>
 
-                  <div className="flex gap-3">
+                  <div className="flex gap-3 pt-2">
                     <button
                       type="button"
                       onClick={() => setOtpStep(1)}
-                      className="flex-1 py-3 px-4 border border-slate-200 hover:bg-slate-50 rounded-xl text-base font-extrabold text-slate-700 transition-all"
+                      className="flex-1 py-3 px-5 border border-slate-200 hover:bg-slate-50 rounded-xl text-sm sm:text-base font-bold text-slate-700 transition-all cursor-pointer"
                     >
                       &larr; Kembali
                     </button>
                     <button
                       type="submit"
-                      className="flex-1 py-3 px-4 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-base font-extrabold transition-all"
+                      className="flex-1 py-3 px-5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md shadow-sky-500/20 cursor-pointer"
                     >
                       Verifikasi &amp; Masuk
                     </button>
