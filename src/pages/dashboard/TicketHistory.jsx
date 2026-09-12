@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { getCurrentLogTimeFormatted, formatLogDateDisplay } from '../../utils/dateUtils';
 import { TicketDetailModal } from '../../components/TicketDetailModal';
 import { api } from '../../services/api';
+import { ActionModal } from '../../components/ActionModal';
 import { 
   FileText, 
   Search, 
@@ -145,6 +146,18 @@ export const TicketHistory = () => {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const bastInputRef = useRef(null);
 
+  const [modalConfig, setModalConfig] = useState({
+    isOpen: false,
+    type: 'confirm',
+    title: '',
+    message: '',
+    confirmText: 'Lanjutkan',
+    cancelText: 'Batal',
+    onConfirm: null
+  });
+
+  const closeModal = () => setModalConfig(prev => ({ ...prev, isOpen: false }));
+
   const handleBastFileChange = (e) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -170,50 +183,135 @@ export const TicketHistory = () => {
     document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleUpdateProgress = async (ticketId) => {
+  const executeUpdateProgress = async (ticketId) => {
+    const autoLogText = isFinished
+      ? (progressNote.trim() || (fileName ? 'Pekerjaan teknis selesai dikerjakan 100% oleh Pegawai dan berkas BAST telah diunggah.' : 'Pekerjaan teknis selesai dikerjakan 100% oleh Pegawai.'))
+      : (progressNote.trim() || 'Pekerjaan teknis sedang diproses dan dikerjakan oleh Pegawai Tim Pelaksana.');
+
     try {
       await api.updateProgress(ticketId, { progress: isFinished ? 100 : tempProgress });
-      alert(isFinished ? 'Tugas berhasil diselesaikan 100%!' : 'Progres pekerjaan berhasil diperbarui!');
-      loadTickets();
+      loadTickets(); // Refresh from DB
+      setProgressNote('');
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: isFinished ? 'Tugas Berhasil Diselesaikan' : 'Progres Berhasil Diperbarui',
+        message: isFinished 
+          ? (fileName ? 'Pekerjaan teknis telah selesai 100% dan berkas BAST telah diunggah. Pemohon dapat mengisi survei SKM.' : 'Pekerjaan teknis telah selesai 100%! Pemohon dapat mengisi survei SKM.')
+          : 'Catatan progres pekerjaan berhasil disimpan ke dalam log riwayat tiket.',
+        confirmText: 'Selesai & Tutup',
+        onConfirm: closeModal
+      });
       setSelectedTicket(null);
     } catch (err) {
       alert('Gagal update progress: ' + err.message);
     }
   };
 
+  const handleUpdateProgress = (ticketId) => {
+    if (isFinished) {
+      setModalConfig({
+        isOpen: true,
+        type: 'confirm',
+        title: 'Konfirmasi Penyelesaian Tugas',
+        message: 'Apakah Anda yakin pekerjaan teknis untuk tiket ini telah selesai dikerjakan 100%?',
+        confirmText: 'Ya, Selesaikan Tugas',
+        cancelText: 'Periksa Kembali',
+        onConfirm: () => {
+          closeModal();
+          executeUpdateProgress(ticketId);
+        }
+      });
+    } else {
+      executeUpdateProgress(ticketId);
+    }
+  };
+
   const handleConfirmAndRate = async (ticketId) => {
     try {
       await api.submitFeedback(ticketId, { rating: rateOverall, comment: rateComment });
-      alert('Terima kasih! Tiket berhasil dikonfirmasi dan ulasan Anda telah dikirim.');
-      loadTickets();
+      loadTickets(); // Refresh from DB
+
+      if (ratings && setRatings) {
+        const newRating = {
+          id: ratings.length + 1,
+          name: user.department || 'Dinas Kesehatan Kota Bogor',
+          rating: rateOverall,
+          service: selectedTicket.service,
+          comment: rateComment,
+          status: 'Selesai (On SLA)',
+          selectedForLanding: false,
+          aspects: {
+            speed: rateSpeed,
+            result: rateResult,
+            communication: rateComm,
+            quality: rateQuality
+          }
+        };
+        setRatings([newRating, ...ratings]);
+      }
+
+      setRateOverall(5);
+      setRateSpeed(5);
+      setRateResult(5);
+      setRateComm(5);
+      setRateQuality(5);
+      setRateComment('');
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: 'Ulasan Berhasil Dikirim',
+        message: 'Terima kasih atas penilaian Anda! Tiket berhasil dikonfirmasi dan ulasan telah disimpan ke sistem.',
+        confirmText: 'Selesai & Tutup',
+        onConfirm: closeModal
+      });
       setSelectedTicket(null);
     } catch (err) {
       alert('Gagal mengirim feedback: ' + err.message);
     }
   };
 
-  const handleApprove = async (ticketId) => {
+  const executeApprove = async (ticketId) => {
     try {
       await api.verifyTicket(ticketId);
       await api.assignTicket(ticketId, { team_id: null, user_id: null });
-      alert('Tiket berhasil disetujui dan dialihkan ke tim pelaksana!');
-      loadTickets();
+      loadTickets(); // Refresh from DB
       setSelectedTicket(null);
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: 'Permohonan Berhasil Diverifikasi',
+        message: `Tiket berhasil disetujui dan dialihkan ke status Diproses untuk dikerjakan oleh ${selectedTeam || 'Tim Teknis'}.`,
+        confirmText: 'Selesai & Tutup',
+        onConfirm: closeModal
+      });
     } catch (err) {
       alert('Gagal menyetujui tiket: ' + err.message);
     }
   };
 
-  const handleReject = (ticketId) => {
-    if (!rejectReason.trim()) {
-      alert('Silakan isi alasan penangguhan terlebih dahulu.');
-      return;
-    }
+  const handleApprove = (ticketId) => {
+    setModalConfig({
+      isOpen: true,
+      type: 'confirm',
+      title: 'Konfirmasi Verifikasi Permohonan',
+      message: `Apakah berkas permohonan telah memenuhi syarat dan siap diteruskan kepada ${selectedTeam || 'Tim Teknis'}?`,
+      confirmText: 'Ya, Setujui & Teruskan',
+      cancelText: 'Batal',
+      onConfirm: () => {
+        closeModal();
+        executeApprove(ticketId);
+      }
+    });
+  };
+
+  const executeReject = (ticketId) => {
+    const reasonText = rejectReason.trim();
     setTickets(prev => prev.map(t => {
       if (t.id === ticketId) {
         const stage2RejectLog = {
           date: getCurrentLogTimeFormatted(0),
-          text: `Permohonan diverifikasi & ditangguhkan oleh Helpdesk. Alasan: ${rejectReason.trim()}`
+          text: `Permohonan diverifikasi & ditangguhkan oleh Helpdesk. Alasan: ${reasonText}`
         };
         return {
           ...t,
@@ -229,7 +327,41 @@ export const TicketHistory = () => {
     setSelectedTicket(null);
     setRejectReason('');
     setShowRejectForm(false);
-    alert('Tiket berhasil dipending.');
+    setModalConfig({
+      isOpen: true,
+      type: 'success',
+      title: 'Tiket Berhasil Ditangguhkan',
+      message: 'Status tiket berhasil diubah menjadi Pending dan catatan perbaikan telah diteruskan ke pemohon.',
+      confirmText: 'Selesai & Tutup',
+      onConfirm: closeModal
+    });
+  };
+
+  const handleReject = (ticketId) => {
+    if (user?.role !== 'helpdesk') return;
+    if (!rejectReason.trim()) {
+      setModalConfig({
+        isOpen: true,
+        type: 'warning',
+        title: 'Alasan Penangguhan Wajib Diisi',
+        message: 'Silakan isi kolom alasan penangguhan terlebih dahulu untuk memberikan instruksi yang jelas kepada pemohon.',
+        confirmText: 'Tutup & Lengkapi',
+        onConfirm: closeModal
+      });
+      return;
+    }
+    setModalConfig({
+      isOpen: true,
+      type: 'warning',
+      title: 'Konfirmasi Penangguhan Tiket',
+      message: 'Apakah Anda yakin ingin menangguhkan tiket ini? Pemohon akan diminta untuk memperbaiki atau melengkapi berkas permohonan.',
+      confirmText: 'Ya, Tangguhkan Tiket',
+      cancelText: 'Batal',
+      onConfirm: () => {
+        closeModal();
+        executeReject(ticketId);
+      }
+    });
   };
 
   const getRoleTabs = () => {
@@ -666,11 +798,12 @@ export const TicketHistory = () => {
 
 
 
-              {(user?.role === 'helpdesk' || user?.role === 'admin') && (selectedTicket.status === 'Verifikasi' || selectedTicket.status === 'Pending') && (
+              {((user?.role === 'helpdesk' && (selectedTicket.status === 'Verifikasi' || selectedTicket.status === 'Pending')) || 
+                (user?.role === 'admin' && selectedTicket.status === 'Verifikasi')) && (
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4 text-left">
                   <div className="flex justify-between items-center">
                     <h4 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider">
-                      {selectedTicket.status === 'Pending' ? 'Tindakan Validasi Tiket Pending' : 'Tindakan Validasi Helpdesk'}
+                      {selectedTicket.status === 'Pending' ? 'Tindakan Validasi Tiket Pending' : (user?.role === 'admin' ? 'Tindakan Penugasan Tim' : 'Tindakan Validasi Helpdesk')}
                     </h4>
                     {selectedTicket.status === 'Pending' && (
                       <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-black uppercase tracking-wider">
@@ -715,16 +848,18 @@ export const TicketHistory = () => {
                       <div className="flex gap-3">
                         <button 
                           onClick={() => handleApprove(selectedTicket.id)}
-                          className="flex-1 px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm font-bold transition-all"
+                          className="flex-1 px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm font-bold transition-all cursor-pointer"
                         >
                           {selectedTicket.status === 'Pending' ? 'Setujui & Lanjutkan Tiket' : 'Setujui & Tugaskan'}
                         </button>
-                        <button 
-                          onClick={() => setShowRejectForm(true)}
-                          className="px-4 py-2.5 border border-amber-200 hover:bg-amber-50 hover:border-amber-300 text-amber-600 rounded-xl text-sm font-bold transition-all"
-                        >
-                          {selectedTicket.status === 'Pending' ? 'Perbarui Alasan Pending' : 'Pending'}
-                        </button>
+                        {user?.role === 'helpdesk' && (
+                          <button 
+                            onClick={() => setShowRejectForm(true)}
+                            className="px-4 py-2.5 border border-amber-200 hover:bg-amber-50 hover:border-amber-300 text-amber-600 rounded-xl text-sm font-bold transition-all cursor-pointer"
+                          >
+                            {selectedTicket.status === 'Pending' ? 'Perbarui Alasan Pending' : 'Pending'}
+                          </button>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -778,24 +913,42 @@ export const TicketHistory = () => {
                   <button
                     type="button"
                     onClick={() => {
-                      const updated = tickets.map(t => {
-                        if (t.id === selectedTicket.id) {
-                          return {
-                            ...t,
-                            status: 'Diproses',
-                            logs: [
-                              { date: getCurrentLogTimeFormatted(0), text: 'Pegawai memulai kembali perbaikan pekerjaan teknis pasca sanggahan pemohon.' },
-                              ...(t.logs || [])
-                            ]
-                          };
+                      setModalConfig({
+                        isOpen: true,
+                        type: 'confirm',
+                        title: 'Mulai Kerjakan Kembali Tiket',
+                        message: 'Apakah Anda yakin ingin mengaktifkan kembali tiket ini ke status Diproses untuk menindaklanjuti perbaikan teknis?',
+                        confirmText: 'Ya, Mulai Kerjakan',
+                        cancelText: 'Batal',
+                        onConfirm: () => {
+                          const updated = tickets.map(t => {
+                            if (t.id === selectedTicket.id) {
+                              return {
+                                ...t,
+                                status: 'Diproses',
+                                logs: [
+                                  { date: getCurrentLogTimeFormatted(0), text: 'Pegawai memulai kembali perbaikan pekerjaan teknis pasca sanggahan pemohon.' },
+                                  ...(t.logs || [])
+                                ]
+                              };
+                            }
+                            return t;
+                          });
+                          setTickets(updated);
+                          setSelectedTicket(updated.find(t => t.id === selectedTicket.id));
+                          setModalConfig({
+                            isOpen: true,
+                            type: 'success',
+                            title: 'Tiket Berhasil Diaktifkan Kembali',
+                            message: 'Tiket telah kembali ke status Diproses. Anda dapat memperbarui progress dan menyelesaikan perbaikan layanan.',
+                            confirmText: 'Selesai & Tutup',
+                            cancelText: '',
+                            onConfirm: closeModal
+                          });
                         }
-                        return t;
                       });
-                      setTickets(updated);
-                      setSelectedTicket(updated.find(t => t.id === selectedTicket.id));
-                      alert('Tiket berhasil diaktifkan kembali! Silakan lanjutkan pekerjaan teknis.');
                     }}
-                    className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-sm font-bold transition-all shadow-sm shadow-rose-500/10"
+                    className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-sm font-bold transition-all shadow-sm shadow-rose-500/10 cursor-pointer"
                   >
                     Mulai Kerjakan Kembali Tiket Ini
                   </button>
@@ -1039,6 +1192,17 @@ export const TicketHistory = () => {
         isOpen={showDetailModal} 
         onClose={() => setShowDetailModal(false)} 
         ticket={selectedTicket} 
+      />
+
+      <ActionModal
+        isOpen={modalConfig.isOpen}
+        onClose={closeModal}
+        type={modalConfig.type}
+        title={modalConfig.title}
+        message={modalConfig.message}
+        confirmText={modalConfig.confirmText}
+        cancelText={modalConfig.cancelText}
+        onConfirm={modalConfig.onConfirm}
       />
     </div>
   );

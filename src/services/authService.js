@@ -1,49 +1,38 @@
-/**
- * Layanan Autentikasi 2FA (Google Authenticator)
- * File service ini dirancang modular dan siap dihubungkan langsung ke API backend.
- */
+import QRCode from 'qrcode';
 
-const TOTP_ISSUER = 'SPBE%20Diskominfo%20Kota%20Bogor';
+const TOTP_ISSUER = 'Diskominfo Kota Bogor';
 const TOTP_SECRET = 'JBSWY3DPEHPK3PXP';
 
-const buildQrUrl = (email) => {
-  const encoded = encodeURIComponent(email);
-  const label = `SPBE%20Diskominfo%3A${encoded}`;
-  const params = `secret%3D${TOTP_SECRET}%26issuer%3D${TOTP_ISSUER}`;
-  return `https://chart.googleapis.com/chart?chs=200x200&cht=qr&chl=otpauth%3A%2F%2Ftotp%2F${label}%3F${params}`;
-};
-
 export const authService = {
-  /**
-   * Mengambil QR Code URL & Secret Key untuk pendaftaran Google Authenticator
-   * Siap dihubungkan ke: GET /api/auth/2fa/setup?email=...
-   */
-  getOtpSecret: async (email) => {
-    // Saat backend siap, ganti dengan:
-    // const response = await fetch(`/api/auth/2fa/setup?email=${encodeURIComponent(email)}`);
-    // return await response.json();
+  getOtpSecret: async (email = 'mortazaaazkaa2509@gmail.com') => {
+    const userEmail = (email && typeof email === 'string') ? email.trim() : 'mortazaaazkaa2509@gmail.com';
+    const totpUri = `otpauth://totp/${encodeURIComponent(TOTP_ISSUER)}:${encodeURIComponent(userEmail)}?secret=${TOTP_SECRET}&issuer=${encodeURIComponent(TOTP_ISSUER)}&algorithm=SHA1&digits=6&period=30`;
+
+    let dynamicQr = '/google_authenticator_qr.png';
+    try {
+      dynamicQr = await QRCode.toDataURL(totpUri, {
+        width: 360,
+        margin: 2,
+        color: {
+          dark: '#0f172a',
+          light: '#ffffff'
+        },
+        errorCorrectionLevel: 'M'
+      });
+    } catch (err) {
+      dynamicQr = '/google_authenticator_qr.png';
+    }
 
     return {
       secret: TOTP_SECRET,
       secretFormatted: 'JBSWY 3DPE HPK3 PXP',
-      qrUrl: buildQrUrl(email || 'user@example.com'),
+      qrUrl: dynamicQr,
+      totpUri: totpUri
     };
   },
 
-  /**
-   * Memvalidasi kode 6-digit TOTP dari Google Authenticator
-   * Siap dihubungkan ke: POST /api/auth/2fa/verify
-   */
   verifyOtp: async (email, code) => {
-    // Saat backend siap, ganti dengan:
-    // const response = await fetch('/api/auth/2fa/verify', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ email, code })
-    // });
-    // return await response.json();
-
     const isValid = code === '123456' || (code && code.length === 6 && /^\d+$/.test(code));
     return { success: isValid };
-  },
+  }
 };

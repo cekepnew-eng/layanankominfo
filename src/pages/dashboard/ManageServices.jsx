@@ -3,6 +3,7 @@ import { Edit2, Trash2, Eye, X, Search, FileText, FileCheck, Upload, ExternalLin
 import { useAuth } from '../../context/AuthContext';
 import { SopModal } from '../../components/SopModal';
 import { api } from '../../services/api';
+import { ActionModal } from '../../components/ActionModal';
 
 const getServiceFormFields = (serviceName, template) => {
   if (template === 'aplikasi') {
@@ -186,7 +187,29 @@ export const ManageServices = () => {
   const [editRequiresHelpdesk, setEditRequiresHelpdesk] = useState(true);
   const [editStatus, setEditStatus] = useState('Aktif');
 
-  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [modalConfig, setModalConfig] = useState({
+    isOpen: false,
+    type: 'confirm',
+    title: '',
+    message: '',
+    confirmText: 'Lanjutkan',
+    cancelText: 'Batal',
+    onConfirm: null
+  });
+
+  useEffect(() => {
+    if (selectedPreviewService || editingService || viewingSop) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, [selectedPreviewService, editingService, viewingSop]);
 
   const categoriesList = [
     'Pengelolaan Aplikasi Informatika',
@@ -281,18 +304,45 @@ export const ManageServices = () => {
       const res = await api.getAdminServices();
       setServices(res.data || []);
       setEditingService(null);
-      alert('Layanan berhasil diperbarui!');
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: 'Perubahan Layanan Disimpan',
+        message: 'Konfigurasi master data layanan SPBE telah berhasil diperbarui.',
+        confirmText: 'Selesai',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
     } catch (err) {
       alert('Gagal memperbarui layanan: ' + err.message);
     }
   };
 
-  const handleDeleteService = async (id) => {
+  const handlePromptDeleteService = (s) => {
+    setModalConfig({
+      isOpen: true,
+      type: 'danger',
+      title: 'Konfirmasi Hapus Layanan SPBE',
+      message: `Apakah Anda yakin ingin menghapus layanan "${s.name}" dari katalog SPBE? Alur pengajuan dan parameter formulir untuk layanan ini akan dinonaktifkan secara permanen.`,
+      confirmText: 'Ya, Hapus Layanan',
+      cancelText: 'Batal',
+      onConfirm: () => executeDeleteService(s.id)
+    });
+  };
+
+  const executeDeleteService = async (id) => {
     try {
       await api.deleteService(id);
       setServices(prev => prev.filter(s => s.id !== id));
-      setDeleteConfirmId(null);
-      alert('Layanan berhasil dihapus!');
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: 'Layanan Berhasil Dihapus',
+        message: 'Master data layanan SPBE telah berhasil dihapus dari sistem.',
+        confirmText: 'Selesai',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
     } catch (err) {
       alert('Gagal menghapus layanan: ' + err.message);
     }
@@ -327,7 +377,15 @@ export const ManageServices = () => {
       setServiceStatus('Aktif');
       setFormTemplate('standar');
       setShowAddForm(false);
-      alert('Layanan berhasil ditambahkan!');
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: 'Layanan SPBE Berhasil Ditambahkan',
+        message: 'Master data layanan SPBE baru telah berhasil ditambahkan ke katalog pelayanan.',
+        confirmText: 'Selesai',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
     } catch (err) {
       alert('Gagal menambah layanan: ' + err.message);
     }
@@ -785,7 +843,7 @@ export const ManageServices = () => {
                               </button>
                               <button 
                                 type="button"
-                                onClick={() => setDeleteConfirmId(s.id)}
+                                onClick={() => handlePromptDeleteService(s)}
                                 className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-all cursor-pointer"
                                 title="Hapus Layanan"
                               >
@@ -805,29 +863,29 @@ export const ManageServices = () => {
       </div>
 
       {selectedPreviewService && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl border border-slate-200 max-w-lg w-full overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200 text-left">
+        <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 overflow-hidden">
+          <div className="bg-white rounded-3xl border border-slate-200 max-w-2xl sm:max-w-3xl w-full overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200 text-left">
             <div className="bg-slate-50 border-b border-slate-100 p-6 flex justify-between items-center">
               <div>
                 <span className="text-xs font-extrabold text-sky-600 uppercase tracking-widest block mb-0.5 font-sans">Konfigurasi & Pratinjau Form</span>
-                <h3 className="text-lg font-black text-slate-800 tracking-tight">{selectedPreviewService.name}</h3>
+                <h3 className="text-xl font-black text-slate-800 tracking-tight">{selectedPreviewService.name}</h3>
               </div>
               <button 
                 onClick={() => setSelectedPreviewService(null)}
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200/50 rounded-xl transition-all cursor-pointer"
+                className="w-8 h-8 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-200/50 flex items-center justify-center transition-all cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
             
             <div className="p-6 space-y-5 max-h-[60vh] overflow-y-auto">
-              <div className="bg-amber-50 border border-amber-200/70 p-4 rounded-2xl text-xs leading-relaxed text-amber-800 font-medium">
-                <span className="font-extrabold uppercase tracking-wide block mb-1">💡 Informasi Best-Practice SPBE:</span>
+              <div className="bg-amber-50 border border-amber-200/70 p-4 rounded-2xl text-xs sm:text-sm leading-relaxed text-amber-800 font-medium">
+                <span className="font-extrabold uppercase tracking-wide block mb-1 text-xs">💡 Informasi Best-Practice SPBE:</span>
                 Setiap layanan SPBE memiliki form dinamis sesuai SOP. Pratinjau berikut menampilkan rancangan kolom formulir yang akan diisi pemohon ({selectedPreviewService.fieldCount || getServiceFormFields(selectedPreviewService.name, selectedPreviewService.template).length || 4} Field).
               </div>
 
-              <div className="space-y-4 bg-slate-50/50 border border-slate-200/60 p-5 rounded-2xl">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block border-b border-slate-100 pb-2 mb-3">
+              <div className="space-y-4 bg-slate-50/70 border border-slate-200/80 p-5 rounded-2xl">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block border-b border-slate-200/60 pb-2 mb-3">
                   Tampilan Formulir Pemohon ({selectedPreviewService.fieldCount || getServiceFormFields(selectedPreviewService.name, selectedPreviewService.template).length || 4} Field)
                 </span>
                 {(() => {
@@ -848,7 +906,7 @@ export const ManageServices = () => {
 
                   return displayFields.map((field, index) => (
                     <div key={index} className="space-y-1.5">
-                      <label className="text-sm font-bold text-slate-700 block">{field.label}</label>
+                      <label className="text-xs sm:text-sm font-bold text-slate-700 block">{field.label}</label>
                       {field.type === 'textarea' ? (
                         <textarea 
                           disabled
@@ -867,8 +925,8 @@ export const ManageServices = () => {
                         </select>
                       ) : field.type === 'file' ? (
                         <div className="w-full flex items-center justify-between px-4 py-2.5 bg-white border border-dashed border-slate-350 rounded-xl text-sm text-slate-450 cursor-not-allowed">
-                          <span className="font-semibold text-slate-400">{field.label} (PDF, Maks 5MB)</span>
-                          <span className="text-xs font-bold text-sky-600 bg-sky-50 px-2 py-1 rounded-md border border-sky-100">Upload Dokumen</span>
+                          <span className="font-semibold text-slate-500">{field.label} (PDF, Maks 5MB)</span>
+                          <span className="text-xs font-bold text-sky-600 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-100">Upload Dokumen</span>
                         </div>
                       ) : (
                         <input 
@@ -887,7 +945,7 @@ export const ManageServices = () => {
             <div className="bg-slate-50 border-t border-slate-100 p-5 flex justify-end gap-3">
               <button 
                 onClick={() => setSelectedPreviewService(null)}
-                className="px-5 py-2.5 bg-slate-200 hover:bg-slate-350 text-slate-700 rounded-xl text-sm font-bold transition-all cursor-pointer"
+                className="px-6 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-sm font-bold transition-all cursor-pointer"
               >
                 Tutup Pratinjau
               </button>
@@ -897,40 +955,40 @@ export const ManageServices = () => {
       )}
 
       {editingService && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl border border-slate-200 max-w-xl w-full overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200 text-left">
+        <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 overflow-hidden">
+          <div className="bg-white rounded-3xl border border-slate-200 max-w-2xl sm:max-w-3xl w-full overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200 text-left">
             <div className="bg-slate-50 border-b border-slate-100 p-6 flex justify-between items-center">
               <div>
                 <span className="text-xs font-extrabold text-sky-600 uppercase tracking-widest block mb-0.5 font-sans">Edit Layanan SPBE</span>
-                <h3 className="text-lg font-black text-slate-800 tracking-tight">{editingService.name}</h3>
+                <h3 className="text-xl font-black text-slate-800 tracking-tight">{editingService.name}</h3>
               </div>
               <button 
                 onClick={() => setEditingService(null)}
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200/50 rounded-xl transition-all cursor-pointer"
+                className="w-8 h-8 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-200/50 flex items-center justify-center transition-all cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
             
-            <form onSubmit={handleSaveEdit} className="p-6 space-y-4">
+            <form onSubmit={handleSaveEdit} className="p-6 space-y-4 max-h-[65vh] overflow-y-auto">
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Nama Layanan</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Nama Layanan</label>
                 <input
                   type="text"
                   required
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold"
+                  className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-semibold"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Kategori Proses Bisnis</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Kategori Proses Bisnis</label>
                   <select
                     value={editCategory}
                     onChange={(e) => setEditCategory(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold"
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm sm:text-base bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-semibold"
                   >
                     {categoriesList.map(cat => (
                       <option key={cat} value={cat}>{cat}</option>
@@ -938,7 +996,7 @@ export const ManageServices = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Jumlah Field Formulir</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Jumlah Field Formulir</label>
                   <input
                     type="number"
                     min="1"
@@ -946,13 +1004,13 @@ export const ManageServices = () => {
                     required
                     value={editFieldCount}
                     onChange={(e) => setEditFieldCount(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold"
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-semibold"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Target Waktu (SLA)</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Target Waktu (SLA)</label>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <div className="relative">
@@ -963,13 +1021,13 @@ export const ManageServices = () => {
                         value={editSlaMin}
                         onChange={(e) => setEditSlaMin(e.target.value)}
                         placeholder="Contoh: 7"
-                        className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold pr-12"
+                        className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-semibold pr-14"
                       />
-                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs sm:text-sm font-bold text-slate-400">
                         Hari
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-400 mt-1">Hari minimal / target pasti</p>
+                    <p className="text-[11px] text-slate-400 mt-1 font-medium">Hari minimal / target pasti</p>
                   </div>
                   <div>
                     <div className="relative">
@@ -979,35 +1037,35 @@ export const ManageServices = () => {
                         value={editSlaMax}
                         onChange={(e) => setEditSlaMax(e.target.value)}
                         placeholder="Contoh: 10 (Opsional)"
-                        className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold pr-12"
+                        className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-semibold pr-14"
                       />
-                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs sm:text-sm font-bold text-slate-400">
                         Hari
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-400 mt-1">Hari maksimal (rentang)</p>
+                    <p className="text-[11px] text-slate-400 mt-1 font-medium">Hari maksimal (rentang)</p>
                   </div>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Verifikasi Helpdesk</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Verifikasi Helpdesk</label>
                   <select
                     value={editRequiresHelpdesk ? 'true' : 'false'}
                     onChange={(e) => setEditRequiresHelpdesk(e.target.value === 'true')}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold"
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm sm:text-base bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-semibold"
                   >
                     <option value="true">Wajib Verifikasi Manual Helpdesk</option>
                     <option value="false">Otomatis Langsung Diproses (Bypass)</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Status Layanan</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Status Layanan</label>
                   <select
                     value={editStatus}
                     onChange={(e) => setEditStatus(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold"
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm sm:text-base bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-semibold"
                   >
                     <option value="Aktif">Aktif</option>
                     <option value="Tahap Pengembangan">Tahap Pengembangan</option>
@@ -1016,28 +1074,28 @@ export const ManageServices = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Unggah Dokumen SOP (PDF)</label>
-                <div className="border border-slate-200 bg-slate-50/80 rounded-2xl p-3 space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-8 h-8 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center shrink-0">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Unggah Dokumen SOP (PDF)</label>
+                <div className="border border-slate-200 bg-slate-50/80 rounded-2xl p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center shrink-0">
                         <FileCheck className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-xs font-bold text-slate-800 truncate">{editSop || 'sop_layanan.pdf'}</p>
-                        <span className="text-[10px] font-bold text-emerald-600">Dokumen PDF Terpasang</span>
+                        <p className="text-xs sm:text-sm font-bold text-slate-800 truncate">{editSop || 'sop_layanan.pdf'}</p>
+                        <span className="text-[11px] font-bold text-emerald-600">Dokumen PDF Terpasang</span>
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => setViewingSop({ name: editName || 'Pratinjau SOP', sop: editSop || 'sop_layanan.pdf' })}
-                      className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer shadow-2xs"
+                      className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer shadow-2xs"
                     >
                       Lihat PDF
                     </button>
                   </div>
-                  <label className="flex items-center justify-center gap-2 py-2 px-3 border border-dashed border-sky-300 hover:border-sky-500 rounded-xl bg-white hover:bg-sky-50/50 cursor-pointer transition-all text-xs font-bold text-sky-700">
-                    <Upload className="w-3.5 h-3.5" />
+                  <label className="flex items-center justify-center gap-2 py-2.5 px-4 border border-dashed border-sky-300 hover:border-sky-500 rounded-xl bg-white hover:bg-sky-50/50 cursor-pointer transition-all text-xs sm:text-sm font-bold text-sky-700">
+                    <Upload className="w-4 h-4" />
                     <span>Ganti / Unggah Berkas PDF SOP</span>
                     <input
                       type="file"
@@ -1055,13 +1113,13 @@ export const ManageServices = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Dokumen yang Harus Disiapkan Pemohon</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Dokumen yang Harus Disiapkan Pemohon</label>
                 <textarea
                   rows={2}
                   value={editRequiredDocs}
                   onChange={(e) => setEditRequiredDocs(e.target.value)}
                   placeholder="Contoh: Surat Permohonan Resmi OPD, KAK / Kerangka Acuan Kerja, Berkas Pendukung"
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-sky-500 font-medium"
+                  className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-medium"
                 />
               </div>
 
@@ -1075,7 +1133,7 @@ export const ManageServices = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl font-bold text-sm transition-all shadow-md cursor-pointer"
+                  className="px-6 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl font-bold text-sm transition-all shadow-md cursor-pointer"
                 >
                   Simpan Perubahan
                 </button>
@@ -1085,35 +1143,16 @@ export const ManageServices = () => {
         </div>
       )}
 
-      {deleteConfirmId && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 max-w-sm w-full p-6 shadow-2xl space-y-4 text-center animate-in fade-in zoom-in duration-150">
-            <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
-              <Trash2 className="w-6 h-6" />
-            </div>
-            <div className="space-y-1">
-              <h4 className="font-extrabold text-slate-800 text-lg">Yakin untuk menghapus?</h4>
-              <p className="text-xs text-slate-500">Layanan ini akan dihapus dari daftar master data SPBE.</p>
-            </div>
-            <div className="flex justify-center gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setDeleteConfirmId(null)}
-                className="px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-xl font-bold text-xs transition-all cursor-pointer"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDeleteService(deleteConfirmId)}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs transition-all cursor-pointer"
-              >
-                Ya, Hapus
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ActionModal
+        isOpen={modalConfig.isOpen}
+        onClose={() => setModalConfig(prev => ({ ...prev, isOpen: false }))}
+        type={modalConfig.type}
+        title={modalConfig.title}
+        message={modalConfig.message}
+        confirmText={modalConfig.confirmText}
+        cancelText={modalConfig.cancelText}
+        onConfirm={modalConfig.onConfirm}
+      />
 
       <SopModal
         isOpen={!!viewingSop}

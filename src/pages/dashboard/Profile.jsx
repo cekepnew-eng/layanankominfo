@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Mail, ShieldCheck, Building, Tag, Info, Activity, Lock, Eye, EyeOff, Check, Briefcase } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { ActionModal } from '../../components/ActionModal';
 
 export const Profile = () => {
   const { user, setUser, users, setUsers, teams } = useAuth();
@@ -14,6 +15,16 @@ export const Profile = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+
+  const [modalConfig, setModalConfig] = useState({
+    isOpen: false,
+    type: 'confirm',
+    title: '',
+    message: '',
+    confirmText: 'Lanjutkan',
+    cancelText: 'Batal',
+    onConfirm: null
+  });
 
   useEffect(() => {
     if (user?.name) {
@@ -50,16 +61,40 @@ export const Profile = () => {
   const handleUpdateProfile = (e) => {
     e.preventDefault();
     if (!nameVal.trim()) {
-      alert('Nama lengkap tidak boleh kosong!');
+      setModalConfig({
+        isOpen: true,
+        type: 'warning',
+        title: 'Nama Pengguna Kosong',
+        message: 'Nama lengkap pengguna wajib diisi dan tidak boleh kosong.',
+        confirmText: 'Lengkapi Nama',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
       return;
     }
     if (newPassword || confirmPassword) {
       if (newPassword.length < 6) {
-        alert('Kata sandi baru minimal 6 karakter!');
+        setModalConfig({
+          isOpen: true,
+          type: 'warning',
+          title: 'Kata Sandi Terlalu Pendek',
+          message: 'Kata sandi baru minimal harus terdiri dari 6 karakter.',
+          confirmText: 'Perbaiki Kata Sandi',
+          cancelText: '',
+          onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+        });
         return;
       }
       if (newPassword !== confirmPassword) {
-        alert('Konfirmasi kata sandi baru tidak cocok!');
+        setModalConfig({
+          isOpen: true,
+          type: 'warning',
+          title: 'Konfirmasi Sandi Tidak Cocok',
+          message: 'Konfirmasi kata sandi baru tidak sesuai dengan kata sandi yang dimasukkan.',
+          confirmText: 'Periksa Kembali',
+          cancelText: '',
+          onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+        });
         return;
       }
     }
@@ -83,6 +118,15 @@ export const Profile = () => {
     setNewPassword('');
     setConfirmPassword('');
     setSuccessMessage('Data profil dan kata sandi berhasil diperbarui!');
+    setModalConfig({
+      isOpen: true,
+      type: 'success',
+      title: 'Profil Berhasil Diperbarui',
+      message: 'Perubahan data profil dan kata sandi akun Anda telah berhasil disimpan.',
+      confirmText: 'Selesai',
+      cancelText: '',
+      onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+    });
     setTimeout(() => setSuccessMessage(''), 4000);
   };
 
@@ -455,6 +499,16 @@ export const Profile = () => {
           </div>
         </div>
       </div>
+      <ActionModal
+        isOpen={modalConfig.isOpen}
+        onClose={() => setModalConfig(prev => ({ ...prev, isOpen: false }))}
+        type={modalConfig.type}
+        title={modalConfig.title}
+        message={modalConfig.message}
+        confirmText={modalConfig.confirmText}
+        cancelText={modalConfig.cancelText}
+        onConfirm={modalConfig.onConfirm}
+      />
     </div>
   );
 };

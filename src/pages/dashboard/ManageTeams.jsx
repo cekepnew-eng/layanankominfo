@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Users, User, Trash2, Edit2, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { ActionModal } from '../../components/ActionModal';
 
 const availableServices = [
   'Pengelolaan Aplikasi Informatika',
@@ -24,18 +25,56 @@ export const ManageTeams = () => {
   const [editSelectedMembers, setEditSelectedMembers] = useState([]);
   const [editSelectedServices, setEditSelectedServices] = useState([]);
 
-  const [deletingTeamId, setDeletingTeamId] = useState(null);
+  useEffect(() => {
+    if (editingTeam) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, [editingTeam]);
+
+  const [modalConfig, setModalConfig] = useState({
+    isOpen: false,
+    type: 'confirm',
+    title: '',
+    message: '',
+    confirmText: 'Lanjutkan',
+    cancelText: 'Batal',
+    onConfirm: null
+  });
 
   const pegawaiList = users ? users.filter(u => u.roles?.includes('pegawai') || u.role === 'pegawai') : [];
 
   const handleAddTeam = (e) => {
     e.preventDefault();
     if (selectedMembers.length === 0) {
-      alert('Harap pilih minimal satu anggota pegawai!');
+      setModalConfig({
+        isOpen: true,
+        type: 'warning',
+        title: 'Anggota Tim Belum Dipilih',
+        message: 'Harap pilih minimal satu orang anggota teknisi pegawai untuk tim kerja ini.',
+        confirmText: 'Lengkapi Anggota',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
       return;
     }
     if (selectedServices.length === 0) {
-      alert('Harap pilih minimal satu cakupan layanan SPBE!');
+      setModalConfig({
+        isOpen: true,
+        type: 'warning',
+        title: 'Cakupan Layanan Belum Dipilih',
+        message: 'Harap pilih minimal satu bidang cakupan layanan SPBE yang ditangani tim ini.',
+        confirmText: 'Pilih Layanan',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
       return;
     }
 
@@ -54,7 +93,15 @@ export const ManageTeams = () => {
     setSelectedMembers([]);
     setSelectedServices([]);
     setShowAddForm(false);
-    alert('Tim kerja baru berhasil ditambahkan.');
+    setModalConfig({
+      isOpen: true,
+      type: 'success',
+      title: 'Tim Kerja Berhasil Dibuat',
+      message: `Tim kerja "${newTeam.name}" telah berhasil didaftarkan ke dalam sistem SPBE.`,
+      confirmText: 'Selesai',
+      cancelText: '',
+      onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+    });
   };
 
   const handleStartEdit = (team) => {
@@ -67,15 +114,39 @@ export const ManageTeams = () => {
 
   const handleSaveEdit = () => {
     if (!editTeamName.trim() || !editLeader) {
-      alert('Nama Tim dan Ketua Tim wajib diisi!');
+      setModalConfig({
+        isOpen: true,
+        type: 'warning',
+        title: 'Data Belum Lengkap',
+        message: 'Nama Tim dan Ketua Tim wajib diisi.',
+        confirmText: 'Lengkapi Data',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
       return;
     }
     if (editSelectedMembers.length === 0) {
-      alert('Harap pilih minimal satu anggota pegawai!');
+      setModalConfig({
+        isOpen: true,
+        type: 'warning',
+        title: 'Anggota Tim Belum Dipilih',
+        message: 'Harap pilih minimal satu orang anggota pegawai untuk tim kerja ini.',
+        confirmText: 'Lengkapi Anggota',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
       return;
     }
     if (editSelectedServices.length === 0) {
-      alert('Harap pilih minimal satu cakupan layanan SPBE!');
+      setModalConfig({
+        isOpen: true,
+        type: 'warning',
+        title: 'Cakupan Layanan Belum Dipilih',
+        message: 'Harap pilih minimal satu cakupan layanan SPBE untuk tim kerja ini.',
+        confirmText: 'Pilih Layanan',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
       return;
     }
 
@@ -93,11 +164,40 @@ export const ManageTeams = () => {
     }));
 
     setEditingTeam(null);
-    alert('Informasi tim kerja berhasil diperbarui!');
+    setModalConfig({
+      isOpen: true,
+      type: 'success',
+      title: 'Informasi Tim Diperbarui',
+      message: 'Perubahan data tim kerja dan cakupan layanannya telah berhasil disimpan.',
+      confirmText: 'Selesai',
+      cancelText: '',
+      onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+    });
   };
 
-  const handleDeleteTeam = (id) => {
+  const handlePromptDeleteTeam = (t) => {
+    setModalConfig({
+      isOpen: true,
+      type: 'danger',
+      title: 'Konfirmasi Hapus Tim Kerja',
+      message: `Apakah Anda yakin ingin menghapus tim kerja "${t.name}"? Penugasan tiket dan pembagian tugas anggota pada tim ini akan dibebaskan.`,
+      confirmText: 'Ya, Hapus Tim',
+      cancelText: 'Batal',
+      onConfirm: () => executeDeleteTeam(t.id)
+    });
+  };
+
+  const executeDeleteTeam = (id) => {
     setTeams(teams.filter(t => t.id !== id));
+    setModalConfig({
+      isOpen: true,
+      type: 'success',
+      title: 'Tim Kerja Berhasil Dihapus',
+      message: 'Tim kerja teknis telah berhasil dihapus dari sistem.',
+      confirmText: 'Selesai',
+      cancelText: '',
+      onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+    });
   };
 
   return (
@@ -288,8 +388,8 @@ export const ManageTeams = () => {
                   <Edit2 className="w-4 h-4" />
                 </button>
                 <button 
-                  onClick={() => setDeletingTeamId(t.id)}
-                  className="p-2 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-all"
+                  onClick={() => handlePromptDeleteTeam(t)}
+                  className="p-2 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-all cursor-pointer"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -300,34 +400,34 @@ export const ManageTeams = () => {
       </div>
 
       {editingTeam && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white max-w-md w-full rounded-3xl p-6 border border-slate-100 shadow-2xl space-y-4 text-left animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-              <h3 className="font-extrabold text-slate-800 text-lg">Edit Tim Kerja</h3>
-              <button onClick={() => setEditingTeam(null)} className="p-1 text-slate-400 hover:text-slate-655 hover:bg-slate-50 rounded-lg transition-all">
+        <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 overflow-hidden">
+          <div className="bg-white max-w-xl sm:max-w-2xl w-full rounded-3xl p-6 sm:p-7 border border-slate-100 shadow-2xl space-y-5 text-left animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <h3 className="font-black text-slate-800 text-xl tracking-tight">Edit Tim Kerja</h3>
+              <button onClick={() => setEditingTeam(null)} className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
             
-            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Nama Tim Kerja</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Nama Tim Kerja</label>
                 <input
                   type="text"
                   required
                   value={editTeamName}
                   onChange={(e) => setEditTeamName(e.target.value)}
-                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm sm:text-base font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Ketua Tim / Koordinator</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Ketua Tim / Koordinator</label>
                 <select
                   required
                   value={editLeader}
                   onChange={(e) => setEditLeader(e.target.value)}
-                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm sm:text-base font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
                 >
                   <option value="">-- Pilih Ketua Tim --</option>
                   {pegawaiList.map(p => (
@@ -337,8 +437,8 @@ export const ManageTeams = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Anggota Pegawai</label>
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2 max-h-48 overflow-y-auto">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Anggota Pegawai</label>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2.5 max-h-48 overflow-y-auto">
                   {pegawaiList.map(p => {
                     const isChecked = editSelectedMembers.includes(p.name);
                     return (
@@ -356,8 +456,8 @@ export const ManageTeams = () => {
                           }}
                           className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
                         />
-                        <label htmlFor={`edit-member-${p.id}`} className="text-xs font-bold text-slate-700 cursor-pointer select-none">
-                          {p.name} <span className="text-[10px] text-slate-400 font-medium">({p.department})</span>
+                        <label htmlFor={`edit-member-${p.id}`} className="text-xs sm:text-sm font-bold text-slate-700 cursor-pointer select-none">
+                          {p.name} <span className="text-xs text-slate-400 font-medium">({p.department})</span>
                         </label>
                       </div>
                     );
@@ -366,8 +466,8 @@ export const ManageTeams = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Cakupan Layanan SPBE</label>
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Cakupan Layanan SPBE</label>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2.5">
                   {availableServices.map(service => {
                     const isChecked = editSelectedServices.includes(service);
                     return (
@@ -385,7 +485,7 @@ export const ManageTeams = () => {
                           }}
                           className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
                         />
-                        <label htmlFor={`edit-service-${service}`} className="text-xs font-bold text-slate-700 cursor-pointer select-none">
+                        <label htmlFor={`edit-service-${service}`} className="text-xs sm:text-sm font-bold text-slate-700 cursor-pointer select-none">
                           {service}
                         </label>
                       </div>
@@ -395,60 +495,36 @@ export const ManageTeams = () => {
               </div>
             </div>
 
-            <div className="flex gap-3 pt-2">
+            <div className="flex gap-3 pt-3 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setEditingTeam(null)}
-                className="flex-1 py-2 px-4 border border-slate-200 hover:bg-slate-50 rounded-xl text-sm font-bold text-slate-700 transition-all"
+                className="flex-1 py-3 px-5 border border-slate-200 hover:bg-slate-50 rounded-xl text-sm sm:text-base font-bold text-slate-700 transition-all cursor-pointer"
               >
                 Batal
               </button>
               <button
                 type="button"
                 onClick={handleSaveEdit}
-                className="flex-1 py-2 px-4 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm font-bold transition-all"
+                className="flex-1 py-3 px-5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md cursor-pointer"
               >
-                Simpan
+                Simpan Perubahan
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {deletingTeamId && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white max-w-sm w-full rounded-3xl p-6 border border-slate-100 shadow-2xl space-y-4 text-center animate-in fade-in zoom-in-95 duration-200">
-            <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center border border-rose-100 mx-auto">
-              <Trash2 className="w-6 h-6" />
-            </div>
-            <div className="space-y-1">
-              <h3 className="font-extrabold text-slate-800 text-lg">Yakin untuk menghapus?</h3>
-              <p className="text-sm text-slate-505">Tindakan ini tidak dapat dibatalkan dan tim kerja pelaksana akan dihapus permanen dari sistem prototype.</p>
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setDeletingTeamId(null)}
-                className="flex-1 py-2 px-4 border border-slate-200 hover:bg-slate-50 rounded-xl text-sm font-bold text-slate-700 transition-all"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  handleDeleteTeam(deletingTeamId);
-                  setDeletingTeamId(null);
-                  alert('Tim kerja berhasil dihapus.');
-                }}
-                className="flex-1 py-2 px-4 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-sm font-bold transition-all"
-              >
-                Hapus
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ActionModal
+        isOpen={modalConfig.isOpen}
+        onClose={() => setModalConfig(prev => ({ ...prev, isOpen: false }))}
+        type={modalConfig.type}
+        title={modalConfig.title}
+        message={modalConfig.message}
+        confirmText={modalConfig.confirmText}
+        cancelText={modalConfig.cancelText}
+        onConfirm={modalConfig.onConfirm}
+      />
     </div>
   );
 };

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Edit2, Trash2, X, Users, Building, Mail, Search, Lock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
+import { ActionModal } from '../../components/ActionModal';
 
 export const ManageUsers = () => {
   const { teams, setTeams, user, setUser } = useAuth();
@@ -32,7 +33,29 @@ export const ManageUsers = () => {
   const [editRolesVal, setEditRolesVal] = useState([]);
   const [editTeamAssignments, setEditTeamAssignments] = useState({});
 
-  const [deletingUserId, setDeletingUserId] = useState(null);
+  const [modalConfig, setModalConfig] = useState({
+    isOpen: false,
+    type: 'confirm',
+    title: '',
+    message: '',
+    confirmText: 'Lanjutkan',
+    cancelText: 'Batal',
+    onConfirm: null
+  });
+
+  useEffect(() => {
+    if (editingUser) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, [editingUser]);
 
   const handleStartEdit = (u) => {
     setEditingUser(u);
@@ -51,7 +74,15 @@ export const ManageUsers = () => {
   const handleToggleRoleCheckbox = (roleKey) => {
     if (editRolesVal.includes(roleKey)) {
       if (editRolesVal.length <= 1) {
-        alert('Pengguna harus memiliki minimal satu peran!');
+        setModalConfig({
+          isOpen: true,
+          type: 'warning',
+          title: 'Peran Tidak Boleh Kosong',
+          message: 'Setiap akun pengguna wajib memiliki minimal satu peran hak akses yang aktif.',
+          confirmText: 'Mengerti',
+          cancelText: '',
+          onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+        });
         return;
       }
       const newRoles = editRolesVal.filter(r => r !== roleKey);
@@ -64,11 +95,30 @@ export const ManageUsers = () => {
     }
   };
 
+  useEffect(() => {
+    if (editingUser) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [editingUser]);
+
   const handleSaveEdit = async () => {
     const assignedTeamIds = Object.keys(editTeamAssignments).filter(id => editTeamAssignments[id]);
 
     if (editRolesVal.includes('pegawai') && assignedTeamIds.length === 0) {
-      alert('Pegawai wajib dimasukkan ke minimal satu tim kerja pelaksana!');
+      setModalConfig({
+        isOpen: true,
+        type: 'warning',
+        title: 'Penugasan Tim Belum Dipilih',
+        message: 'Pengguna dengan peran Pegawai wajib ditugaskan ke minimal satu Tim Kerja Pelaksana Teknis.',
+        confirmText: 'Pilih Tim',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
       return;
     }
 
@@ -95,13 +145,33 @@ export const ManageUsers = () => {
       setTeams(updatedTeams);
 
       setEditingUser(null);
-      alert('Peran pengguna berhasil diperbarui!');
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: 'Peran Berhasil Diperbarui',
+        message: 'Hak akses dan penugasan tim pengguna telah berhasil disesuaikan.',
+        confirmText: 'Selesai',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
     } catch (err) {
       alert('Gagal memperbarui peran: ' + err.message);
     }
   };
 
-  const handleDeleteUser = async (id) => {
+  const handlePromptDeleteUser = (u) => {
+    setModalConfig({
+      isOpen: true,
+      type: 'danger',
+      title: 'Konfirmasi Hapus Pengguna',
+      message: `Apakah Anda yakin ingin menghapus akun "${u.name}" (${u.email}) secara permanen dari sistem? Seluruh hak akses dan keterlibatan tim akan dibatalkan.`,
+      confirmText: 'Ya, Hapus Akun',
+      cancelText: 'Batal',
+      onConfirm: () => executeDeleteUser(u.id)
+    });
+  };
+
+  const executeDeleteUser = async (id) => {
     const userToDelete = users.find(u => u.id === id);
     if (!userToDelete) return;
     try {
@@ -114,7 +184,15 @@ export const ManageUsers = () => {
       })));
       
       await fetchUsers();
-      alert('Pengguna berhasil dihapus!');
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: 'Pengguna Berhasil Dihapus',
+        message: 'Akun pengguna telah berhasil dihapus secara permanen dari sistem.',
+        confirmText: 'Selesai',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
     } catch (err) {
       alert('Gagal menghapus pengguna: ' + err.message);
     }
@@ -244,8 +322,8 @@ export const ManageUsers = () => {
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => setDeletingUserId(u.id)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-all"
+                          onClick={() => handlePromptDeleteUser(u)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-all cursor-pointer"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -260,11 +338,11 @@ export const ManageUsers = () => {
       </div>
 
       {editingUser && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white max-w-md w-full rounded-3xl p-6 border border-slate-100 shadow-2xl space-y-4 text-left animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-              <h3 className="font-extrabold text-slate-800 text-lg">Edit Hak Akses Pengguna</h3>
-              <button onClick={() => setEditingUser(null)} className="p-1 text-slate-400 hover:text-slate-655 hover:bg-slate-50 rounded-lg transition-all">
+        <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 overflow-hidden">
+          <div className="bg-white max-w-lg sm:max-w-xl w-full rounded-3xl p-6 sm:p-7 border border-slate-100 shadow-2xl space-y-5 text-left animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <h3 className="font-black text-slate-900 text-xl tracking-tight">Edit Hak Akses Pengguna</h3>
+              <button onClick={() => setEditingUser(null)} className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -332,16 +410,21 @@ export const ManageUsers = () => {
                           disabled={isDisabled}
                           onChange={() => handleToggleRoleCheckbox(item.key)}
                           className={`w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer ${
-                            isDisabled ? 'opacity-60 cursor-not-allowed' : ''
+                            isDisabled ? 'opacity-40 cursor-not-allowed' : ''
                           }`}
                         />
                         <label 
                           htmlFor={`edit-role-${item.key}`} 
-                          className={`text-xs font-bold text-slate-700 cursor-pointer select-none ${
-                            isDisabled ? 'text-slate-450 cursor-not-allowed' : ''
+                          className={`text-xs font-bold select-none ${
+                            isDisabled ? 'text-slate-400 cursor-not-allowed' : 'text-slate-700 cursor-pointer'
                           }`}
                         >
-                          {item.label} {isDisabled && isChecked && <span className="text-[9px] text-slate-400 font-medium font-mono">(Bawaan / Locked)</span>}
+                          {item.label}
+                          {isDisabled && (
+                            <span className="text-[10px] text-slate-400 ml-1.5 font-normal">
+                              (Permanen)
+                            </span>
+                          )}
                         </label>
                       </div>
                     );
@@ -350,7 +433,7 @@ export const ManageUsers = () => {
               </div>
 
               {editRolesVal.includes('pegawai') && (
-                <div className="space-y-2 pt-1.5 border-t border-slate-100">
+                <div className="space-y-2 pt-1 border-t border-slate-100">
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Penugasan Tim Kerja Pelaksana (Wajib)</label>
                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 space-y-2 max-h-40 overflow-y-auto">
                     {teams.map(t => {
@@ -380,18 +463,18 @@ export const ManageUsers = () => {
               )}
             </div>
 
-            <div className="flex gap-3 pt-2">
+            <div className="flex gap-3 pt-3 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setEditingUser(null)}
-                className="flex-1 py-2 px-4 border border-slate-200 hover:bg-slate-50 rounded-xl text-sm font-bold text-slate-700 transition-all"
+                className="flex-1 py-3 px-5 border border-slate-200 hover:bg-slate-50 rounded-xl text-sm sm:text-base font-bold text-slate-700 transition-all cursor-pointer"
               >
                 Batal
               </button>
               <button
                 type="button"
                 onClick={handleSaveEdit}
-                className="flex-1 py-2 px-4 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm font-bold transition-all"
+                className="flex-1 py-3 px-5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md shadow-sky-500/20 cursor-pointer"
               >
                 Simpan Peran
               </button>
@@ -400,40 +483,16 @@ export const ManageUsers = () => {
         </div>
       )}
 
-      {deletingUserId && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white max-w-sm w-full rounded-3xl p-6 border border-slate-100 shadow-2xl space-y-4 text-center animate-in fade-in zoom-in-95 duration-200">
-            <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center border border-rose-100 mx-auto">
-              <Trash2 className="w-6 h-6" />
-            </div>
-            <div className="space-y-1">
-              <h3 className="font-extrabold text-slate-800 text-lg">Yakin untuk menghapus?</h3>
-              <p className="text-sm text-slate-550">Tindakan ini tidak dapat dibatalkan dan akun pengguna akan dihapus permanen dari sistem prototype.</p>
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setDeletingUserId(null)}
-                className="flex-1 py-2 px-4 border border-slate-200 hover:bg-slate-50 rounded-xl text-sm font-bold text-slate-700 transition-all"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  handleDeleteUser(deletingUserId);
-                  setDeletingUserId(null);
-                  alert('Pengguna berhasil dihapus.');
-                }}
-                className="flex-1 py-2 px-4 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-sm font-bold transition-all"
-              >
-                Hapus
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ActionModal
+        isOpen={modalConfig.isOpen}
+        onClose={() => setModalConfig(prev => ({ ...prev, isOpen: false }))}
+        type={modalConfig.type}
+        title={modalConfig.title}
+        message={modalConfig.message}
+        confirmText={modalConfig.confirmText}
+        cancelText={modalConfig.cancelText}
+        onConfirm={modalConfig.onConfirm}
+      />
     </div>
   );
 };

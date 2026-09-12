@@ -10,19 +10,33 @@ export const TicketDetailModal = ({ isOpen, onClose, ticket }) => {
   const bastUrl = ticket.bastFileUrl || '/bast_selesai.pdf';
   const sopUrl = '/sop_layanan.pdf';
 
+  React.useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, [isOpen]);
+
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 bg-slate-900/65 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-hidden animate-in fade-in duration-200">
       <div 
-        className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-6 text-left"
+        className="relative w-full max-w-3xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden text-left max-h-[92vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 bg-slate-50/80">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-2xl bg-sky-100 text-sky-700 flex items-center justify-center shrink-0 shadow-2xs">
+        <div className="flex items-center justify-between px-7 py-5 border-b border-slate-100 bg-slate-50/90 shrink-0">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="w-11 h-11 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center shrink-0 shadow-xs">
               <FileText className="w-5 h-5" />
             </div>
             <div className="min-w-0">
-              <h3 className="text-lg font-black text-slate-900 tracking-tight leading-tight">
+              <h3 className="text-xl font-black text-slate-900 tracking-tight leading-tight">
                 Formulir Pengajuan Layanan
               </h3>
               <p className="text-xs text-slate-500 font-bold mt-0.5 truncate">
@@ -39,7 +53,7 @@ export const TicketDetailModal = ({ isOpen, onClose, ticket }) => {
           </button>
         </div>
 
-        <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+        <div className="p-6 sm:p-7 space-y-6 max-h-[75vh] overflow-y-auto">
           <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-2xl flex-wrap gap-3">
             <div className="space-y-0.5">
               <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block">Status Permohonan</span>
