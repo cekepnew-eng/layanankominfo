@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getCurrentLogTimeFormatted, formatLogDateDisplay } from '../../utils/dateUtils';
 import { TicketDetailModal } from '../../components/TicketDetailModal';
+import { api } from '../../services/api';
 import { 
   FileText, 
   Search, 
@@ -70,11 +71,62 @@ const getTargetShortDate = (targetDateStr) => {
 };
 
 export const TicketHistory = () => {
-  const { user, tickets, setTickets, ratings, setRatings, teams } = useAuth();
+  const { user } = useAuth();
+  const [tickets, setTickets] = useState([]);
+  const [teams, setTeams] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadTickets = async () => {
+    try {
+      if (!user) return;
+      let res;
+      if (user.role === 'user' || user.role === 'masyarakat') {
+        res = await api.getMyTickets();
+      } else if (user.role === 'helpdesk') {
+        res = await api.getHelpdeskTickets();
+      } else if (user.role === 'pegawai') {
+        res = await api.getEmployeeTickets();
+      } else if (user.role === 'admin') {
+        res = await api.getAdminTickets();
+      }
+      
+      if (res && res.data) {
+        // Map backend names to frontend expected names
+        const mapped = res.data.map(t => ({
+          ...t,
+          status: t.status_name === 'PENDING' ? 'Verifikasi' 
+                : t.status_name === 'VERIFIED' ? 'Menunggu Validasi'
+                : t.status_name === 'ASSIGNED' ? 'Diproses'
+                : t.status_name === 'IN_PROGRESS' ? 'Diproses'
+                : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Selesai'
+                : t.status_name === 'COMPLETED' ? 'Selesai'
+                : t.status_name,
+          title: `Pengajuan Layanan ${t.service_name}`,
+          service: t.service_name,
+          opd: t.pemohon || 'OPD',
+          date: new Date(t.created_at).toLocaleDateString('id-ID'),
+          requestType: 'Baru',
+          slaDuration: 7,
+          remainingDays: 7
+        }));
+        setTickets(mapped);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTickets();
+  }, [user]);
+
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [selectedTeam, setSelectedTeam] = useState('Tim Aplikasi & Sistem Informasi');
   const [rejectReason, setRejectReason] = useState('');
   const [showRejectForm, setShowRejectForm] = useState(false);
+  const [ratings, setRatings] = useState([]);
 
   const [rateOverall, setRateOverall] = useState(5);
   const [rateSpeed, setRateSpeed] = useState(5);
@@ -118,134 +170,38 @@ export const TicketHistory = () => {
     document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleUpdateProgress = (ticketId) => {
-    const autoLogText = isFinished
-      ? (progressNote.trim() || (fileName ? 'Pekerjaan teknis selesai dikerjakan 100% oleh Pegawai dan berkas BAST telah diunggah.' : 'Pekerjaan teknis selesai dikerjakan 100% oleh Pegawai.'))
-      : (progressNote.trim() || 'Pekerjaan teknis sedang diproses dan dikerjakan oleh Pegawai Tim Pelaksana.');
-
-    setTickets(prev => prev.map(t => {
-      if (t.id === ticketId) {
-        const waitingLog = {
-          date: getCurrentLogTimeFormatted(1),
-          text: 'Menunggu konfirmasi penyelesaian dan pengisian Survei SKM oleh Pemohon.'
-        };
-        const stage4Log = {
-          date: getCurrentLogTimeFormatted(0),
-          text: autoLogText
-        };
-        const updatedLogs = isFinished
-          ? [waitingLog, stage4Log, ...(t.logs || [])]
-          : [{ date: getCurrentLogTimeFormatted(0), text: autoLogText }, ...(t.logs || [])];
-
-        const updated = {
-          ...t,
-          progress: isFinished ? 100 : t.progress,
-          status: isFinished ? 'Selesai' : 'Diproses',
-          bastFile: isFinished ? (fileName || null) : t.bastFile,
-          bastFileUrl: isFinished ? (fileName ? bastFileUrl : null) : t.bastFileUrl,
-          logs: updatedLogs
-        };
-        if (isFinished) {
-          setSelectedTicket(null);
-        } else {
-          setSelectedTicket(updated);
-        }
-        return updated;
-      }
-      return t;
-    }));
-    setProgressNote('');
-    alert(isFinished ? (fileName ? 'Tugas berhasil diselesaikan 100% dan berkas BAST diunggah! Pemohon dapat mengisi survei SKM & rating.' : 'Tugas berhasil diselesaikan 100%! Pemohon dapat mengisi survei SKM & rating.') : 'Progres pekerjaan berhasil diperbarui!');
-  };
-
-  const handleConfirmAndRate = (ticketId) => {
-    setTickets(prev => prev.map(t => {
-      if (t.id === ticketId) {
-        const stage5Log = {
-          date: getCurrentLogTimeFormatted(0),
-          text: 'Pemohon telah mengonfirmasi penyelesaian, mengisi Survei SKM, dan memberikan ulasan bintang.'
-        };
-        const cleanedLogs = (t.logs || []).filter(l => !l.text.includes('Menunggu konfirmasi'));
-        const updated = {
-          ...t,
-          status: 'Selesai',
-          progress: 100,
-          rating: {
-            overall: rateOverall,
-            speed: rateSpeed,
-            result: rateResult,
-            communication: rateComm,
-            quality: rateQuality,
-            comment: rateComment
-          },
-          selectedForLanding: false,
-          logs: [
-            stage5Log,
-            ...cleanedLogs
-          ]
-        };
-        setSelectedTicket(updated);
-        return updated;
-      }
-      return t;
-    }));
-
-    if (ratings && setRatings) {
-      const newRating = {
-        id: ratings.length + 1,
-        name: user.department || 'Dinas Kesehatan Kota Bogor',
-        rating: rateOverall,
-        service: selectedTicket.service,
-        comment: rateComment,
-        status: 'Selesai (On SLA)',
-        selectedForLanding: false,
-        aspects: {
-          speed: rateSpeed,
-          result: rateResult,
-          communication: rateComm,
-          quality: rateQuality
-        }
-      };
-      setRatings([newRating, ...ratings]);
+  const handleUpdateProgress = async (ticketId) => {
+    try {
+      await api.updateProgress(ticketId, { progress: isFinished ? 100 : tempProgress });
+      alert(isFinished ? 'Tugas berhasil diselesaikan 100%!' : 'Progres pekerjaan berhasil diperbarui!');
+      loadTickets();
+      setSelectedTicket(null);
+    } catch (err) {
+      alert('Gagal update progress: ' + err.message);
     }
-
-    setRateOverall(5);
-    setRateSpeed(5);
-    setRateResult(5);
-    setRateComm(5);
-    setRateQuality(5);
-    setRateComment('');
-    alert('Terima kasih! Tiket berhasil dikonfirmasi dan ulasan Anda telah dikirim.');
   };
 
-  const handleApprove = (ticketId) => {
-    setTickets(prev => prev.map(t => {
-      if (t.id === ticketId) {
-        const stage2Log = {
-          date: getCurrentLogTimeFormatted(0),
-          text: `Tiket permohonan telah diverifikasi oleh Helpdesk dan diteruskan ke ${selectedTeam || 'Tim Teknis'}.`
-        };
-        const stage3Log = {
-          date: getCurrentLogTimeFormatted(1),
-          text: 'Pekerjaan teknis mulai diproses dan dikerjakan oleh Pegawai Tim Pelaksana.'
-        };
-        return {
-          ...t,
-          status: 'Diproses',
-          progress: 25,
-          team: selectedTeam,
-          slaRemainingDays: t.slaDuration || 7,
-          logs: [
-            stage3Log,
-            stage2Log,
-            ...(t.logs || [])
-          ]
-        };
-      }
-      return t;
-    }));
-    setSelectedTicket(null);
-    alert('Tiket berhasil disetujui dan dialihkan ke tim pelaksana!');
+  const handleConfirmAndRate = async (ticketId) => {
+    try {
+      await api.submitFeedback(ticketId, { rating: rateOverall, comment: rateComment });
+      alert('Terima kasih! Tiket berhasil dikonfirmasi dan ulasan Anda telah dikirim.');
+      loadTickets();
+      setSelectedTicket(null);
+    } catch (err) {
+      alert('Gagal mengirim feedback: ' + err.message);
+    }
+  };
+
+  const handleApprove = async (ticketId) => {
+    try {
+      await api.verifyTicket(ticketId);
+      await api.assignTicket(ticketId, { team_id: null, user_id: null });
+      alert('Tiket berhasil disetujui dan dialihkan ke tim pelaksana!');
+      loadTickets();
+      setSelectedTicket(null);
+    } catch (err) {
+      alert('Gagal menyetujui tiket: ' + err.message);
+    }
   };
 
   const handleReject = (ticketId) => {

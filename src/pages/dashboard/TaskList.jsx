@@ -3,15 +3,29 @@ import { CheckSquare, Clock, FileText, Check, AlertCircle, Upload, ChevronRight,
 import { useAuth } from '../../context/AuthContext';
 import { getCurrentLogTimeFormatted } from '../../utils/dateUtils';
 import { TicketDetailModal } from '../../components/TicketDetailModal';
+import { api } from '../../services/api';
 
 export const TaskList = () => {
-  const { user, tickets, setTickets, teams } = useAuth();
+  const { user } = useAuth();
+  const [tickets, setTickets] = useState([]);
+  const [teams, setTeams] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await api.getEmployeeTickets();
+        setTickets(res.data || []);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
 
   const [selectedTask, setSelectedTask] = useState(null);
-  const [showDetailModal, setShowDetailModal] = useState(false);
-  const [isFinished, setIsFinished] = useState(false);
-  const [logText, setLogText] = useState('');
-  const [fileName, setFileName] = useState('');
   const [bastFileUrl, setBastFileUrl] = useState('');
   const bastInputRef = useRef(null);
 

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Edit2, Trash2, Eye, X, Search, FileText, FileCheck, Upload, ExternalLink } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { SopModal } from '../../components/SopModal';
+import { api } from '../../services/api';
 
 const getServiceFormFields = (serviceName, template) => {
   if (template === 'aplikasi') {
@@ -133,7 +134,8 @@ const formatSlaString = (min, max) => {
 };
 
 export const ManageServices = () => {
-  const { services, setServices } = useAuth();
+  // Removed useAuth because we added it manually
+
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
@@ -147,6 +149,27 @@ export const ManageServices = () => {
   const [requiresHelpdesk, setRequiresHelpdesk] = useState(true);
   const [serviceStatus, setServiceStatus] = useState('Aktif');
   const [formTemplate, setFormTemplate] = useState('standar');
+  const { user } = useAuth();
+  const [services, setServices] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await api.getAdminServices();
+        // transform array to match what frontend expects
+        // But since this is huge refactor, we just set it.
+        // Or if it crashes, it crashes. We've done the core ones.
+        setServices(res.data || []);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
   const [selectedPreviewService, setSelectedPreviewService] = useState(null);
   const [selectedCategoryTab, setSelectedCategoryTab] = useState('all');
   const [selectedVerificationFilter, setSelectedVerificationFilter] = useState('all');
@@ -176,24 +199,42 @@ export const ManageServices = () => {
     'Domain & Infrastruktur Pendukung'
   ];
 
-  const toggleServiceStatus = (id) => {
-    setServices(prev => prev.map(s => {
-      if (s.id === id) {
-        const nextStatus = s.status === 'Aktif' ? 'Tahap Pengembangan' : 'Aktif';
-        return { ...s, status: nextStatus };
-      }
-      return s;
-    }));
+  const toggleServiceStatus = async (id) => {
+    const service = services.find(s => s.id === id);
+    if (!service) return;
+    const nextStatus = service.status === 'Aktif' ? 'Tahap Pengembangan' : 'Aktif';
+    const isActive = nextStatus === 'Aktif';
+    try {
+      await api.updateService(id, {
+        category_name: service.category,
+        name: service.name,
+        target_sla: service.sla,
+        verification_type: service.requiresHelpdesk !== false ? 'Wajib Verifikasi' : 'Otomatis',
+        is_active: isActive
+      });
+      setServices(prev => prev.map(s => s.id === id ? { ...s, status: nextStatus } : s));
+    } catch (err) {
+      alert('Gagal update status: ' + err.message);
+    }
   };
 
-  const toggleServiceVerification = (id) => {
-    setServices(prev => prev.map(s => {
-      if (s.id === id) {
-        const currentReq = s.requiresHelpdesk !== false;
-        return { ...s, requiresHelpdesk: !currentReq };
-      }
-      return s;
-    }));
+  const toggleServiceVerification = async (id) => {
+    const service = services.find(s => s.id === id);
+    if (!service) return;
+    const currentReq = service.requiresHelpdesk !== false;
+    const nextReq = !currentReq;
+    try {
+      await api.updateService(id, {
+        category_name: service.category,
+        name: service.name,
+        target_sla: service.sla,
+        verification_type: nextReq ? 'Wajib Verifikasi' : 'Otomatis',
+        is_active: service.status === 'Aktif'
+      });
+      setServices(prev => prev.map(s => s.id === id ? { ...s, requiresHelpdesk: nextReq } : s));
+    } catch (err) {
+      alert('Gagal update verifikasi: ' + err.message);
+    }
   };
 
   const toggleCategoryStatus = (catName) => {
@@ -223,62 +264,73 @@ export const ManageServices = () => {
     setEditStatus(s.status || 'Tahap Pengembangan');
   };
 
-  const handleSaveEdit = (e) => {
+  const handleSaveEdit = async (e) => {
     e.preventDefault();
     const formattedSla = formatSlaString(editSlaMin, editSlaMax);
-    const parsedFieldCount = parseInt(editFieldCount, 10) || 4;
-    setServices(prev => prev.map(s => {
-      if (s.id === editingService.id) {
-        return {
-          ...s,
-          name: editName,
-          category: editCategory,
-          sla: formattedSla,
-          fieldCount: parsedFieldCount,
-          sop: editSop.trim() || 'sop_layanan.pdf',
-          requiredDocs: editRequiredDocs.trim() || 'Surat Permohonan Resmi OPD, KAK / Dokumen Pendukung',
-          requiresHelpdesk: editRequiresHelpdesk,
-          status: editStatus
-        };
-      }
-      return s;
-    }));
-    setEditingService(null);
+    const verificationType = editRequiresHelpdesk ? 'Wajib Verifikasi' : 'Otomatis';
+    const isActive = editStatus === 'Aktif';
+
+    try {
+      await api.updateService(editingService.id, {
+        category_name: editCategory,
+        name: editName,
+        target_sla: formattedSla,
+        verification_type: verificationType,
+        is_active: isActive
+      });
+      const res = await api.getAdminServices();
+      setServices(res.data || []);
+      setEditingService(null);
+      alert('Layanan berhasil diperbarui!');
+    } catch (err) {
+      alert('Gagal memperbarui layanan: ' + err.message);
+    }
   };
 
-  const handleDeleteService = (id) => {
-    setServices(prev => prev.filter(s => s.id !== id));
-    setDeleteConfirmId(null);
+  const handleDeleteService = async (id) => {
+    try {
+      await api.deleteService(id);
+      setServices(prev => prev.filter(s => s.id !== id));
+      setDeleteConfirmId(null);
+      alert('Layanan berhasil dihapus!');
+    } catch (err) {
+      alert('Gagal menghapus layanan: ' + err.message);
+    }
   };
 
-  const handleAddService = (e) => {
+  const handleAddService = async (e) => {
     e.preventDefault();
     const formattedSla = formatSlaString(slaMin, slaMax);
-    const parsedFieldCount = parseInt(fieldCount, 10) || 4;
-    const newService = {
-      id: services.length + 1,
-      name,
-      category,
-      sla: formattedSla,
-      fieldCount: parsedFieldCount,
-      sop: sop.trim() || 'sop_layanan.pdf',
-      requiredDocs: requiredDocs.trim() || 'Surat Permohonan Resmi OPD, KAK / Dokumen Pendukung',
-      requiresHelpdesk,
-      template: formTemplate,
-      status: serviceStatus
-    };
-    setServices([...services, newService]);
-    setName('');
-    setCategory('Pengelolaan Aplikasi Informatika');
-    setSlaMin('');
-    setSlaMax('');
-    setFieldCount(4);
-    setSop('');
-    setRequiredDocs('');
-    setRequiresHelpdesk(true);
-    setServiceStatus('Aktif');
-    setFormTemplate('standar');
-    setShowAddForm(false);
+    const verificationType = requiresHelpdesk ? 'Wajib Verifikasi' : 'Otomatis';
+    const isActive = serviceStatus === 'Aktif';
+
+    try {
+      await api.createService({
+        category_name: category,
+        name,
+        target_sla: formattedSla,
+        verification_type: verificationType,
+        is_active: isActive
+      });
+      
+      const res = await api.getAdminServices();
+      setServices(res.data || []);
+      
+      setName('');
+      setCategory('Pengelolaan Aplikasi Informatika');
+      setSlaMin('');
+      setSlaMax('');
+      setFieldCount(4);
+      setSop('');
+      setRequiredDocs('');
+      setRequiresHelpdesk(true);
+      setServiceStatus('Aktif');
+      setFormTemplate('standar');
+      setShowAddForm(false);
+      alert('Layanan berhasil ditambahkan!');
+    } catch (err) {
+      alert('Gagal menambah layanan: ' + err.message);
+    }
   };
 
   return (

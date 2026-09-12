@@ -1,10 +1,29 @@
 import React, { useState } from 'react';
 import { Edit2, Trash2, X, Users, Building, Mail, Search, Lock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { api } from '../../services/api';
 
 export const ManageUsers = () => {
-  const { users, setUsers, teams, setTeams, user, setUser } = useAuth();
+  const { teams, setTeams, user, setUser } = useAuth();
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
 
+  React.useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
+    try {
+      const response = await api.getUsers();
+      if (response && response.data) {
+        setUsers(response.data);
+      }
+    } catch (err) {
+      console.error('Error fetching users:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
   const [activeTab, setActiveTab] = useState('semua');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -45,7 +64,7 @@ export const ManageUsers = () => {
     }
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     const assignedTeamIds = Object.keys(editTeamAssignments).filter(id => editTeamAssignments[id]);
 
     if (editRolesVal.includes('pegawai') && assignedTeamIds.length === 0) {
@@ -55,51 +74,50 @@ export const ManageUsers = () => {
 
     const primaryRole = editRolesVal[0] || 'user';
 
-    setUsers(prev => prev.map(u => {
-      if (u.id === editingUser.id) {
-        const updated = {
-          ...u,
-          role: primaryRole,
-          roles: editRolesVal
-        };
-        if (user && user.email === u.email) {
-          setUser(updated);
-        }
-        return updated;
-      }
-      return u;
-    }));
+    try {
+      await api.updateUserRole(editingUser.id, { roleName: primaryRole });
+      await fetchUsers(); // Refresh from DB
 
-    const updatedTeams = teams.map(t => {
-      let members = [...t.members];
-      members = members.filter(m => m !== editingUser.name);
-      if (editRolesVal.includes('pegawai') && editTeamAssignments[t.id]) {
-        if (!members.includes(editingUser.name)) {
-          members.push(editingUser.name);
+      const updatedTeams = teams.map(t => {
+        let members = [...t.members];
+        members = members.filter(m => m !== editingUser.name);
+        if (editRolesVal.includes('pegawai') && editTeamAssignments[t.id]) {
+          if (!members.includes(editingUser.name)) {
+            members.push(editingUser.name);
+          }
         }
-      }
-      let leader = t.leader;
-      if (leader === editingUser.name) {
-        leader = editRolesVal.includes('pegawai') && editTeamAssignments[t.id] ? editingUser.name : '';
-      }
-      return { ...t, members, leader };
-    });
-    setTeams(updatedTeams);
+        let leader = t.leader;
+        if (leader === editingUser.name) {
+          leader = editRolesVal.includes('pegawai') && editTeamAssignments[t.id] ? editingUser.name : '';
+        }
+        return { ...t, members, leader };
+      });
+      setTeams(updatedTeams);
 
-    setEditingUser(null);
-    alert('Peran pengguna berhasil diperbarui!');
+      setEditingUser(null);
+      alert('Peran pengguna berhasil diperbarui!');
+    } catch (err) {
+      alert('Gagal memperbarui peran: ' + err.message);
+    }
   };
 
-  const handleDeleteUser = (id) => {
+  const handleDeleteUser = async (id) => {
     const userToDelete = users.find(u => u.id === id);
-    if (userToDelete) {
+    if (!userToDelete) return;
+    try {
+      await api.deleteUser(id);
+      
       setTeams(prevTeams => prevTeams.map(t => ({
         ...t,
         members: t.members.filter(m => m !== userToDelete.name),
         leader: t.leader === userToDelete.name ? '' : t.leader
       })));
+      
+      await fetchUsers();
+      alert('Pengguna berhasil dihapus!');
+    } catch (err) {
+      alert('Gagal menghapus pengguna: ' + err.message);
     }
-    setUsers(users.filter(u => u.id !== id));
   };
 
   const tabs = [

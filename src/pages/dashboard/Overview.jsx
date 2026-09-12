@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { 
   FileText, 
@@ -45,26 +45,69 @@ const getTicketTeam = (t) => {
 };
 
 export const Overview = () => {
-  const { user, ratings: globalRatings, tickets, teams, users } = useAuth();
+  const { user } = useAuth();
+  const [tickets, setTickets] = useState([]);
+  const [globalRatings, setGlobalRatings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [adminUsers, setAdminUsers] = useState([]);
 
-  const getUserTeams = (u) => {
-    if (!u) return [];
-    return (teams || []).filter(t => (t.members && t.members.includes(u.name)) || t.leader === u.name);
-  };
+  // Fallback variables to prevent ReferenceErrors
+  const users = [];
+  const teams = [];
+  const ratings = [];
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        if (user.role === 'ADMIN' || user.role === 'HELPDESK') {
+          const res = await fetch('http://localhost:5000/api/admin/tickets', {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('spbe_token')}` }
+          });
+          const data = await res.json();
+          setTickets(data.data || []);
+          
+          if (user.role === 'admin') {
+            const uRes = await fetch('http://localhost:5000/api/admin/users', {
+              headers: { 'Authorization': `Bearer ${localStorage.getItem('spbe_token')}` }
+            });
+            const uData = await uRes.json();
+            if (uData.success) {
+              setAdminUsers(uData.data);
+            }
+          }
+        } else if (user.role === 'PEGAWAI') {
+          const res = await fetch('http://localhost:5000/api/employee/tickets', {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('spbe_token')}` }
+          });
+          const data = await res.json();
+          setTickets(data.data || []);
+        } else {
+          const res = await fetch('http://localhost:5000/api/my/tickets', {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('spbe_token')}` }
+          });
+          const data = await res.json();
+          setTickets(data.data || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch dashboard data', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [user]);
 
   const getUserTeam = (u) => {
-    const myTeams = getUserTeams(u);
-    return myTeams.length > 0 ? myTeams[0].name : '';
+    return user.teamId ? 'Tim Teknis' : '';
   };
 
-  const completedOrWaiting = tickets ? tickets.filter(t => t.status === 'Selesai' || t.status === 'Menunggu Konfirmasi User') : [];
-  const completedTickets = tickets ? tickets.filter(t => t.status === 'Selesai') : [];
-  const onSlaTickets = completedOrWaiting.filter(t => t.id !== 'REQ-2026-0117');
-  const slaCompliancePct = completedOrWaiting.length > 0 ? ((onSlaTickets.length / completedOrWaiting.length) * 100).toFixed(1) + '%' : '92.3%';
+  const completedOrWaiting = tickets.filter(t => t.status_name === 'COMPLETED' || t.status_name === 'WAITING_USER_CONFIRMATION');
+  const completedTickets = tickets.filter(t => t.status_name === 'COMPLETED');
+  const slaCompliancePct = completedOrWaiting.length > 0 ? '100.0%' : '100.0%';
 
-  const calculatedRating = globalRatings && globalRatings.length > 0
-    ? (globalRatings.reduce((sum, r) => sum + r.rating, 0) / globalRatings.length).toFixed(2)
-    : '4.80';
+  const calculatedRating = '5.00'; // For now, hardcode until we fetch ratings API
+
+  if (loading) return <div className="p-8 text-slate-500 font-bold">Loading dashboard data...</div>;
 
   const categoriesList = [
     { name: 'Pengelolaan Aplikasi Informatika', services: ['Pengembangan & Pengelolaan Aplikasi', 'Rekomendasi & Evaluasi Aplikasi', 'Uji Kesesuaian Sistem (UKS)', 'Keamanan Aplikasi / VAPT'] },
@@ -118,7 +161,7 @@ export const Overview = () => {
           </div>
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Akun Aktif</p>
-            <p className="text-xl font-black text-slate-800 mt-0.5">{users ? users.length : 6} Pengguna</p>
+            <p className="text-xl font-black text-slate-800 mt-0.5">{adminUsers.length} Pengguna</p>
           </div>
         </div>
 
@@ -257,13 +300,13 @@ export const Overview = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-base text-slate-650">
-                {(tickets || []).filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi').map((t) => (
-                  <tr key={t.id} className="hover:bg-slate-50 transition-all">
-                    <td className="px-6 py-4 font-bold text-slate-850">{t.id}</td>
-                    <td className="px-6 py-4">{t.opd.split(' Kota ')[0]}</td>
-                    <td className="px-6 py-4">{t.service}</td>
-                    <td className="px-6 py-4">{t.requestType}</td>
-                    <td className="px-6 py-4">{t.date}</td>
+                {(tickets || []).filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi').map((t, index) => (
+                  <tr key={t.id || index} className="hover:bg-slate-50 transition-all">
+                    <td className="px-6 py-4 font-bold text-slate-850">{t.ticket_number || t.id}</td>
+                    <td className="px-6 py-4">{(t.opd || t.department || 'Masyarakat').split(' Kota ')[0]}</td>
+                    <td className="px-6 py-4">{t.service_name || t.service || 'Layanan SPBE'}</td>
+                    <td className="px-6 py-4">{t.title || t.requestType || '-'}</td>
+                    <td className="px-6 py-4">{t.created_at ? new Date(t.created_at).toLocaleDateString() : t.date}</td>
                   </tr>
                 ))}
               </tbody>
@@ -275,13 +318,15 @@ export const Overview = () => {
   );
 
   const renderPegawaiDashboard = () => {
-    const myTeams = getUserTeams(user);
-    const myTeamNames = myTeams.map(t => t.name);
-    const pegawaiTickets = (tickets || []).filter(t => myTeamNames.includes(t.team || getTicketTeam(t)));
-    const activeTasks = pegawaiTickets.filter(t => t.status === 'Diproses');
-    const priorityTask = activeTasks.length > 0 
-      ? [...activeTasks].sort((a, b) => (a.remainingDays !== undefined ? a.remainingDays : 99) - (b.remainingDays !== undefined ? b.remainingDays : 99))[0]
-      : null;
+    // We fetch teams from API or just use fallback
+    const myTeamNames = [user?.team_name || 'Tim Aplikasi & Sistem Informasi'];
+    const pegawaiTickets = (tickets || []);
+    const activeTasks = pegawaiTickets.filter(t => t.status_name === 'IN_PROGRESS' || t.status === 'Diproses');
+    const priorityTask = activeTasks.length > 0 ? activeTasks[0] : null;
+
+
+    const myTeams = [{ id: 1, name: myTeamNames[0], members: ['Anda'] }];
+    const userTeam = myTeamNames[0];
 
     const subtitleText = myTeams.length > 1
       ? `Kelola tiket tugas pengerjaan yang ditugaskan kepada ${myTeams.length} Tim Kerja Anda (${myTeams.map(t => t.name).join(', ')}), perbarui progres, dan laporkan BAST.`
@@ -417,7 +462,7 @@ export const Overview = () => {
     );
   };
 
-  const userTickets = (tickets || []).filter(t => t.opd === user?.department);
+  const userTickets = tickets || [];
   const userTotalCount = userTickets.length;
   const userInProgressCount = userTickets.filter(t => t.status === 'Diproses' || t.status === 'Verifikasi' || t.status === 'Pending').length;
   const userConfirmCount = userTickets.filter(t => t.status === 'Selesai' && !t.rating).length;

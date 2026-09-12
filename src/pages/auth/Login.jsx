@@ -44,45 +44,32 @@ export const Login = () => {
 
   const handleGmailSubmit = (e) => {
     if (e) e.preventDefault();
-    if (!identifier.trim()) {
-      alert('Silakan masukkan email Gmail Anda terlebih dahulu!');
-      return;
-    }
-    if (!password) {
-      alert('Silakan masukkan kata sandi terlebih dahulu!');
+    if (!identifier.trim() || !password) {
+      alert('Silakan masukkan email dan password terlebih dahulu!');
       return;
     }
     const emailLower = identifier.toLowerCase().trim();
-    if (!emailLower.endsWith('@gmail.com')) {
-      alert('Login e-mail biasa khusus untuk Masyarakat menggunakan akun Gmail (@gmail.com). Jika Anda adalah pegawai instansi daerah, silakan klik tombol "Masuk dengan SSO TND"!');
-      return;
-    }
-    openOtpModal('masyarakat', emailLower);
+    openOtpModal('user', emailLower);
   };
 
   const handleTndSubmit = (e) => {
     if (e) e.preventDefault();
-    if (!identifier.trim()) {
-      alert('Silakan masukkan Username TND atau NIP Pegawai terlebih dahulu!');
+    if (!identifier.trim() || !password) {
+      alert('Silakan masukkan Username/Email dan password terlebih dahulu!');
       return;
     }
-    if (!password) {
-      alert('Silakan masukkan kata sandi terlebih dahulu!');
-      return;
-    }
-    const role = identifyRoleFromTnd(identifier);
-    openOtpModal(role, identifier);
+    openOtpModal('user', identifier);
   };
 
   const handleQuickLogin = async (role) => {
     const quickEmails = {
-      admin: 'ahmad.faisal@kotabogor.go.id',
-      helpdesk: 'siti.rahmawati@kotabogor.go.id',
-      pegawai: 'rian.hidayat@kotabogor.go.id',
-      user: 'budi.utomo@kotabogor.go.id',
-      masyarakat: 'mortazaaazkaa2509@gmail.com'
+      admin: 'admin@bogor.go.id',
+      helpdesk: 'helpdesk@bogor.go.id',
+      pegawai: 'pegawai@bogor.go.id',
+      user: 'opd@bogor.go.id',
+      masyarakat: 'masyarakat@gmail.com'
     };
-    const email = quickEmails[role] || 'budi.utomo@kotabogor.go.id';
+    const email = quickEmails[role] || 'masyarakat@gmail.com';
     setIdentifier(email);
     setPassword('password123');
     openOtpModal(role, email);
@@ -92,9 +79,15 @@ export const Login = () => {
     e.preventDefault();
     const result = await authService.verifyOtp(identifier, otpCode);
     if (result.success) {
-      login(targetRole, identifier || null);
-      setShowOtpModal(false);
-      navigate('/dashboard');
+      // Panggil API Login dari AuthContext (yang terhubung ke Node.js)
+      const loginResult = await login(identifier, password);
+      
+      if (loginResult && loginResult.success) {
+        setShowOtpModal(false);
+        navigate('/dashboard');
+      } else {
+        setOtpError(loginResult?.message || 'Login gagal, email atau password salah.');
+      }
     } else {
       setOtpError('Kode autentikasi salah! Masukkan 6 digit kode dari Google Authenticator (demo: 123456).');
     }

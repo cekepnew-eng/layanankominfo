@@ -5,12 +5,29 @@ import { useAuth } from '../../context/AuthContext';
 import { getCurrentDateFormatted, getCurrentLogTimeFormatted } from '../../utils/dateUtils';
 import { SkmModal } from '../../components/SkmModal';
 import { SopModal } from '../../components/SopModal';
+import { api } from '../../services/api';
 
 export const CreateTicket = () => {
-  const { user, tickets, setTickets, services } = useAuth();
+  const { user } = useAuth();
+  const [services, setServices] = useState([]);
+  const [tickets, setTickets] = useState([]);
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [selectedCategory, setSelectedCategory] = useState(null);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const svcRes = await api.getPublicServices();
+        setServices(svcRes.data || []);
+        const tktRes = await api.getMyTickets();
+        setTickets(tktRes.data || []);
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    load();
+  }, []);
   
   const [selectedSubService, setSelectedSubService] = useState('');
   const [subSearchQuery, setSubSearchQuery] = useState('');
@@ -182,50 +199,30 @@ export const CreateTicket = () => {
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const serviceObj = (services || []).find(s => s.name === selectedSubService);
-    const slaParsed = serviceObj && serviceObj.sla ? parseInt(serviceObj.sla) || 7 : 7;
-    const needsVerification = serviceObj ? (serviceObj.requiresHelpdesk !== false) : true;
-    const initialStatus = needsVerification ? 'Verifikasi' : 'Diproses';
-    const initialProgress = needsVerification ? 0 : 25;
-    const initialSlaRemaining = needsVerification ? null : slaParsed;
-    const initialLogs = needsVerification
-      ? [
-          { date: getCurrentLogTimeFormatted(0), text: 'Tiket permohonan layanan berhasil dibuat dan diajukan oleh Pemohon (Menunggu verifikasi Helpdesk).' }
-        ]
-      : [
-          { date: getCurrentLogTimeFormatted(2), text: 'Pekerjaan teknis mulai diproses dan dikerjakan oleh Pegawai Tim Pelaksana.' },
-          { date: getCurrentLogTimeFormatted(1), text: 'Tiket permohonan telah diverifikasi otomatis oleh sistem dan diteruskan ke Tim Teknis.' },
-          { date: getCurrentLogTimeFormatted(0), text: 'Tiket permohonan layanan berhasil dibuat dan diajukan oleh Pemohon.' }
-        ];
+    const service_id = serviceObj ? serviceObj.id : 1; 
 
-    const newTicket = {
-      id: `REQ-2026-0${Math.floor(132 + Math.random() * 800)}`,
-      opd: user?.role === 'helpdesk' ? (helpdeskInstansi.trim() || 'Masyarakat Umum') : (user?.department || 'Masyarakat Umum'),
-      userName: user?.name || 'Pemohon Layanan',
-      userEmail: user?.email || '',
-      service: selectedCategory.title,
-      requestType: selectedSubService,
-      requiredDocs: serviceObj?.requiredDocs || 'Surat Permohonan Resmi OPD, KAK / Dokumen Pendukung',
-      sop: serviceObj?.sop || 'sop-layanan.pdf',
+    const payload = {
+      service_id,
       title: title || `Permohonan ${selectedSubService}`,
-      desc: description || `Detail pengerjaan untuk sub-layanan ${selectedSubService}`,
-      appName: appName || '',
-      targetUsers: targetUsers || '',
-      callbackUrl: callbackUrl || '',
-      targetIp: targetIp || '',
-      date: getCurrentDateFormatted(),
-      progress: initialProgress,
-      slaDuration: slaParsed,
-      slaRemainingDays: initialSlaRemaining,
-      status: initialStatus,
-      files: uploadedFile ? [uploadedFile] : ['Surat_Permohonan_Layanan.pdf'],
-      fileUrl: uploadedFileUrl || '/dokumen_permohonan.pdf',
-      logs: initialLogs
+      description: description || `Detail pengerjaan untuk sub-layanan ${selectedSubService}`,
+      app_name: appName || '',
+      target_users: targetUsers || '',
+      callback_url: callbackUrl || '',
+      target_ip: targetIp || '',
+      priority: 'MEDIUM'
     };
 
-    setTickets([newTicket, ...tickets]);
+    try {
+      await api.createTicket(payload);
+      setStep(4);
+    } catch (err) {
+      console.error('Gagal menyimpan ke database backend', err);
+      alert('Gagal mengirim tiket: ' + err.message);
+    }
+
     navigate('/dashboard/history');
   };
 
