@@ -10,8 +10,9 @@ const availableServices = [
   'Tata Kelola SPBE'
 ];
 
+import { api } from '../../services/api';
 export const ManageTeams = () => {
-  const { teams, setTeams, users } = useAuth();
+  const { teams, setTeams, fetchTeams, users } = useAuth();
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [teamName, setTeamName] = useState('');
@@ -49,9 +50,9 @@ export const ManageTeams = () => {
     onConfirm: null
   });
 
-  const pegawaiList = users ? users.filter(u => u.roles?.includes('pegawai') || u.role === 'pegawai') : [];
+  const pegawaiList = users ? users.filter(u => u.roles?.includes('PEGAWAI') || u.role === 'PEGAWAI') : [];
 
-  const handleAddTeam = (e) => {
+  const handleAddTeam = async (e) => {
     e.preventDefault();
     if (selectedMembers.length === 0) {
       setModalConfig({
@@ -65,43 +66,34 @@ export const ManageTeams = () => {
       });
       return;
     }
-    if (selectedServices.length === 0) {
+
+    try {
+      await api.createTeam({
+        name: teamName.trim(),
+        description: selectedServices.join(', '),
+        members: selectedMembers,
+        leader: leader
+      });
+
+      if (fetchTeams) await fetchTeams();
+
+      setTeamName('');
+      setLeader('');
+      setSelectedMembers([]);
+      setSelectedServices([]);
+      setShowAddForm(false);
       setModalConfig({
         isOpen: true,
-        type: 'warning',
-        title: 'Cakupan Layanan Belum Dipilih',
-        message: 'Harap pilih minimal satu bidang cakupan layanan SPBE yang ditangani tim ini.',
-        confirmText: 'Pilih Layanan',
+        type: 'success',
+        title: 'Tim Kerja Berhasil Dibuat',
+        message: `Tim kerja telah berhasil didaftarkan ke dalam sistem SPBE.`,
+        confirmText: 'Selesai',
         cancelText: '',
         onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
       });
-      return;
+    } catch (err) {
+      alert('Gagal membuat tim: ' + err.message);
     }
-
-    const newTeam = {
-      id: teams.length + 1,
-      name: teamName.trim(),
-      leader,
-      members: selectedMembers,
-      services: selectedServices
-    };
-
-    setTeams([...teams, newTeam]);
-
-    setTeamName('');
-    setLeader('');
-    setSelectedMembers([]);
-    setSelectedServices([]);
-    setShowAddForm(false);
-    setModalConfig({
-      isOpen: true,
-      type: 'success',
-      title: 'Tim Kerja Berhasil Dibuat',
-      message: `Tim kerja "${newTeam.name}" telah berhasil didaftarkan ke dalam sistem SPBE.`,
-      confirmText: 'Selesai',
-      cancelText: '',
-      onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
-    });
   };
 
   const handleStartEdit = (team) => {
@@ -109,10 +101,10 @@ export const ManageTeams = () => {
     setEditTeamName(team.name || '');
     setEditLeader(team.leader || '');
     setEditSelectedMembers(team.members || []);
-    setEditSelectedServices(team.services || []);
+    setEditSelectedServices(team.description ? team.description.split(',').map(s => s.trim()) : []);
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editTeamName.trim() || !editLeader) {
       setModalConfig({
         isOpen: true,
@@ -125,54 +117,30 @@ export const ManageTeams = () => {
       });
       return;
     }
-    if (editSelectedMembers.length === 0) {
+
+    try {
+      await api.updateTeam(editingTeam.id, {
+        name: editTeamName.trim(),
+        description: editSelectedServices.join(', '),
+        members: editSelectedMembers,
+        leader: editLeader
+      });
+
+      if (fetchTeams) await fetchTeams();
+
+      setEditingTeam(null);
       setModalConfig({
         isOpen: true,
-        type: 'warning',
-        title: 'Anggota Tim Belum Dipilih',
-        message: 'Harap pilih minimal satu orang anggota pegawai untuk tim kerja ini.',
-        confirmText: 'Lengkapi Anggota',
+        type: 'success',
+        title: 'Informasi Tim Diperbarui',
+        message: 'Perubahan data tim kerja dan cakupan layanannya telah berhasil disimpan.',
+        confirmText: 'Selesai',
         cancelText: '',
         onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
       });
-      return;
+    } catch (err) {
+      alert('Gagal menyimpan tim: ' + err.message);
     }
-    if (editSelectedServices.length === 0) {
-      setModalConfig({
-        isOpen: true,
-        type: 'warning',
-        title: 'Cakupan Layanan Belum Dipilih',
-        message: 'Harap pilih minimal satu cakupan layanan SPBE untuk tim kerja ini.',
-        confirmText: 'Pilih Layanan',
-        cancelText: '',
-        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
-      });
-      return;
-    }
-
-    setTeams(prev => prev.map(t => {
-      if (t.id === editingTeam.id) {
-        return {
-          ...t,
-          name: editTeamName.trim(),
-          leader: editLeader,
-          members: editSelectedMembers,
-          services: editSelectedServices
-        };
-      }
-      return t;
-    }));
-
-    setEditingTeam(null);
-    setModalConfig({
-      isOpen: true,
-      type: 'success',
-      title: 'Informasi Tim Diperbarui',
-      message: 'Perubahan data tim kerja dan cakupan layanannya telah berhasil disimpan.',
-      confirmText: 'Selesai',
-      cancelText: '',
-      onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
-    });
   };
 
   const handlePromptDeleteTeam = (t) => {
@@ -187,17 +155,23 @@ export const ManageTeams = () => {
     });
   };
 
-  const executeDeleteTeam = (id) => {
-    setTeams(teams.filter(t => t.id !== id));
-    setModalConfig({
-      isOpen: true,
-      type: 'success',
-      title: 'Tim Kerja Berhasil Dihapus',
-      message: 'Tim kerja teknis telah berhasil dihapus dari sistem.',
-      confirmText: 'Selesai',
-      cancelText: '',
-      onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
-    });
+  const executeDeleteTeam = async (id) => {
+    try {
+      await api.deleteTeam(id);
+      if (fetchTeams) await fetchTeams();
+
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: 'Tim Kerja Berhasil Dihapus',
+        message: 'Tim kerja teknis telah berhasil dihapus dari sistem.',
+        confirmText: 'Selesai',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
+    } catch (err) {
+      alert('Gagal menghapus tim: ' + err.message);
+    }
   };
 
   return (
@@ -369,10 +343,10 @@ export const ManageTeams = () => {
                   <div>
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Cakupan Layanan SPBE</span>
                     <ul className="mt-1 space-y-1">
-                      {t.services.map((service, sIdx) => (
+                      {t.description?.split(',').map((service, sIdx) => (
                         <li key={sIdx} className="text-xs text-slate-505 flex items-start gap-1 font-semibold">
                           <span className="text-sky-500 mt-0.5">•</span>
-                          <span>{service}</span>
+                          <span>{service.trim()}</span>
                         </li>
                       ))}
                     </ul>

@@ -66,24 +66,22 @@ export const DashboardLayout = () => {
   };
 
   const roles = [
-    { id: 'admin', label: 'Admin (Master Data)' },
-    { id: 'helpdesk', label: 'Helpdesk (Validator)' },
-    { id: 'pegawai', label: 'Pegawai (Teknisi)' },
-    { id: 'user', label: 'User (OPD / Dinas)' },
-    { id: 'masyarakat', label: 'Masyarakat Umum' }
+    { id: 'ADMIN', label: 'Admin (Master Data)' },
+    { id: 'HELPDESK', label: 'Helpdesk (Validator)' },
+    { id: 'PEGAWAI', label: 'Pegawai (Teknisi)' },
+    { id: 'USER', label: 'User (OPD / Dinas / Warga)' }
   ];
 
   const getHistoryLabel = () => {
     if (!user) return 'Daftar Tiket';
     switch (user.role) {
-      case 'user':
-      case 'masyarakat':
+      case 'USER':
         return 'Tiket Saya';
-      case 'helpdesk':
+      case 'HELPDESK':
         return 'Kelola Tiket';
-      case 'pegawai':
+      case 'PEGAWAI':
         return 'Tiket Pekerjaan';
-      case 'admin':
+      case 'ADMIN':
         return 'Daftar Tiket SPBE';
       default:
         return 'Daftar Tiket';
@@ -109,7 +107,7 @@ export const DashboardLayout = () => {
     if (!user) return [home, history, profile];
 
     switch (user.role) {
-      case 'admin':
+      case 'ADMIN':
         return [
           home,
           adminLinks[0],
@@ -119,12 +117,11 @@ export const DashboardLayout = () => {
           adminLinks[3],
           profile
         ];
-      case 'helpdesk':
+      case 'HELPDESK':
         return [home, userLinks[0], history, profile];
-      case 'pegawai':
+      case 'PEGAWAI':
         return [home, history, profile];
-      case 'user':
-      case 'masyarakat':
+      case 'USER':
         return [home, ...userLinks, history, profile];
       default:
         return [home, history, profile];
@@ -154,32 +151,28 @@ export const DashboardLayout = () => {
 
   const getProfileRoleLabel = () => {
     if (!user) return '';
-    if (user.role === 'user') return 'OPD';
-    if (user.role === 'masyarakat') return 'Masyarakat';
-    if (user.role === 'admin') return 'Admin';
-    if (user.role === 'helpdesk') return 'Helpdesk';
-    if (user.role === 'pegawai') return 'Pegawai';
+    if (user.role === 'USER') return 'OPD / Warga';
+    if (user.role === 'ADMIN') return 'Admin';
+    if (user.role === 'HELPDESK') return 'Helpdesk';
+    if (user.role === 'PEGAWAI') return 'Pegawai';
     return user.role;
   };
 
   const getProfileDeptLabel = () => {
     if (!user) return '';
-    if (user.role === 'masyarakat') return 'Masyarakat Umum';
-    return user.department || '';
+    return user.department || 'Dinas Kominfo';
   };
 
   const getProfileRoleBadgeClass = () => {
     if (!user) return 'bg-slate-100 text-slate-700 border-slate-200';
     switch (user.role) {
-      case 'admin':
+      case 'ADMIN':
         return 'bg-rose-50 text-rose-700 border-rose-200';
-      case 'helpdesk':
+      case 'HELPDESK':
         return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-      case 'pegawai':
+      case 'PEGAWAI':
         return 'bg-indigo-50 text-indigo-700 border-indigo-200';
-      case 'masyarakat':
-        return 'bg-slate-100 text-slate-700 border-slate-200';
-      case 'user':
+      case 'USER':
       default:
         return 'bg-sky-50 text-sky-700 border-sky-200';
     }
@@ -212,11 +205,10 @@ export const DashboardLayout = () => {
             >
               {user.roles.map((r) => {
                 const labels = {
-                  admin: 'Dasbor Admin',
-                  helpdesk: 'Dasbor Helpdesk',
-                  pegawai: 'Dasbor Pegawai',
-                  user: 'Dasbor OPD',
-                  masyarakat: 'Dasbor Warga'
+                  ADMIN: 'Dasbor Admin',
+                  HELPDESK: 'Dasbor Helpdesk',
+                  PEGAWAI: 'Dasbor Pegawai',
+                  USER: 'Dasbor Warga / OPD'
                 };
                 return <option key={r} value={r}>{labels[r] || r}</option>;
               })}

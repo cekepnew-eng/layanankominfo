@@ -2,14 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { authService } from '../../services/authService';
+import { api } from '../../services/api';
 import { Monitor, ArrowLeft, Lock, Mail, ChevronRight, Check, ShieldCheck, QrCode, Copy } from 'lucide-react';
 
 export const Login = () => {
-  const { login } = useAuth();
+  const { login, login2FA } = useAuth();
   const navigate = useNavigate();
   
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [tempToken, setTempToken] = useState('');
 
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [otpStep, setOtpStep] = useState(1);
@@ -17,6 +19,30 @@ export const Login = () => {
   const [otpError, setOtpError] = useState('');
   const [targetRole, setTargetRole] = useState('user');
   const [qrData, setQrData] = useState({ qrUrl: '', secretFormatted: '' });
+  const [captchaData, setCaptchaData] = useState({ text: '', token: '' });
+  const [captchaAnswer, setCaptchaAnswer] = useState('');
+
+  const loadCaptcha = async () => {
+    try {
+      // Fetch langsung ke backend untuk menghindari cache Vite pada file api.js
+      const res = await fetch('http://localhost:5000/api/auth/captcha');
+      const data = await res.json();
+      
+      if (data.success) {
+        setCaptchaData({ text: data.text, token: data.token });
+        setCaptchaAnswer('');
+      } else {
+        setCaptchaData({ text: 'Error: ' + (data.message || 'Gagal memuat'), token: '' });
+      }
+    } catch (err) {
+      console.error('Failed to load captcha', err);
+      setCaptchaData({ text: 'Error Jaringan: ' + err.message, token: '' });
+    }
+  };
+
+  useEffect(() => {
+    loadCaptcha();
+  }, []);
 
   const identifyRoleFromTnd = (username) => {
     const userLower = (username || '').toLowerCase().trim();
@@ -32,14 +58,34 @@ export const Login = () => {
     return 'user';
   };
 
-  const openOtpModal = async (role, email) => {
-    const data = await authService.getOtpSecret(email || identifier);
-    setQrData(data);
-    setOtpStep(1);
-    setOtpCode('');
-    setOtpError('');
-    setTargetRole(role);
-    setShowOtpModal(true);
+  const triggerLogin = async (email, pass, cToken, cAnswer) => {
+    const loginResult = await login(email, pass, cToken, cAnswer);
+    if (loginResult && loginResult.requires2FA) {
+      setTempToken(loginResult.tempToken);
+      setOtpStep(2);
+      setShowOtpModal(true);
+    } else if (loginResult && loginResult.requires2FASetup) {
+      setTempToken(loginResult.tempToken);
+      try {
+        const qrRes = await api.generate2FA(loginResult.tempToken);
+        if (qrRes.success) {
+          setQrData({ qrUrl: qrRes.qrCodeUrl, secretFormatted: qrRes.secret });
+          setOtpStep(1);
+          setOtpCode('');
+          setOtpError('');
+          setShowOtpModal(true);
+        } else {
+          alert('Gagal generate QR Code 2FA.');
+        }
+      } catch (err) {
+        alert('Error generate 2FA QR: ' + err.message);
+      }
+    } else if (loginResult && loginResult.success) {
+      navigate('/dashboard');
+    } else {
+      alert(loginResult?.message || 'Login gagal, periksa kredensial Anda.');
+      loadCaptcha(); // Reload captcha on failure
+    }
   };
 
   useEffect(() => {
@@ -56,14 +102,39 @@ export const Login = () => {
     };
   }, [showOtpModal]);
 
+  const handleStandardLogin = (e) => {
+    if (e) e.preventDefault();
+    if (!identifier.trim() || !password) {
+      alert('Silakan masukkan Email/Username dan password terlebih dahulu!');
+      return;
+    }
+    if (!captchaAnswer.trim()) {
+      alert('Silakan isi Captcha terlebih dahulu!');
+      return;
+    }
+    let email = identifier.trim();
+    if (!email.includes('@') && email !== 'admin' && email !== 'helpdesk' && email !== 'pegawai' && email !== 'user' && email !== 'masyarakat') {
+      email = email + '@bogor.go.id';
+    } else if (email === 'masyarakat') {
+      email = 'masyarakat@gmail.com';
+    } else if (['admin', 'helpdesk', 'pegawai', 'user'].includes(email)) {
+      email = email + '@bogor.go.id';
+    }
+    triggerLogin(email, password, captchaData.token, captchaAnswer);
+  };
+
   const handleGmailSubmit = (e) => {
     if (e) e.preventDefault();
     if (!identifier.trim() || !password) {
       alert('Silakan masukkan email dan password terlebih dahulu!');
       return;
     }
+    if (!captchaAnswer.trim()) {
+      alert('Silakan isi Captcha terlebih dahulu!');
+      return;
+    }
     const emailLower = identifier.toLowerCase().trim();
-    openOtpModal('user', emailLower);
+    triggerLogin(emailLower, password, captchaData.token, captchaAnswer);
   };
 
   const handleTndSubmit = (e) => {
@@ -72,7 +143,11 @@ export const Login = () => {
       alert('Silakan masukkan Username/Email dan password terlebih dahulu!');
       return;
     }
-    openOtpModal('user', identifier);
+    if (!captchaAnswer.trim()) {
+      alert('Silakan isi Captcha terlebih dahulu!');
+      return;
+    }
+    triggerLogin(identifier, password, captchaData.token, captchaAnswer);
   };
 
   const handleQuickLogin = async (role) => {
@@ -85,25 +160,41 @@ export const Login = () => {
     };
     const email = quickEmails[role] || 'masyarakat@gmail.com';
     setIdentifier(email);
-    setPassword('password123');
-    openOtpModal(role, email);
+    setPassword('admin123');
+    triggerLogin(email, 'admin123', captchaData.token, captchaData.text ? captchaData.text.split(' ')[2] * 1 + captchaData.text.split(' ')[4].replace('?','') * 1 : '');
   };
 
   const handleOtpVerify = async (e) => {
     e.preventDefault();
-    const result = await authService.verifyOtp(identifier, otpCode);
-    if (result.success) {
-      // Panggil API Login dari AuthContext (yang terhubung ke Node.js)
-      const loginResult = await login(identifier, password);
-      
-      if (loginResult && loginResult.success) {
+    if (!otpCode || otpCode.length !== 6) {
+      setOtpError('Masukkan 6 digit kode OTP');
+      return;
+    }
+    
+    // Check if we are doing setup or login
+    if (qrData.qrUrl) {
+      // Doing Setup
+      try {
+        const result = await api.verifySetup2FA(tempToken, otpCode);
+        if (result.success) {
+          localStorage.setItem('spbe_token', result.token);
+          setShowOtpModal(false);
+          window.location.href = '/dashboard';
+        } else {
+          setOtpError(result.message || 'Kode autentikasi salah!');
+        }
+      } catch (err) {
+        setOtpError(err.message || 'Kesalahan server saat verifikasi setup.');
+      }
+    } else {
+      // Normal Login
+      const result = await login2FA(tempToken, otpCode);
+      if (result && result.success) {
         setShowOtpModal(false);
         navigate('/dashboard');
       } else {
-        setOtpError(loginResult?.message || 'Login gagal, email atau password salah.');
+        setOtpError(result?.message || 'Kode autentikasi salah!');
       }
-    } else {
-      setOtpError('Kode autentikasi salah! Masukkan 6 digit kode dari Google Authenticator (demo: 123456).');
     }
   };
 
@@ -201,11 +292,45 @@ export const Login = () => {
               </div>
             </div>
 
-            <div className="space-y-2.5 pt-2">
+            <div className="space-y-1.5 pt-2">
+              <label htmlFor="captcha" className="block text-xs font-bold text-slate-550 uppercase tracking-wider">
+                Verifikasi Keamanan
+              </label>
+              <div className="flex gap-3">
+                <div className="flex-1 bg-slate-100/80 border border-slate-200 rounded-xl px-4 flex items-center justify-center cursor-pointer" onClick={loadCaptcha} title="Klik untuk memuat ulang">
+                  {captchaData.text ? (
+                    <span className="font-mono font-extrabold text-slate-700 tracking-wider text-sm select-none">{captchaData.text}</span>
+                  ) : (
+                    <div className="w-20 h-4 bg-slate-200 rounded animate-pulse"></div>
+                  )}
+                </div>
+                <div className="flex-1 relative rounded-xl border border-slate-200 bg-slate-50/50 focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500/20 transition-all">
+                  <input
+                    id="captcha"
+                    type="text"
+                    required
+                    value={captchaAnswer}
+                    onChange={(e) => setCaptchaAnswer(e.target.value)}
+                    placeholder="Jawaban"
+                    className="block w-full px-4 py-3 bg-transparent text-slate-800 text-base placeholder-slate-400 focus:outline-none font-bold"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2.5 pt-4">
+              <button
+                type="button"
+                onClick={handleStandardLogin}
+                className="w-full py-3.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 text-base font-extrabold text-white shadow-md shadow-sky-500/10 hover:shadow-lg hover:shadow-sky-500/15 transition-all flex items-center justify-center gap-2.5 cursor-pointer"
+              >
+                <span>Masuk</span>
+              </button>
+
               <button
                 type="button"
                 onClick={handleGmailSubmit}
-                className="w-full py-3.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 text-base font-extrabold text-white shadow-md shadow-sky-500/10 hover:shadow-lg hover:shadow-sky-500/15 transition-all flex items-center justify-center gap-2.5 cursor-pointer"
+                className="w-full py-3.5 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-base font-extrabold text-white shadow-md shadow-red-500/10 hover:shadow-lg hover:shadow-red-500/15 transition-all flex items-center justify-center gap-2.5 cursor-pointer"
               >
                 <Mail className="w-5 h-5" />
                 <span>Masuk dengan Gmail (Masyarakat)</span>
@@ -293,7 +418,7 @@ export const Login = () => {
                   </div>
                   <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight leading-tight">Daftarkan Perangkat 2FA</h3>
                   <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
-                    Buka aplikasi <strong className="text-slate-800">Google Authenticator</strong> di ponsel Anda, lalu pindai QR code di bawah ini untuk mendaftarkan akun.
+                    Sebelum masuk ke sistem, daftarkan akun Anda ke aplikasi <strong className="text-slate-800">Google Authenticator</strong> dengan memindai QR code di bawah ini.
                   </p>
                 </div>
 
@@ -311,7 +436,7 @@ export const Login = () => {
                     <code className="text-sm font-black text-slate-800 tracking-wider font-mono">{qrData.secretFormatted}</code>
                     <button
                       type="button"
-                      onClick={() => navigator.clipboard?.writeText(qrData.secret || '')}
+                      onClick={() => navigator.clipboard?.writeText(qrData.secretFormatted || '')}
                       className="text-slate-400 hover:text-sky-600 transition-all cursor-pointer p-0.5"
                       title="Salin kode"
                     >
@@ -371,10 +496,6 @@ export const Login = () => {
                       {otpError}
                     </p>
                   )}
-
-                  <div className="bg-sky-50 text-sky-850 p-3 rounded-xl border border-sky-100 text-xs sm:text-sm leading-relaxed font-semibold">
-                    Demo prototipe: masukkan kode <strong className="text-sky-950 font-black">123456</strong>
-                  </div>
 
                   <div className="flex gap-3 pt-2">
                     <button

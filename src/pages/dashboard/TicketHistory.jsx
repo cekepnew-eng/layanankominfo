@@ -81,13 +81,13 @@ export const TicketHistory = () => {
     try {
       if (!user) return;
       let res;
-      if (user.role === 'user' || user.role === 'masyarakat') {
+      if (user.role === 'USER' || user.role === 'MASYARAKAT') {
         res = await api.getMyTickets();
-      } else if (user.role === 'helpdesk') {
+      } else if (user.role === 'HELPDESK') {
         res = await api.getHelpdeskTickets();
-      } else if (user.role === 'pegawai') {
+      } else if (user.role === 'PEGAWAI') {
         res = await api.getEmployeeTickets();
-      } else if (user.role === 'admin') {
+      } else if (user.role === 'ADMIN') {
         res = await api.getAdminTickets();
       }
       
@@ -95,6 +95,9 @@ export const TicketHistory = () => {
         // Map backend names to frontend expected names
         const mapped = res.data.map(t => ({
           ...t,
+          ticket_number: t.ticket_number,
+          id: t.ticket_number || t.id,
+          uuid: t.id,
           status: t.status_name === 'PENDING' ? 'Verifikasi' 
                 : t.status_name === 'VERIFIED' ? 'Menunggu Validasi'
                 : t.status_name === 'ASSIGNED' ? 'Diproses'
@@ -121,6 +124,24 @@ export const TicketHistory = () => {
 
   useEffect(() => {
     loadTickets();
+  }, [user]);
+
+  useEffect(() => {
+    const fetchTeams = async () => {
+      if (user?.role !== 'ADMIN' && user?.role !== 'HELPDESK') return;
+      try {
+        const res = await api.getTeams();
+        if (res && res.data) {
+          setTeams(res.data);
+          if (res.data.length > 0) {
+            setSelectedTeam(res.data[0].name);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load teams", err);
+      }
+    };
+    if (user) fetchTeams();
   }, [user]);
 
   const [selectedTicket, setSelectedTicket] = useState(null);
@@ -271,10 +292,13 @@ export const TicketHistory = () => {
     }
   };
 
-  const executeApprove = async (ticketId) => {
+  const executeApprove = async (ticketUuid) => {
     try {
-      await api.verifyTicket(ticketId);
-      await api.assignTicket(ticketId, { team_id: null, user_id: null });
+      const teamObj = teams.find(t => t.name === selectedTeam);
+      const team_id = teamObj ? teamObj.id : null;
+      
+      await api.verifyTicket(ticketUuid);
+      await api.assignTicket(ticketUuid, { team_id, user_id: null });
       loadTickets(); // Refresh from DB
       setSelectedTicket(null);
       setModalConfig({
@@ -290,7 +314,7 @@ export const TicketHistory = () => {
     }
   };
 
-  const handleApprove = (ticketId) => {
+  const handleApprove = (ticketUuid) => {
     setModalConfig({
       isOpen: true,
       type: 'confirm',
@@ -300,7 +324,7 @@ export const TicketHistory = () => {
       cancelText: 'Batal',
       onConfirm: () => {
         closeModal();
-        executeApprove(ticketId);
+        executeApprove(ticketUuid);
       }
     });
   };
@@ -308,7 +332,7 @@ export const TicketHistory = () => {
   const executeReject = (ticketId) => {
     const reasonText = rejectReason.trim();
     setTickets(prev => prev.map(t => {
-      if (t.id === ticketId) {
+      if (t.uuid === ticketId) {
         const stage2RejectLog = {
           date: getCurrentLogTimeFormatted(0),
           text: `Permohonan diverifikasi & ditangguhkan oleh Helpdesk. Alasan: ${reasonText}`
@@ -338,7 +362,7 @@ export const TicketHistory = () => {
   };
 
   const handleReject = (ticketId) => {
-    if (user?.role !== 'helpdesk') return;
+    if (user?.role !== 'HELPDESK') return;
     if (!rejectReason.trim()) {
       setModalConfig({
         isOpen: true,
@@ -456,33 +480,27 @@ export const TicketHistory = () => {
   const getTabCount = (tabId) => {
     if (!user) return 0;
     let base = tickets || [];
-    if (user.role === 'user' || user.role === 'masyarakat') {
-      base = (tickets || []).filter(t => t.opd === user.department);
-    } else if (user.role === 'pegawai') {
-      const myTeamNames = getUserTeams(user).map(t => t.name);
-      base = (tickets || []).filter(t => myTeamNames.includes(t.team || getTicketTeam(t)));
-    }
     
-    switch (user.role) {
-      case 'user':
-      case 'masyarakat':
+    switch (user.role?.toUpperCase()) {
+      case 'USER':
+      case 'MASYARAKAT':
         if (tabId === 'proses') return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status === 'Diproses').length;
         if (tabId === 'selesai') return base.filter(t => t.status === 'Selesai' && !t.rating).length;
         if (tabId === 'dirating') return base.filter(t => t.status === 'Selesai' && t.rating).length;
         if (tabId === 'pending') return base.filter(t => t.status === 'Pending').length;
         return base.length;
-      case 'helpdesk':
+      case 'HELPDESK':
         if (tabId === 'antrean') return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi').length;
         if (tabId === 'proses') return base.filter(t => t.status === 'Diproses').length;
         if (tabId === 'dinilai') return base.filter(t => t.status === 'Selesai').length;
         if (tabId === 'pending') return base.filter(t => t.status === 'Pending').length;
         return base.length;
-      case 'pegawai':
+      case 'PEGAWAI':
         if (tabId === 'aktif') return base.filter(t => t.status === 'Diproses').length;
         if (tabId === 'pending') return base.filter(t => t.status === 'Pending').length;
         if (tabId === 'selesai') return base.filter(t => t.status === 'Selesai').length;
         return base.length;
-      case 'admin':
+      case 'ADMIN':
         if (tabId === 'proses') return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status === 'Diproses').length;
         if (tabId === 'selesai') return base.filter(t => t.status === 'Selesai').length;
         if (tabId === 'pending') return base.filter(t => t.status === 'Pending').length;
@@ -495,17 +513,11 @@ export const TicketHistory = () => {
   const getFilteredTickets = () => {
     if (!user) return [];
     
-    let base = tickets;
-    if (user.role === 'user' || user.role === 'masyarakat') {
-      base = tickets.filter(t => t.opd === user.department);
-    } else if (user.role === 'pegawai') {
-      const myTeamNames = getUserTeams(user).map(t => t.name);
-      base = tickets.filter(t => myTeamNames.includes(t.team || getTicketTeam(t)));
-    }
+    let base = tickets || [];
 
-    switch (user.role) {
-      case 'user':
-      case 'masyarakat':
+    switch (user.role?.toUpperCase()) {
+      case 'USER':
+      case 'MASYARAKAT':
         if (activeTab === 'proses') {
           return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status === 'Diproses');
         }
@@ -520,7 +532,7 @@ export const TicketHistory = () => {
         }
         return base;
 
-      case 'helpdesk':
+      case 'HELPDESK':
         if (activeTab === 'antrean') {
           return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi');
         }
@@ -535,7 +547,7 @@ export const TicketHistory = () => {
         }
         return base;
 
-      case 'pegawai':
+      case 'PEGAWAI':
         if (activeTab === 'aktif') {
           return base.filter(t => t.status === 'Diproses');
         }
@@ -582,16 +594,16 @@ export const TicketHistory = () => {
     <div className="space-y-8 font-sans text-left">
       <div>
         <h2 className="text-3xl font-black text-slate-900 tracking-tight">
-          {user?.role === 'user' ? 'Tiket Saya' :
-           user?.role === 'helpdesk' ? 'Kelola Tiket SPBE' :
-           user?.role === 'pegawai' ? 'Tiket Pekerjaan TIK' :
+          {(user?.role === 'USER' || user?.role === 'MASYARAKAT') ? 'Tiket Saya' :
+           user?.role === 'HELPDESK' ? 'Kelola Tiket SPBE' :
+           user?.role === 'PEGAWAI' ? 'Tiket Pekerjaan TIK' :
            'Daftar Tiket SPBE'}
         </h2>
         <p className="text-slate-500 text-base leading-relaxed mt-1.5">
-          {user?.role === 'user' && 'Pantau seluruh pengajuan tiket instansi Anda, hasil penyelesaian, dan penilaian ulasan yang telah dikirimkan.'}
-          {user?.role === 'helpdesk' && 'Daftar riwayat validasi tiket, baik yang disetujui untuk diteruskan ke tim pelaksana maupun yang ditolak.'}
-          {user?.role === 'pegawai' && 'Daftar riwayat tugas pengerjaan teknis yang didelegasikan ke tim Anda beserta evaluasi rating dari OPD.'}
-          {user?.role === 'admin' && 'Daftar seluruh riwayat pengajuan tiket layanan SPBE dari seluruh OPD di Kota Bogor.'}
+          {(user?.role === 'USER' || user?.role === 'MASYARAKAT') && 'Pantau seluruh pengajuan tiket instansi Anda, hasil penyelesaian, dan penilaian ulasan yang telah dikirimkan.'}
+          {user?.role === 'HELPDESK' && 'Daftar riwayat validasi tiket, baik yang disetujui untuk diteruskan ke tim pelaksana maupun yang ditolak.'}
+          {user?.role === 'PEGAWAI' && 'Daftar riwayat tugas pengerjaan teknis yang didelegasikan ke tim Anda beserta evaluasi rating dari OPD.'}
+          {user?.role === 'ADMIN' && 'Daftar seluruh riwayat pengajuan tiket layanan SPBE dari seluruh OPD di Kota Bogor.'}
         </p>
       </div>
 
@@ -798,12 +810,12 @@ export const TicketHistory = () => {
 
 
 
-              {((user?.role === 'helpdesk' && (selectedTicket.status === 'Verifikasi' || selectedTicket.status === 'Pending')) || 
-                (user?.role === 'admin' && selectedTicket.status === 'Verifikasi')) && (
+              {((user?.role === 'HELPDESK' && (selectedTicket.status === 'Verifikasi' || selectedTicket.status === 'Pending')) || 
+                (user?.role === 'ADMIN' && selectedTicket.status === 'Verifikasi')) && (
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4 text-left">
                   <div className="flex justify-between items-center">
                     <h4 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider">
-                      {selectedTicket.status === 'Pending' ? 'Tindakan Validasi Tiket Pending' : (user?.role === 'admin' ? 'Tindakan Penugasan Tim' : 'Tindakan Validasi Helpdesk')}
+                      {selectedTicket.status === 'Pending' ? 'Tindakan Validasi Tiket Pending' : (user?.role === 'ADMIN' ? 'Tindakan Penugasan Tim' : 'Tindakan Validasi Helpdesk')}
                     </h4>
                     {selectedTicket.status === 'Pending' && (
                       <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-black uppercase tracking-wider">
@@ -847,12 +859,12 @@ export const TicketHistory = () => {
 
                       <div className="flex gap-3">
                         <button 
-                          onClick={() => handleApprove(selectedTicket.id)}
+                          onClick={() => handleApprove(selectedTicket.uuid)}
                           className="flex-1 px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm font-bold transition-all cursor-pointer"
                         >
                           {selectedTicket.status === 'Pending' ? 'Setujui & Lanjutkan Tiket' : 'Setujui & Tugaskan'}
                         </button>
-                        {user?.role === 'helpdesk' && (
+                        {user?.role === 'HELPDESK' && (
                           <button 
                             onClick={() => setShowRejectForm(true)}
                             className="px-4 py-2.5 border border-amber-200 hover:bg-amber-50 hover:border-amber-300 text-amber-600 rounded-xl text-sm font-bold transition-all cursor-pointer"
@@ -876,7 +888,7 @@ export const TicketHistory = () => {
 
                       <div className="flex gap-3">
                         <button 
-                          onClick={() => handleReject(selectedTicket.id)}
+                          onClick={() => handleReject(selectedTicket.uuid)}
                           className="flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-bold transition-all"
                         >
                           Tangguhkan Tiket
@@ -896,7 +908,7 @@ export const TicketHistory = () => {
                 </div>
               )}
 
-              {user?.role === 'pegawai' && selectedTicket.status === 'Pending' && (
+              {user?.role === 'PEGAWAI' && selectedTicket.status === 'Pending' && (
                 <div className="bg-rose-50/50 border border-rose-200 rounded-2xl p-5 space-y-4 text-left animate-in fade-in duration-200">
                   <div className="flex gap-2.5 text-rose-800">
                     <AlertTriangle className="w-5 h-5 shrink-0 text-rose-600 mt-0.5" />
@@ -922,7 +934,7 @@ export const TicketHistory = () => {
                         cancelText: 'Batal',
                         onConfirm: () => {
                           const updated = tickets.map(t => {
-                            if (t.id === selectedTicket.id) {
+                            if (t.uuid === selectedTicket.uuid) {
                               return {
                                 ...t,
                                 status: 'Diproses',
@@ -935,7 +947,7 @@ export const TicketHistory = () => {
                             return t;
                           });
                           setTickets(updated);
-                          setSelectedTicket(updated.find(t => t.id === selectedTicket.id));
+                          setSelectedTicket(updated.find(t => t.uuid === selectedTicket.uuid));
                           setModalConfig({
                             isOpen: true,
                             type: 'success',
@@ -955,7 +967,7 @@ export const TicketHistory = () => {
                 </div>
               )}
 
-              {user?.role === 'pegawai' && selectedTicket.status === 'Diproses' && (
+              {user?.role === 'PEGAWAI' && selectedTicket.status === 'Diproses' && (
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4 text-left">
                   <h4 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider">Perbarui Status Pekerjaan</h4>
                   
@@ -1046,7 +1058,7 @@ export const TicketHistory = () => {
                   )}
 
                   <button 
-                    onClick={() => handleUpdateProgress(selectedTicket.id)}
+                    onClick={() => handleUpdateProgress(selectedTicket.uuid)}
                     className="w-full px-4 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white rounded-xl text-sm font-bold transition-all shadow-sm shadow-sky-500/10"
                   >
                     {isFinished ? 'Selesaikan Tugas' : 'Simpan Laporan'}
@@ -1054,7 +1066,7 @@ export const TicketHistory = () => {
                 </div>
               )}
 
-              {user?.role === 'user' && selectedTicket.status === 'Menunggu Konfirmasi User' && (
+              {(user?.role === 'USER' || user?.role === 'MASYARAKAT') && selectedTicket.status === 'Menunggu Konfirmasi User' && (
                 <div className="bg-gradient-to-br from-indigo-50/50 to-sky-50/50 border border-indigo-100 rounded-2xl p-5 space-y-4 text-left">
                   <div className="flex items-center gap-2 text-indigo-700">
                     <Star className="w-5 h-5 fill-indigo-100 text-indigo-650" />
@@ -1151,7 +1163,7 @@ export const TicketHistory = () => {
                   </div>
 
                   <button 
-                    onClick={() => handleConfirmAndRate(selectedTicket.id)}
+                    onClick={() => handleConfirmAndRate(selectedTicket.uuid)}
                     className="w-full px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-indigo-500/20"
                   >
                     Konfirmasi Selesai & Kirim Ulasan

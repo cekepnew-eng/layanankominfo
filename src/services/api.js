@@ -14,7 +14,7 @@ const handleResponse = async (res) => {
     if (res.status === 401 || res.status === 403) {
       localStorage.removeItem('spbe_token');
       localStorage.removeItem('spbe_user');
-      window.location.href = '/login';
+      window.location.href = '/auth/login';
     }
     throw new Error(data.message || `HTTP Error ${res.status}`);
   }
@@ -22,6 +22,35 @@ const handleResponse = async (res) => {
 };
 
 export const api = {
+  // TEAMS
+  getTeams: async () => {
+    const res = await fetch(`${BASE_URL}/admin/teams`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+  createTeam: async (payload) => {
+    const res = await fetch(`${BASE_URL}/admin/teams`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload)
+    });
+    return handleResponse(res);
+  },
+  updateTeam: async (id, payload) => {
+    const res = await fetch(`${BASE_URL}/admin/teams/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(payload)
+    });
+    return handleResponse(res);
+  },
+  deleteTeam: async (id) => {
+    const res = await fetch(`${BASE_URL}/admin/teams/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    return handleResponse(res);
+  },
+
   // USERS
   getUsers: async () => {
     const res = await fetch(`${BASE_URL}/admin/users`, { headers: getHeaders() });
@@ -44,11 +73,44 @@ export const api = {
   },
 
   // AUTH
-  login: async (email, password) => {
+  getCaptcha: async () => {
+    const res = await fetch(`${BASE_URL}/auth/captcha`);
+    return handleResponse(res);
+  },
+  login: async (email, password, captchaToken, captchaAnswer) => {
     const res = await fetch(`${BASE_URL}/auth/login`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({ email, password, captchaToken, captchaAnswer })
+    });
+    return handleResponse(res);
+  },
+  login2FA: async (tempToken, otp) => {
+    const res = await fetch(`${BASE_URL}/auth/login-2fa`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ tempToken, otp })
+    });
+    return handleResponse(res);
+  },
+  generate2FA: async (tempToken) => {
+    const res = await fetch(`${BASE_URL}/auth/2fa/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${tempToken}`
+      }
+    });
+    return handleResponse(res);
+  },
+  verifySetup2FA: async (tempToken, otp) => {
+    const res = await fetch(`${BASE_URL}/auth/2fa/verify-setup`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${tempToken}`
+      },
+      body: JSON.stringify({ otp })
     });
     return handleResponse(res);
   },
@@ -111,6 +173,36 @@ export const api = {
     });
     return handleResponse(res);
   },
+  
+  // TEAMS
+  getTeams: async () => {
+    const res = await fetch(`${BASE_URL}/admin/teams`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+  createTeam: async (payload) => {
+    const res = await fetch(`${BASE_URL}/admin/teams`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload)
+    });
+    return handleResponse(res);
+  },
+  updateTeam: async (id, payload) => {
+    const res = await fetch(`${BASE_URL}/admin/teams/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(payload)
+    });
+    return handleResponse(res);
+  },
+  deleteTeam: async (id) => {
+    const res = await fetch(`${BASE_URL}/admin/teams/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    return handleResponse(res);
+  },
+  
   getMyTickets: async () => {
     const res = await fetch(`${BASE_URL}/my/tickets`, { headers: getHeaders() });
     return handleResponse(res);

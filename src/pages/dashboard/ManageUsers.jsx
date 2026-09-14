@@ -5,7 +5,7 @@ import { api } from '../../services/api';
 import { ActionModal } from '../../components/ActionModal';
 
 export const ManageUsers = () => {
-  const { teams, setTeams, user, setUser } = useAuth();
+  const { teams, setTeams, fetchTeams, user, setUser } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -63,11 +63,9 @@ export const ManageUsers = () => {
     setEditRolesVal(u.roles || [u.role || 'user']);
 
     const initialAssignments = {};
-    teams.forEach(t => {
-      if (t.members.includes(u.name)) {
-        initialAssignments[t.id] = true;
-      }
-    });
+    if (u.team_id) {
+       initialAssignments[u.team_id] = true;
+    }
     setEditTeamAssignments(initialAssignments);
   };
 
@@ -123,26 +121,14 @@ export const ManageUsers = () => {
     }
 
     const primaryRole = editRolesVal[0] || 'user';
+    const primaryTeamId = assignedTeamIds.length > 0 ? assignedTeamIds[0] : null;
 
     try {
-      await api.updateUserRole(editingUser.id, { roleName: primaryRole });
+      await api.updateUserRole(editingUser.id, { roleName: primaryRole, team_id: primaryTeamId });
       await fetchUsers(); // Refresh from DB
-
-      const updatedTeams = teams.map(t => {
-        let members = [...t.members];
-        members = members.filter(m => m !== editingUser.name);
-        if (editRolesVal.includes('pegawai') && editTeamAssignments[t.id]) {
-          if (!members.includes(editingUser.name)) {
-            members.push(editingUser.name);
-          }
-        }
-        let leader = t.leader;
-        if (leader === editingUser.name) {
-          leader = editRolesVal.includes('pegawai') && editTeamAssignments[t.id] ? editingUser.name : '';
-        }
-        return { ...t, members, leader };
-      });
-      setTeams(updatedTeams);
+      if (fetchTeams) {
+        await fetchTeams();
+      }
 
       setEditingUser(null);
       setModalConfig({
@@ -352,7 +338,7 @@ export const ManageUsers = () => {
                 <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
                   <span className="text-xs font-black text-slate-400 uppercase tracking-wider">Identitas Pengguna</span>
                   <span className="text-[10px] font-extrabold text-slate-500 bg-slate-200/70 px-2 py-0.5 rounded-md uppercase tracking-wider flex items-center gap-1">
-                    <Lock className="w-3 h-3 text-slate-400" /> {editingUser.role === 'masyarakat' || editingUser.roles?.includes('masyarakat') ? 'Akun Mandiri' : 'Data Sinkron'}
+                    <Lock className="w-3 h-3 text-slate-400" /> {editingUser.role === 'USER' || editingUser.roles?.includes('USER') ? 'Akun Mandiri' : 'Data Sinkron'}
                   </span>
                 </div>
                 <div className="grid grid-cols-1 gap-2.5 text-left">
@@ -366,12 +352,12 @@ export const ManageUsers = () => {
                   </div>
                   <div>
                     <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                      {editingUser.role === 'masyarakat' || editingUser.roles?.includes('masyarakat') ? 'Kategori Pemohon' : 'Unit Kerja / Instansi'}
+                      {editingUser.role === 'USER' || editingUser.roles?.includes('USER') ? 'Kategori Pemohon' : 'Unit Kerja / Instansi'}
                     </span>
                     <p className="text-sm font-extrabold text-sky-700">{editingUser.department}</p>
                   </div>
                 </div>
-                {!(editingUser.role === 'masyarakat' || editingUser.roles?.includes('masyarakat')) && (
+                {!(editingUser.role === 'USER' || editingUser.roles?.includes('USER')) && (
                   <p className="text-[11px] text-slate-400 italic pt-1 border-t border-slate-200/50 leading-relaxed">
                     * Nama, email, dan unit kerja tersinkronisasi otomatis dari akun resmi instansi dan tidak dapat diubah manual oleh admin.
                   </p>
@@ -392,11 +378,11 @@ export const ManageUsers = () => {
                     
                     let isDisabled = false;
                     if (item.key === 'user') {
-                      if (editingUser.roles?.includes('user') || editingUser.roles?.includes('masyarakat')) {
+                      if (editingUser.roles?.includes('USER') || editingUser.roles?.includes('masyarakat')) {
                         isDisabled = true;
                       }
                     } else if (item.key === 'masyarakat') {
-                      if (editingUser.roles?.includes('masyarakat') || editingUser.roles?.includes('user')) {
+                      if (editingUser.roles?.includes('masyarakat') || editingUser.roles?.includes('USER')) {
                         isDisabled = true;
                       }
                     }

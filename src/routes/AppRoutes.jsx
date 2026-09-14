@@ -19,7 +19,7 @@ import { useAuth } from '../context/AuthContext';
 
 const HistoryWrapper = () => {
   const { user } = useAuth();
-  if (user?.role === 'user' || user?.role === 'masyarakat') {
+  if (user?.role === 'USER') {
     return <MyTickets />;
   }
   return <TicketHistory />;
@@ -45,7 +45,7 @@ export const AppRoutes = () => {
         <Route 
           path="admin/users" 
           element={
-            <ProtectedRoute allowedRoles={['admin']}>
+            <ProtectedRoute allowedRoles={['ADMIN']}>
               <ManageUsers />
             </ProtectedRoute>
           } 
@@ -53,7 +53,7 @@ export const AppRoutes = () => {
         <Route 
           path="admin/services" 
           element={
-            <ProtectedRoute allowedRoles={['admin']}>
+            <ProtectedRoute allowedRoles={['ADMIN']}>
               <ManageServices />
             </ProtectedRoute>
           } 
@@ -61,7 +61,7 @@ export const AppRoutes = () => {
         <Route 
           path="admin/teams" 
           element={
-            <ProtectedRoute allowedRoles={['admin']}>
+            <ProtectedRoute allowedRoles={['ADMIN']}>
               <ManageTeams />
             </ProtectedRoute>
           } 
@@ -69,7 +69,7 @@ export const AppRoutes = () => {
         <Route 
           path="admin/ratings" 
           element={
-            <ProtectedRoute allowedRoles={['admin']}>
+            <ProtectedRoute allowedRoles={['ADMIN']}>
               <ManageRatings />
             </ProtectedRoute>
           } 
@@ -78,7 +78,7 @@ export const AppRoutes = () => {
         <Route 
           path="user/create-ticket" 
           element={
-            <ProtectedRoute allowedRoles={['user', 'masyarakat', 'helpdesk']}>
+            <ProtectedRoute allowedRoles={['USER', 'HELPDESK']}>
               <CreateTicket />
             </ProtectedRoute>
           } 
@@ -86,7 +86,7 @@ export const AppRoutes = () => {
         <Route 
           path="history" 
           element={
-            <ProtectedRoute allowedRoles={['admin', 'helpdesk', 'pegawai', 'user', 'masyarakat']}>
+            <ProtectedRoute allowedRoles={['ADMIN', 'HELPDESK', 'PEGAWAI', 'USER']}>
               <HistoryWrapper />
             </ProtectedRoute>
           } 
@@ -95,7 +95,7 @@ export const AppRoutes = () => {
         <Route 
           path="profile" 
           element={
-            <ProtectedRoute allowedRoles={['admin', 'helpdesk', 'pegawai', 'user', 'masyarakat']}>
+            <ProtectedRoute allowedRoles={['ADMIN', 'HELPDESK', 'PEGAWAI', 'USER']}>
               <Profile />
             </ProtectedRoute>
           } 

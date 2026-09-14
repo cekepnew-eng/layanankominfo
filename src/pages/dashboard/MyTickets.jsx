@@ -42,6 +42,7 @@ export const MyTickets = () => {
   const [ratingCommunication, setRatingCommunication] = useState(5);
   const [ratingQuality, setRatingQuality] = useState(5);
   const [feedbackText, setFeedbackText] = useState('');
+  const [showRatingModal, setShowRatingModal] = useState(false);
 
   const [showDisputeForm, setShowDisputeForm] = useState(false);
   const [disputeReason, setDisputeReason] = useState('');
@@ -65,41 +66,8 @@ export const MyTickets = () => {
   };
 
   const handleConfirmSkm = (ticket) => {
-    const updatedTickets = tickets.map(t => {
-      if (t.id === ticket.id) {
-        return {
-          ...t,
-          rating: {
-            skm: { q1: 'Sangat Baik', q2: 'Sangat Baik', q3: 'Sangat Baik' },
-            completed: true
-          },
-          skmCompleted: true,
-          logs: [
-            {
-              date: getCurrentLogTimeFormatted(0),
-              text: 'Pemohon telah mengisi Survei Kepuasan Masyarakat (SKM) melalui portal resmi MenPAN-RB.'
-            },
-            ...(t.logs || [])
-          ]
-        };
-      }
-      return t;
-    });
-    setTickets(updatedTickets);
-    setSelectedTicket({
-      ...ticket,
-      rating: { completed: true },
-      skmCompleted: true
-    });
-    setModalConfig({
-      isOpen: true,
-      type: 'success',
-      title: 'Survei SKM Berhasil Dicatat',
-      message: 'Terima kasih atas partisipasi Anda! Konfirmasi pengisian Survei Kepuasan Masyarakat (SKM) MenPAN-RB telah berhasil dicatat ke dalam sistem.',
-      confirmText: 'Tutup & Selesai',
-      cancelText: '',
-      onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
-    });
+    setShowSkmModal(false);
+    setShowRatingModal(true);
   };
 
   const handlePreDisputeTicket = (id, reason) => {
@@ -174,12 +142,13 @@ export const MyTickets = () => {
       setModalConfig({
         isOpen: true,
         type: 'success',
-        title: 'Survei SKM & Rating Berhasil',
-        message: 'Survei Kepuasan Masyarakat dan penilaian ulasan Anda berhasil dikirimkan. Terima kasih atas masukan berharga Anda bagi peningkatan kualitas layanan SPBE.',
-        confirmText: 'Tutup & Selesai',
+        title: 'Berhasil',
+        message: 'Terima kasih atas penilaian Anda.',
+        confirmText: 'Tutup',
         cancelText: '',
         onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
       });
+      setShowRatingModal(false);
     } catch (err) {
       console.error(err);
       alert('Gagal mengirim penilaian');
@@ -270,148 +239,148 @@ export const MyTickets = () => {
         )}
       </div>
 
-            {selectedTicket.status === 'Selesai' && selectedTicket.bastFile && (
-              <div className="space-y-2.5 text-left">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Lampiran Penyelesaian Pegawai</span>
-                <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200 text-sm font-semibold">
-                  <div className="flex items-center gap-2 text-slate-700 overflow-hidden">
-                    <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span className="truncate max-w-[200px]" title={selectedTicket.bastFile}>{selectedTicket.bastFile}</span>
+      {selectedTicket && (
+        <div className="mt-8 space-y-4">
+          {selectedTicket.status === 'Selesai' && selectedTicket.bastFile && (
+            <div className="space-y-2.5 text-left">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Lampiran Penyelesaian Pegawai</span>
+              <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200 text-sm font-semibold">
+                <div className="flex items-center gap-2 text-slate-700 overflow-hidden">
+                  <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="truncate max-w-[200px]" title={selectedTicket.bastFile}>{selectedTicket.bastFile}</span>
+                </div>
+                <a
+                  href={selectedTicket.bastFileUrl || '/bast_selesai.pdf'}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs font-bold text-emerald-600 hover:underline px-2.5 py-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-all shrink-0"
+                >
+                  Buka PDF BAST
+                </a>
+              </div>
+            </div>
+          )}
+
+          {selectedTicket.status === 'Pending' && (
+            <div className="space-y-4">
+              {selectedTicket.logs?.some(l => l.text.toLowerCase().includes('menyanggah')) ? (
+                <div className="bg-rose-50/50 p-5 rounded-2xl border border-rose-200 space-y-3 text-left animate-in fade-in duration-200">
+                  <div className="flex gap-2.5 text-rose-800">
+                    <AlertTriangle className="w-5 h-5 shrink-0 text-rose-600 mt-0.5" />
+                    <div className="text-sm">
+                      <p className="font-extrabold text-rose-900">Sanggahan Anda Sedang Ditinjau</p>
+                      <p className="mt-1 text-slate-650 leading-relaxed font-semibold text-xs">
+                        Anda telah mengajukan sanggahan terhadap hasil pekerjaan. Tim teknis pelaksana sedang meninjau dan melakukan tindak lanjut perbaikan.
+                      </p>
+                      <div className="mt-2.5 p-3 bg-white rounded-xl border border-rose-100/80 text-xs italic text-slate-700">
+                        "{selectedTicket.logs.find(l => l.text.toLowerCase().includes('menyanggah'))?.text || selectedTicket.logs[0]?.text}"
+                      </div>
+                    </div>
                   </div>
-                  <a
-                    href={selectedTicket.bastFileUrl || '/bast_selesai.pdf'}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs font-bold text-emerald-600 hover:underline px-2.5 py-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-all shrink-0"
+                </div>
+              ) : (
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4 text-left animate-in fade-in duration-200">
+                  <div className="flex gap-2.5 text-slate-800">
+                    <AlertCircle className="w-5 h-5 shrink-0 text-amber-500 mt-0.5" />
+                    <div className="text-sm">
+                      <p className="font-extrabold text-slate-900 text-base">Permohonan Memerlukan Perbaikan / Klarifikasi</p>
+                      <p className="mt-1 text-slate-500 leading-relaxed font-semibold text-xs">
+                        Helpdesk telah menangguhkan permohonan Anda. Silakan isi ulang seluruh formulir permohonan dan sertakan catatan perbaikan jika diperlukan.
+                      </p>
+                      {selectedTicket.logs && selectedTicket.logs.length > 0 && (
+                        <div className="mt-2.5 p-3 bg-white rounded-xl border border-slate-200 text-xs">
+                          <span className="font-bold text-slate-500 uppercase tracking-wider block mb-1">Catatan dari Helpdesk:</span>
+                          <p className="text-slate-700 italic font-medium">
+                            "{selectedTicket.logs.find(l => l.text.toLowerCase().includes('helpdesk') || l.text.toLowerCase().includes('ditangguhkan') || l.text.toLowerCase().includes('alasan:'))?.text || selectedTicket.logs[0]?.text}"
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowRefillModal(true)}
+                    className="w-full py-3 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md shadow-sky-500/10 flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    Buka PDF BAST
-                  </a>
+                    <RefreshCw className="w-4 h-4" />
+                    <span>Isi Ulang Formulir & Kirim Perbaikan</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {selectedTicket.status === 'Selesai' && !selectedTicket.rating && (
+            <div className="bg-sky-50/50 p-4 rounded-xl border border-sky-100/50 space-y-4">
+              <div className="flex gap-2.5 text-sky-800">
+                <CheckCircle2 className="w-5 h-5 shrink-0 text-sky-600" />
+                <div className="text-sm">
+                  <p className="font-bold">Layanan Selesai Dikerjakan</p>
+                  <p className="mt-0.5 text-sky-650/80 leading-relaxed">
+                    Pekerjaan layanan telah diselesaikan oleh tim teknis. Mohon luangkan waktu Anda untuk mengisi Survei Kepuasan Masyarakat (SKM) MenPAN-RB.
+                  </p>
                 </div>
               </div>
-            )}
 
-            {selectedTicket.status === 'Pending' && (
-              <div className="space-y-4">
-                {selectedTicket.logs?.some(l => l.text.toLowerCase().includes('menyanggah')) ? (
-                  <div className="bg-rose-50/50 p-5 rounded-2xl border border-rose-200 space-y-3 text-left animate-in fade-in duration-200">
-                    <div className="flex gap-2.5 text-rose-800">
-                      <AlertTriangle className="w-5 h-5 shrink-0 text-rose-600 mt-0.5" />
-                      <div className="text-sm">
-                        <p className="font-extrabold text-rose-900">Sanggahan Anda Sedang Ditinjau</p>
-                        <p className="mt-1 text-slate-650 leading-relaxed font-semibold text-xs">
-                          Anda telah mengajukan sanggahan terhadap hasil pekerjaan. Tim teknis pelaksana sedang meninjau dan melakukan tindak lanjut perbaikan.
-                        </p>
-                        <div className="mt-2.5 p-3 bg-white rounded-xl border border-rose-100/80 text-xs italic text-slate-700">
-                          "{selectedTicket.logs.find(l => l.text.toLowerCase().includes('menyanggah'))?.text || selectedTicket.logs[0]?.text}"
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4 text-left animate-in fade-in duration-200">
-                    <div className="flex gap-2.5 text-slate-800">
-                      <AlertCircle className="w-5 h-5 shrink-0 text-amber-500 mt-0.5" />
-                      <div className="text-sm">
-                        <p className="font-extrabold text-slate-900 text-base">Permohonan Memerlukan Perbaikan / Klarifikasi</p>
-                        <p className="mt-1 text-slate-500 leading-relaxed font-semibold text-xs">
-                          Helpdesk telah menangguhkan permohonan Anda. Silakan isi ulang seluruh formulir permohonan dan sertakan catatan perbaikan jika diperlukan.
-                        </p>
-                        {selectedTicket.logs && selectedTicket.logs.length > 0 && (
-                          <div className="mt-2.5 p-3 bg-white rounded-xl border border-slate-200 text-xs">
-                            <span className="font-bold text-slate-500 uppercase tracking-wider block mb-1">Catatan dari Helpdesk:</span>
-                            <p className="text-slate-700 italic font-medium">
-                              "{selectedTicket.logs.find(l => l.text.toLowerCase().includes('helpdesk') || l.text.toLowerCase().includes('ditangguhkan') || l.text.toLowerCase().includes('alasan:'))?.text || selectedTicket.logs[0]?.text}"
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
+              {showDisputeForm ? (
+                <div className="space-y-3 bg-white p-4 rounded-xl border border-slate-200 text-left animate-in fade-in duration-200">
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Tuliskan Alasan Sanggahan</label>
+                  <textarea
+                    rows="3"
+                    value={disputeReason}
+                    onChange={(e) => setDisputeReason(e.target.value)}
+                    placeholder="Jelaskan apa yang belum sesuai atau kendala yang masih terjadi..."
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500"
+                  />
+                  <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => setShowRefillModal(true)}
-                      className="w-full py-3 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md shadow-sky-500/10 flex items-center justify-center gap-2 cursor-pointer"
+                      onClick={() => {
+                        setShowDisputeForm(false);
+                        setDisputeReason('');
+                      }}
+                      className="flex-1 py-2 border border-slate-200 text-slate-700 bg-white rounded-lg text-xs font-bold hover:bg-slate-100 transition-all cursor-pointer"
                     >
-                      <RefreshCw className="w-4 h-4" />
-                      <span>Isi Ulang Formulir & Kirim Perbaikan</span>
+                      Batal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handlePreDisputeTicket(selectedTicket.id, disputeReason)}
+                      className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-all cursor-pointer"
+                    >
+                      Kirim Sanggahan
                     </button>
                   </div>
-                )}
-              </div>
-            )}
-
-              {selectedTicket.status === 'Selesai' && !selectedTicket.rating && (
-                <div className="bg-sky-50/50 p-4 rounded-xl border border-sky-100/50 space-y-4">
-                  <div className="flex gap-2.5 text-sky-800">
-                    <CheckCircle2 className="w-5 h-5 shrink-0 text-sky-600" />
-                    <div className="text-sm">
-                      <p className="font-bold">Layanan Selesai Dikerjakan</p>
-                      <p className="mt-0.5 text-sky-650/80 leading-relaxed">
-                        Pekerjaan layanan telah diselesaikan oleh tim teknis. Mohon luangkan waktu Anda untuk mengisi Survei Kepuasan Masyarakat (SKM) MenPAN-RB.
-                      </p>
-                    </div>
-                  </div>
-
-                  {showDisputeForm ? (
-                    <div className="space-y-3 bg-white p-4 rounded-xl border border-slate-200 text-left animate-in fade-in duration-200">
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Tuliskan Alasan Sanggahan</label>
-                      <textarea
-                        rows="3"
-                        value={disputeReason}
-                        onChange={(e) => setDisputeReason(e.target.value)}
-                        placeholder="Jelaskan apa yang belum sesuai atau kendala yang masih terjadi..."
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500"
-                      />
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowDisputeForm(false);
-                            setDisputeReason('');
-                          }}
-                          className="flex-1 py-2 border border-slate-200 text-slate-700 bg-white rounded-lg text-xs font-bold hover:bg-slate-100 transition-all cursor-pointer"
-                        >
-                          Batal
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handlePreDisputeTicket(selectedTicket.id, disputeReason)}
-                          className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-all cursor-pointer"
-                        >
-                          Kirim Sanggahan
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => setShowDisputeForm(true)}
-                        className="py-2.5 px-3 border border-slate-200 text-slate-700 bg-white rounded-lg text-xs font-bold hover:bg-slate-100 transition-all flex items-center justify-center gap-1 cursor-pointer"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        <span>Sanggah Hasil</span>
-                      </button>
-                      <button 
-                        onClick={() => {
-                          setSelectedTicket(selectedTicket);
-                          setShowSkmModal(true);
-                        }}
-                        className="py-2.5 px-3 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer"
-                      >
-                        <Sparkles className="w-3.5 h-3.5" /> 
-                        <span>Isi SKM & Penilaian</span>
-                      </button>
-                    </div>
-                  )}
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setShowDisputeForm(true)}
+                    className="py-2.5 px-3 border border-slate-200 text-slate-700 bg-white rounded-lg text-xs font-bold hover:bg-slate-100 transition-all flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Sanggah Hasil</span>
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setSelectedTicket(selectedTicket);
+                      setShowSkmModal(true);
+                    }}
+                    className="py-2.5 px-3 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" /> 
+                    <span>Isi SKM & Penilaian</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* RATING MODAL */}
-      {selectedTicket && !showDetailModal && !showRefillModal && !showSkmModal && (
+      {selectedTicket && showRatingModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
@@ -431,7 +400,7 @@ export const MyTickets = () => {
                   <textarea value={feedbackText} onChange={(e)=>setFeedbackText(e.target.value)} className="w-full border p-2 rounded-xl" rows="4" required></textarea>
                 </div>
                 <div className="flex gap-3 pt-4">
-                  <button type="button" onClick={() => setSelectedTicket(null)} className="flex-1 px-4 py-3 border rounded-xl font-bold">Batal</button>
+                  <button type="button" onClick={() => setShowRatingModal(false)} className="flex-1 px-4 py-3 border rounded-xl font-bold">Batal</button>
                   <button type="submit" className="flex-1 px-4 py-3 bg-indigo-600 text-white rounded-xl font-bold">Kirim Penilaian</button>
                 </div>
               </form>

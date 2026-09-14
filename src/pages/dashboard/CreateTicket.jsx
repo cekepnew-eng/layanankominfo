@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PlusCircle, FileText, FileCheck, Upload, ChevronRight, ArrowLeft, Clock, AlertTriangle, Search, CheckCircle2, Eye } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -11,6 +11,7 @@ import { ActionModal } from '../../components/ActionModal';
 export const CreateTicket = () => {
   const { user } = useAuth();
   const [services, setServices] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [tickets, setTickets] = useState([]);
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
@@ -21,6 +22,9 @@ export const CreateTicket = () => {
       try {
         const svcRes = await api.getPublicServices();
         setServices(svcRes.data || []);
+        if (svcRes.categories) {
+          setCategories(svcRes.categories);
+        }
         const tktRes = await api.getMyTickets();
         setTickets(tktRes.data || []);
       } catch (e) {
@@ -34,11 +38,7 @@ export const CreateTicket = () => {
   const [subSearchQuery, setSubSearchQuery] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  
-  const [appName, setAppName] = useState('');
-  const [targetUsers, setTargetUsers] = useState('');
-  const [callbackUrl, setCallbackUrl] = useState('');
-  const [targetIp, setTargetIp] = useState('');
+  const [formData, setFormData] = useState({});
   const [uploadedFile, setUploadedFile] = useState('');
   const [uploadedFileSize, setUploadedFileSize] = useState('');
   const [uploadedFileUrl, setUploadedFileUrl] = useState('/dokumen_permohonan.pdf');
@@ -52,8 +52,8 @@ export const CreateTicket = () => {
   const [createdTicketId, setCreatedTicketId] = useState('');
   const [inactiveCategoryNotice, setInactiveCategoryNotice] = useState('');
 
-  const unratedTicket = (user?.role === 'user' || user?.role === 'masyarakat') 
-    ? tickets.find(t => t.opd === user?.department && t.status === 'Selesai' && !t.rating)
+  const activeTicket = (user?.role === 'USER') 
+    ? tickets.find(t => t.status_name !== 'COMPLETED')
     : null;
 
   const handleCompleteSkm = (t) => {
@@ -80,48 +80,7 @@ export const CreateTicket = () => {
     setShowSkmModal(false);
   };
 
-  const categories = [
-    {
-      id: 'cat1',
-      title: 'Pengelolaan Aplikasi Informatika',
-      services: ['Pengembangan & Pengelolaan Aplikasi']
-    },
-    {
-      id: 'cat2',
-      title: 'Pengelolaan Sumber Daya & Perangkat Informatika',
-      services: ['Jaringan Intra Pemerintah', 'Server Perangkat Daerah']
-    },
-    {
-      id: 'cat3',
-      title: 'Penerapan Persandian & Keamanan Informasi',
-      services: ['Keamanan Informasi & Persandian']
-    },
-    {
-      id: 'cat4',
-      title: 'Tata Kelola SPBE',
-      services: ['Tata Kelola SPBE']
-    },
-    {
-      id: 'cat5',
-      title: 'Statistik Sektoral',
-      services: ['Statistik Sektoral']
-    },
-    {
-      id: 'cat6',
-      title: 'Satu Data Daerah',
-      services: ['Satu Data Daerah']
-    },
-    {
-      id: 'cat7',
-      title: 'Informasi & Komunikasi Publik',
-      services: ['Informasi & Komunikasi Publik']
-    },
-    {
-      id: 'cat8',
-      title: 'Domain & Infrastruktur Pendukung',
-      services: ['Domain & Subdomain Pemerintah Daerah']
-    }
-  ];
+
 
   const subServicesAptikaOPD = [
     'Pembuatan Aplikasi Baru (Web/Mobile)',
@@ -162,35 +121,64 @@ export const CreateTicket = () => {
     'Permohonan Informasi Publik PPID'
   ];
 
-  const activeSubServices = user?.role === 'masyarakat' ? subServicesMasyarakat : subServicesAptikaOPD;
+  const activeSubServices = (user?.role === 'MASYARAKAT' || user?.role === 'masyarakat') ? subServicesMasyarakat : subServicesAptikaOPD;
 
-  const isCategoryActive = (catTitle) => {
-    const catServices = (services || []).filter(s => s.category === catTitle);
-    if (catServices.length === 0) return catTitle === 'Pengelolaan Aplikasi Informatika';
+  const isCategoryActive = (catName) => {
+    const catServices = services.filter(s => s.category === catName);
     return catServices.some(s => s.status === 'Aktif');
   };
 
   const getSubServicesForCategory = (cat) => {
     if (!cat) return [];
-    if (user?.role === 'masyarakat') {
-      const catServices = (services || []).filter(s => s.category === cat.title && s.status === 'Aktif');
-      return catServices.length > 0 ? catServices.map(s => s.name) : subServicesMasyarakat;
+    if (cat.name === 'Pengelolaan Aplikasi Informatika') {
+      return (user?.role === 'MASYARAKAT' || user?.role === 'masyarakat') ? subServicesMasyarakat : subServicesAptikaOPD;
     }
-    const catServices = (services || []).filter(s => s.category === cat.title && s.status === 'Aktif');
-    if (catServices.length > 0) {
-      return catServices.map(s => s.name);
-    }
-    if (cat.title === 'Pengelolaan Aplikasi Informatika') {
-      return subServicesAptikaOPD;
-    }
-    return [cat.title];
+    return services.filter(s => s.category === cat.name).map(s => s.name);
+  };
+
+  const APTIKA_SERVICE_MAPPING = {
+    'Pembuatan Aplikasi Baru (Web/Mobile)': 'Pengembangan & Pengelolaan Aplikasi',
+    'Penambahan Fitur Aplikasi Dinas': 'Pengembangan & Pengelolaan Aplikasi',
+    'Perbaikan Bug / Error Sistem': 'Pengembangan & Pengelolaan Aplikasi',
+    'Integrasi Single Sign-On (SSO) TND': 'Integrasi & Interoperabilitas SPBE',
+    'Pengajuan Integrasi API SPLP': 'Integrasi & Interoperabilitas SPBE',
+    'Pemeliharaan Server Aplikasi Dinas': 'Server Perangkat Daerah',
+    'Migrasi Server / Database Aplikasi': 'Server Perangkat Daerah',
+    'Pemasangan SSL (HTTPS) Domain Dinas': 'Domain & Subdomain Pemerintah Daerah',
+    'Permohonan Rekomendasi Aplikasi Baru': 'Rekomendasi & Evaluasi Aplikasi',
+    'Evaluasi Kelayakan Sistem Aplikasi': 'Rekomendasi & Evaluasi Aplikasi',
+    'Uji Kesesuaian Sistem (UKS) Tahap Awal': 'Uji Kesesuaian Sistem (UKS)',
+    'Uji Kesesuaian Sistem (UKS) Pasca Uji Coba': 'Uji Kesesuaian Sistem (UKS)',
+    'Uji Celah Keamanan (Vulnerability Assessment)': 'Keamanan Aplikasi / VAPT',
+    'Simulasi Serangan Siber (Penetration Testing)': 'Keamanan Aplikasi / VAPT',
+    'Audit Kode Sumber Aplikasi (Code Review)': 'Keamanan Aplikasi / VAPT',
+    'Pendampingan Teknis Penggunaan Aplikasi': 'Peningkatan Kapasitas SDM TIK',
+    'Pembuatan Akun Portal Layanan Digital': 'Portal Pelayanan Digital',
+    'Penyusunan Arsitektur SPBE Dinas': 'Arsitektur & Peta Rencana SPBE',
+    'Sosialisasi Pengisian Metadata Statistik': 'Statistik Sektoral',
+    'Pengajuan Domain Instansi Baru': 'Domain & Subdomain Pemerintah Daerah',
+    'Peminjaman Lisensi Webinar Zoom Dinas': 'Video Conference / Zoom',
+    'Setup Virtual Machine Server (Hosting)': 'Server Perangkat Daerah',
+    'Penyelidikan Insiden Kebocoran Data (CSIRT)': 'CSIRT / Respons Insiden',
+    'Pelatihan Keamanan Informasi Staf (Security Awareness)': 'Security Awareness',
+    'Upgrade Bandwidth Internet Gedung Dinas': 'Jaringan Intra Pemerintah',
+    'Pemasangan Switch Hub Tambahan TIK': 'Perangkat Jaringan & Komunikasi',
+    'Audit Akses Jaringan Dinas': 'Audit Teknologi Informasi',
+    'Konfigurasi Peta Rencana TI Daerah': 'Arsitektur & Peta Rencana SPBE',
+    'Pemulihan Data Backup Server': 'Server Perangkat Daerah',
+    
+    // Masyarakat Mapping
+    'Pengaduan Koneksi Wifi Publik': 'Wifi Publik',
+    'Permintaan Data Dataset Sektoral': 'Statistik Sektoral',
+    'Sosialisasi Layanan Digital Publik': 'Informasi & Komunikasi Publik',
+    'Permohonan Informasi Publik PPID': 'Pelayanan Informasi Publik'
   };
 
   const handleSelectCategory = (cat) => {
     setSelectedCategory(cat);
     setSubSearchQuery('');
     const availableSubs = getSubServicesForCategory(cat);
-    setSelectedSubService(availableSubs[0] || cat.title);
+    setSelectedSubService(availableSubs[0] || cat.name);
     setStep(2);
   };
 
@@ -211,17 +199,23 @@ export const CreateTicket = () => {
 
   const handleExecuteSubmit = async () => {
     setShowConfirmModal(false);
-    const serviceObj = (services || []).find(s => s.name === selectedSubService);
-    const service_id = serviceObj ? serviceObj.id : 1; 
+    
+    const actualServiceName = APTIKA_SERVICE_MAPPING[selectedSubService] || selectedSubService;
+    const serviceObj = (services || []).find(s => s.name === actualServiceName);
+    
+    if (!serviceObj) {
+      alert(`Error: Layanan terkait '${selectedSubService}' tidak ditemukan di database. Pastikan database Anda mutakhir.`);
+      setIsSubmitting(false);
+      return;
+    }
+    
+    const service_id = serviceObj.id;
 
     const payload = {
       service_id,
-      title: title || `Permohonan ${selectedSubService}`,
-      description: description || `Detail pengerjaan untuk sub-layanan ${selectedSubService}`,
-      app_name: appName || '',
-      target_users: targetUsers || '',
-      callback_url: callbackUrl || '',
-      target_ip: targetIp || '',
+      title: formData['Judul Permohonan'] || title || `Permohonan ${selectedSubService}`,
+      description: formData['Deskripsi Kebutuhan'] || description || `Detail pengerjaan untuk sub-layanan ${selectedSubService}`,
+      details: formData,
       priority: 'MEDIUM'
     };
 
@@ -237,34 +231,26 @@ export const CreateTicket = () => {
     }
   };
 
-  if (unratedTicket) {
+  if (activeTicket) {
     return (
       <div className="max-w-xl mx-auto bg-white p-8 rounded-3xl border border-slate-200 shadow-xl text-center space-y-6 mt-8 font-sans">
         <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center border border-amber-100 mx-auto">
           <AlertTriangle className="w-8 h-8" />
         </div>
         <div className="space-y-2">
-          <h3 className="text-2xl font-black text-slate-900 tracking-tight">Evaluasi SKM MenPAN-RB</h3>
+          <h3 className="text-2xl font-black text-slate-900 tracking-tight">Tiket Sedang Berjalan</h3>
           <p className="text-slate-500 text-base leading-relaxed">
-            Anda memiliki pengajuan sebelumnya yang telah selesai (<strong>{unratedTicket.id} - {unratedTicket.title}</strong>) tetapi belum mengisi Survei Kepuasan Masyarakat (SKM).
+            Anda masih memiliki tiket yang belum selesai (<strong>{activeTicket.ticket_number} - {activeTicket.service_name}</strong>). Harap tunggu atau selesaikan tiket tersebut (SKM/Rating) sebelum mengajukan tiket baru.
           </p>
         </div>
-        <div className="bg-sky-50 text-sky-800 p-4 rounded-xl border border-sky-200 text-sm leading-relaxed font-semibold">
-          Silakan lengkapi Survei SKM terlebih dahulu melalui tautan survei resmi MenPAN-RB agar dapat mengajukan bantuan layanan baru.
+        <div className="pt-2 flex flex-col gap-3">
+          <button 
+            onClick={() => navigate('/dashboard/history')}
+            className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-md shadow-sky-200"
+          >
+            Lihat Tiket Saya
+          </button>
         </div>
-        <button
-          onClick={() => setShowSkmModal(true)}
-          className="w-full py-3.5 px-4 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-base font-extrabold transition-all shadow-md shadow-sky-500/10 hover:shadow-lg hover:shadow-sky-500/15 cursor-pointer"
-        >
-          Isi Survei SKM Sekarang
-        </button>
-
-        <SkmModal
-          isOpen={showSkmModal}
-          onClose={() => setShowSkmModal(false)}
-          ticket={unratedTicket}
-          onConfirm={handleCompleteSkm}
-        />
       </div>
     );
   }
@@ -298,9 +284,9 @@ export const CreateTicket = () => {
           <h3 className="font-extrabold text-slate-800 text-lg">Langkah 1: Pilih Kategori Layanan SPBE</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {categories.map((cat) => {
-              const active = isCategoryActive(cat.title);
-              const catServices = (services || []).filter(s => s.category === cat.title);
+              const catServices = services.filter(s => s.category === cat.name);
               const activeCount = catServices.filter(s => s.status === 'Aktif').length;
+              const active = activeCount > 0;
               return (
                 <div
                   key={cat.id}
@@ -308,7 +294,7 @@ export const CreateTicket = () => {
                     if (active) {
                       handleSelectCategory(cat);
                     } else {
-                      setInactiveCategoryNotice(cat.title);
+                      setInactiveCategoryNotice(cat.name);
                     }
                   }}
                   className={`bg-white p-6 rounded-2xl border border-slate-200 shadow-sm transition-all flex justify-between items-center group ${
@@ -319,7 +305,7 @@ export const CreateTicket = () => {
                 >
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className={`font-bold text-base transition-all ${active ? 'text-slate-800 group-hover:text-sky-600' : 'text-slate-550'}`}>{cat.title}</h4>
+                      <h4 className={`font-bold text-base transition-all ${active ? 'text-slate-800 group-hover:text-sky-600' : 'text-slate-550'}`}>{cat.name}</h4>
                       {!active ? (
                         <span className="px-2.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[10px] font-bold uppercase tracking-wider">
                           Tahap Pengembangan
@@ -331,7 +317,9 @@ export const CreateTicket = () => {
                       )}
                     </div>
                     <p className="text-sm text-slate-400">
-                      {catServices.length > 0 ? `${catServices.length} Layanan Terhubung (${activeCount} Aktif)` : `${cat.services.length} Layanan Terhubung`}
+                      {cat.name === 'Pengelolaan Aplikasi Informatika' ? 
+                        `${(user?.role === 'MASYARAKAT' || user?.role === 'masyarakat') ? subServicesMasyarakat.length : subServicesAptikaOPD.length} Layanan Terhubung (${activeCount > 0 ? ((user?.role === 'MASYARAKAT' || user?.role === 'masyarakat') ? subServicesMasyarakat.length : subServicesAptikaOPD.length) : 0} Aktif)` 
+                        : `${catServices.length} Layanan Terhubung (${activeCount} Aktif)`}
                     </p>
                   </div>
                   {active && <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-sky-600 transition-all" />}
@@ -355,7 +343,7 @@ export const CreateTicket = () => {
           <div className="space-y-1">
             <h3 className="font-extrabold text-slate-800 text-xl tracking-tight">Langkah 2: Pilih Sub-layanan</h3>
             <p className="text-sm text-slate-500">
-              Pilih salah satu jenis permohonan spesifik untuk kategori <strong className="text-slate-800 font-bold">{selectedCategory.title}</strong>.
+              Pilih salah satu jenis permohonan spesifik untuk kategori <strong className="text-slate-800 font-bold">{selectedCategory.name}</strong>.
             </p>
           </div>
 
@@ -397,7 +385,10 @@ export const CreateTicket = () => {
               return (
                 <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
                   {filtered.map((sub, idx) => {
-                    const srv = (services || []).find(s => s.name === sub);
+                    const actualServiceName = APTIKA_SERVICE_MAPPING[sub] || sub;
+                    const srv = (services || []).find(s => s.name === actualServiceName);
+                    const isActive = srv ? srv.status === 'Aktif' : true;
+                    const desc = srv ? (srv.description || `Permohonan terkait ${sub}`) : `Permohonan terkait ${sub}`;
                     const isSelected = selectedSubService === sub;
 
                     return (
@@ -439,8 +430,13 @@ export const CreateTicket = () => {
                                 <p className="text-xs text-slate-500 flex items-center gap-2 mt-1">
                                   <span className="flex items-center gap-1 font-medium bg-slate-100 px-2 py-0.5 rounded">
                                     <Clock className="w-3 h-3 text-slate-400" />
-                                    Target SLA: {srv.sla}
+                                    Target SLA: {srv.sla || srv.target_sla || '1-3 Hari'}
                                   </span>
+                                  {!isActive && (
+                                    <span className="font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-100">
+                                      Tahap Pengembangan
+                                    </span>
+                                  )}
                                 </p>
                               )}
                             </div>
@@ -520,7 +516,8 @@ export const CreateTicket = () => {
               <p className="text-sm text-slate-400 mt-1">Lengkapi informasi pengajuan sub-layanan berikut.</p>
               
               {(() => {
-                const srv = (services || []).find(s => s.name === selectedSubService);
+                const actualServiceName = APTIKA_SERVICE_MAPPING[selectedSubService] || selectedSubService;
+                const srv = (services || []).find(s => s.name === actualServiceName);
                 const reqDocs = srv?.requiredDocs || 'Surat Permohonan Resmi OPD, KAK / Dokumen Pendukung';
                 const sopFile = srv?.sop || 'sop-layanan.pdf';
                 return (
@@ -555,7 +552,7 @@ export const CreateTicket = () => {
                       {srv && (
                         <span className="font-bold text-slate-500 flex items-center gap-1">
                           <Clock className="w-3.5 h-3.5 text-slate-400" />
-                          Target Waktu SLA: <strong className="text-slate-800">{srv.sla}</strong>
+                          Target Waktu SLA: <strong className="text-slate-800">{srv.sla || srv.target_sla || '1-3 Hari'}</strong>
                         </span>
                       )}
                     </div>
@@ -578,89 +575,49 @@ export const CreateTicket = () => {
             </div>
           )}
 
-          {selectedSubService === 'Pembuatan Aplikasi Baru (Web/Mobile)' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="col-span-2">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Nama Aplikasi yang Diajukan</label>
-                <input
-                  type="text"
-                  required
-                  value={appName}
-                  onChange={(e) => setAppName(e.target.value)}
-                  placeholder="Contoh: Aplikasi Sistem Pengawasan Lalu Lintas (Si-Walan)"
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold"
-                />
+          {(() => {
+            const actualServiceName = APTIKA_SERVICE_MAPPING[selectedSubService] || selectedSubService;
+            const srv = (services || []).find(s => s.name === actualServiceName);
+            const schema = srv?.form_schema || [];
+            return schema.filter(f => f.type !== 'file').map((field, idx) => (
+              <div key={idx} className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">{field.label}</label>
+                {field.type === 'select' ? (
+                  <select
+                    required
+                    value={formData[field.label] || ''}
+                    onChange={(e) => setFormData({...formData, [field.label]: e.target.value})}
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold bg-white"
+                  >
+                    <option value="">-- Pilih --</option>
+                    {(field.options || []).map((opt, i) => (
+                      <option key={i} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                ) : field.type === 'textarea' ? (
+                  <textarea
+                    required
+                    rows={4}
+                    value={formData[field.label] || ''}
+                    onChange={(e) => setFormData({...formData, [field.label]: e.target.value})}
+                    placeholder={field.placeholder || ''}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold"
+                  />
+                ) : field.type === 'file' ? (
+                   <input type="file" className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm" onChange={handleFileChange} />
+                ) : (
+                  <input
+                    type={field.type || 'text'}
+                    required
+                    value={formData[field.label] || ''}
+                    onChange={(e) => setFormData({...formData, [field.label]: e.target.value})}
+                    placeholder={field.placeholder || ''}
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold"
+                  />
+                )}
               </div>
-              <div className="col-span-1">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Target Pengguna Utama</label>
-                <input
-                  type="text"
-                  required
-                  value={targetUsers}
-                  onChange={(e) => setTargetUsers(e.target.value)}
-                  placeholder="Contoh: Staf Dinas, Warga Umum"
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold"
-                />
-              </div>
-              <div className="col-span-1">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Estimasi Waktu SLA</label>
-                <div className="px-4 py-2.5 border border-slate-200 bg-slate-50 rounded-xl text-base font-bold text-slate-700 flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-sky-600" />
-                  <span>SLA Standar: {services.find(s => s.name === selectedSubService)?.sla || '30-90 Hari'}</span>
-                </div>
-              </div>
-            </div>
-          ) : selectedSubService === 'Integrasi Single Sign-On (SSO) TND' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="col-span-1">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Nama Platform Aplikasi</label>
-                <input
-                  type="text"
-                  required
-                  value={appName}
-                  onChange={(e) => setAppName(e.target.value)}
-                  placeholder="Contoh: E-Kinerja Dinas"
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold"
-                />
-              </div>
-              <div className="col-span-1">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Callback URL Integrasi</label>
-                <input
-                  type="text"
-                  required
-                  value={callbackUrl}
-                  onChange={(e) => setCallbackUrl(e.target.value)}
-                  placeholder="Contoh: https://ekinerja.bogor.go.id/sso/callback"
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold"
-                />
-              </div>
-            </div>
-          ) : selectedSubService === 'Uji Celah Keamanan (Vulnerability Assessment)' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="col-span-1">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Domain / Nama Aplikasi Uji</label>
-                <input
-                  type="text"
-                  required
-                  value={appName}
-                  onChange={(e) => setAppName(e.target.value)}
-                  placeholder="Contoh: https://esir.bogor.go.id"
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold"
-                />
-              </div>
-              <div className="col-span-1">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Alamat IP Server</label>
-                <input
-                  type="text"
-                  required
-                  value={targetIp}
-                  onChange={(e) => setTargetIp(e.target.value)}
-                  placeholder="Contoh: 103.14.22.45"
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold"
-                />
-              </div>
-            </div>
-          ) : null}
+            ));
+          })()}
 
           <div className="space-y-1.5">
             <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Judul Ringkas Permohonan</label>

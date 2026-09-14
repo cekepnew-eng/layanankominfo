@@ -9,7 +9,7 @@ export const ProtectedRoute = ({ children, allowedRoles }) => {
     return <Navigate to="/auth/login" replace />;
   }
 
-  if (allowedRoles && !allowedRoles.includes(user.role)) {
+  if (allowedRoles && !allowedRoles.map(r => r.toUpperCase()).includes(user.role?.toUpperCase())) {
     return <Navigate to="/dashboard" replace />;
   }
 

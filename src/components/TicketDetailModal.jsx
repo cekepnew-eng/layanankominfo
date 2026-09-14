@@ -123,36 +123,14 @@ export const TicketDetailModal = ({ isOpen, onClose, ticket }) => {
                 </p>
               </div>
 
-              {(ticket.appName || ticket.targetUsers || ticket.callbackUrl || ticket.targetIp) && (
+              {ticket.form_data && Object.keys(ticket.form_data).length > 0 && (
                 <div className="pt-2 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  {ticket.appName && (
-                    <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
-                      <span className="font-bold text-slate-400 block">
-                        {ticket.requestType === 'Integrasi Single Sign-On (SSO) TND' ? 'Nama Platform Aplikasi:' :
-                         ticket.requestType === 'Uji Celah Keamanan (Vulnerability Assessment)' ? 'Domain / Nama Aplikasi Uji:' :
-                         'Nama Aplikasi yang Diajukan:'}
-                      </span>
-                      <span className="font-extrabold text-slate-800">{ticket.appName}</span>
+                  {Object.entries(ticket.form_data).map(([key, val], idx) => (
+                    <div key={idx} className={`p-2.5 bg-slate-50 rounded-xl border border-slate-100 ${val && val.toString().length > 50 ? 'sm:col-span-2' : ''}`}>
+                      <span className="font-bold text-slate-400 block">{key}:</span>
+                      <span className="font-extrabold text-slate-800 break-words">{val?.toString() || '-'}</span>
                     </div>
-                  )}
-                  {ticket.targetUsers && (
-                    <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
-                      <span className="font-bold text-slate-400 block">Target Pengguna Utama:</span>
-                      <span className="font-extrabold text-slate-800">{ticket.targetUsers}</span>
-                    </div>
-                  )}
-                  {ticket.callbackUrl && (
-                    <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 sm:col-span-2">
-                      <span className="font-bold text-slate-400 block">Callback URL Integrasi:</span>
-                      <span className="font-mono font-bold text-sky-700 break-all">{ticket.callbackUrl}</span>
-                    </div>
-                  )}
-                  {ticket.targetIp && (
-                    <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
-                      <span className="font-bold text-slate-400 block">Alamat IP Server:</span>
-                      <span className="font-mono font-bold text-slate-800">{ticket.targetIp}</span>
-                    </div>
-                  )}
+                  ))}
                 </div>
               )}
             </div>

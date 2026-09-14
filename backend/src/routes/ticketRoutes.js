@@ -3,10 +3,10 @@ const router = express.Router();
 const ticketController = require('../controllers/ticketController');
 const { authenticateToken, authorizeRole } = require('../middleware/auth');
 
-// USER
-router.post('/my/tickets', authenticateToken, authorizeRole(['USER']), ticketController.createTicket);
-router.get('/my/tickets', authenticateToken, authorizeRole(['USER']), ticketController.getMyTickets);
-router.post('/my/tickets/:id/feedback', authenticateToken, authorizeRole(['USER']), ticketController.submitFeedback);
+// USER & ALL ROLES (Untuk pembuatan tiket)
+router.post('/my/tickets', authenticateToken, authorizeRole(['USER', 'MASYARAKAT', 'HELPDESK', 'PEGAWAI', 'ADMIN']), ticketController.createTicket);
+router.get('/my/tickets', authenticateToken, authorizeRole(['USER', 'MASYARAKAT', 'HELPDESK', 'PEGAWAI', 'ADMIN']), ticketController.getMyTickets);
+router.post('/my/tickets/:id/feedback', authenticateToken, authorizeRole(['USER', 'MASYARAKAT', 'HELPDESK', 'PEGAWAI', 'ADMIN']), ticketController.submitFeedback);
 
 // HELPDESK
 router.get('/helpdesk/tickets', authenticateToken, authorizeRole(['HELPDESK', 'ADMIN']), ticketController.getHelpdeskTickets);

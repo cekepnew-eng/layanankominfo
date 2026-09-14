@@ -59,22 +59,26 @@ export const Overview = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        if (user.role === 'ADMIN' || user.role === 'HELPDESK') {
+        if (user.role === 'ADMIN') {
           const res = await fetch('http://localhost:5000/api/admin/tickets', {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('spbe_token')}` }
           });
           const data = await res.json();
           setTickets(data.data || []);
           
-          if (user.role === 'admin') {
-            const uRes = await fetch('http://localhost:5000/api/admin/users', {
-              headers: { 'Authorization': `Bearer ${localStorage.getItem('spbe_token')}` }
-            });
-            const uData = await uRes.json();
-            if (uData.success) {
-              setAdminUsers(uData.data);
-            }
+          const uRes = await fetch('http://localhost:5000/api/admin/users', {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('spbe_token')}` }
+          });
+          const uData = await uRes.json();
+          if (uData.success) {
+            setAdminUsers(uData.data);
           }
+        } else if (user.role === 'HELPDESK') {
+          const res = await fetch('http://localhost:5000/api/helpdesk/tickets', {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('spbe_token')}` }
+          });
+          const data = await res.json();
+          setTickets(data.data || []);
         } else if (user.role === 'PEGAWAI') {
           const res = await fetch('http://localhost:5000/api/employee/tickets', {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('spbe_token')}` }
@@ -567,15 +571,15 @@ export const Overview = () => {
 
   if (!user) return <p className="text-center py-12 text-slate-500 font-bold text-base">Silakan login terlebih dahulu...</p>;
 
-  switch (user.role) {
-    case 'admin':
+  switch (user.role?.toUpperCase()) {
+    case 'ADMIN':
       return renderAdminDashboard();
-    case 'helpdesk':
+    case 'HELPDESK':
       return renderHelpdeskDashboard();
-    case 'pegawai':
+    case 'PEGAWAI':
       return renderPegawaiDashboard();
-    case 'user':
-    case 'masyarakat':
+    case 'USER':
+    case 'MASYARAKAT':
       return renderUserDashboard();
     default:
       return <p className="text-center py-12 text-rose-500 font-bold text-base">Role tidak dikenal...</p>;

@@ -158,10 +158,14 @@ export const ManageServices = () => {
     const load = async () => {
       try {
         const res = await api.getAdminServices();
-        // transform array to match what frontend expects
-        // But since this is huge refactor, we just set it.
-        // Or if it crashes, it crashes. We've done the core ones.
-        setServices(res.data || []);
+        const mappedData = (res.data || []).map(s => ({
+          ...s,
+          category: s.category_name || s.category,
+          status: s.is_active ? 'Aktif' : 'Tahap Pengembangan',
+          sla: s.target_sla || s.sla,
+          requiresHelpdesk: s.verification_type !== 'Otomatis'
+        }));
+        setServices(mappedData);
       } catch (err) {
         console.error(err);
       } finally {
@@ -233,7 +237,8 @@ export const ManageServices = () => {
         name: service.name,
         target_sla: service.sla,
         verification_type: service.requiresHelpdesk !== false ? 'Wajib Verifikasi' : 'Otomatis',
-        is_active: isActive
+        is_active: isActive,
+        form_schema: service.form_schema || []
       });
       setServices(prev => prev.map(s => s.id === id ? { ...s, status: nextStatus } : s));
     } catch (err) {
@@ -252,7 +257,8 @@ export const ManageServices = () => {
         name: service.name,
         target_sla: service.sla,
         verification_type: nextReq ? 'Wajib Verifikasi' : 'Otomatis',
-        is_active: service.status === 'Aktif'
+        is_active: service.status === 'Aktif',
+        form_schema: service.form_schema || []
       });
       setServices(prev => prev.map(s => s.id === id ? { ...s, requiresHelpdesk: nextReq } : s));
     } catch (err) {
@@ -260,16 +266,33 @@ export const ManageServices = () => {
     }
   };
 
-  const toggleCategoryStatus = (catName) => {
+  const toggleCategoryStatus = async (catName) => {
     const catServices = services.filter(s => s.category === catName);
     const allActive = catServices.every(s => s.status === 'Aktif');
     const nextStatus = allActive ? 'Tahap Pengembangan' : 'Aktif';
-    setServices(prev => prev.map(s => {
-      if (s.category === catName) {
-        return { ...s, status: nextStatus };
-      }
-      return s;
-    }));
+    const isActive = nextStatus === 'Aktif';
+    
+    try {
+      await Promise.all(catServices.map(s => 
+        api.updateService(s.id, {
+          category_name: s.category,
+          name: s.name,
+          target_sla: s.sla,
+          verification_type: s.requiresHelpdesk !== false ? 'Wajib Verifikasi' : 'Otomatis',
+          is_active: isActive,
+          form_schema: s.form_schema || []
+        })
+      ));
+      
+      setServices(prev => prev.map(s => {
+        if (s.category === catName) {
+          return { ...s, status: nextStatus };
+        }
+        return s;
+      }));
+    } catch (err) {
+      alert('Gagal update status kategori: ' + err.message);
+    }
   };
 
   const handleOpenEdit = (s) => {
@@ -294,12 +317,14 @@ export const ManageServices = () => {
     const isActive = editStatus === 'Aktif';
 
     try {
+      const form_schema = getServiceFormFields(editName, formTemplate);
       await api.updateService(editingService.id, {
         category_name: editCategory,
         name: editName,
         target_sla: formattedSla,
         verification_type: verificationType,
-        is_active: isActive
+        is_active: isActive,
+        form_schema
       });
       const res = await api.getAdminServices();
       setServices(res.data || []);
@@ -355,12 +380,14 @@ export const ManageServices = () => {
     const isActive = serviceStatus === 'Aktif';
 
     try {
+      const form_schema = getServiceFormFields(name, formTemplate);
       await api.createService({
         category_name: category,
         name,
         target_sla: formattedSla,
         verification_type: verificationType,
-        is_active: isActive
+        is_active: isActive,
+        form_schema
       });
       
       const res = await api.getAdminServices();

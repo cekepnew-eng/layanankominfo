@@ -18,14 +18,42 @@ const createNotification = async (client, userId, ticketId, type, title, message
 // USER API
 // ==========================================
 exports.createTicket = async (req, res) => {
-  const { service_id, title, description, app_name, target_users, callback_url, target_ip, priority } = req.body;
+  const { service_name, title, description, details, priority, service_id } = req.body;
+  
+  // Use details as form_data. If not present, default to empty object.
+  const form_data = details || {};
+  
   const client = await db.pool.connect();
 
   try {
     await client.query('BEGIN');
     
+    // Check if user already has an active ticket
+    const activeRes = await client.query(`
+      SELECT id FROM tickets 
+      WHERE user_id = $1 AND status_id < 7
+    `, [req.user.id]);
+    
+    if (activeRes.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ success: false, message: 'Anda masih memiliki tiket yang sedang aktif. Silakan selesaikan tiket sebelumnya terlebih dahulu.' });
+    }
+    
+    let finalServiceId = service_id;
+    if (!finalServiceId && service_name) {
+      const svLookup = await client.query('SELECT id FROM services WHERE service_name = $1', [service_name]);
+      if (svLookup.rows.length > 0) {
+        finalServiceId = svLookup.rows[0].id;
+      }
+    }
+
+    if (!finalServiceId) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ success: false, message: 'Layanan tidak ditemukan atau ID layanan tidak valid.' });
+    }
+
     // Check if service needs verification
-    const srvRes = await client.query('SELECT verification_type FROM services WHERE id = $1', [service_id]);
+    const srvRes = await client.query('SELECT verification_type FROM services WHERE id = $1', [finalServiceId]);
     const needsVerification = srvRes.rows[0]?.verification_type === 'Wajib Verifikasi';
     const initialStatusId = needsVerification ? 1 : 2; // 1: PENDING, 2: VERIFIED
 
@@ -37,14 +65,14 @@ exports.createTicket = async (req, res) => {
     const ticketRes = await client.query(`
       INSERT INTO tickets (ticket_number, user_id, service_id, status_id, priority)
       VALUES ($1, $2, $3, $4, $5) RETURNING id
-    `, [ticket_number, req.user.id, service_id, initialStatusId, priority || 'MEDIUM']);
+    `, [ticket_number, req.user.id, finalServiceId, initialStatusId, priority || 'MEDIUM']);
     const ticketId = ticketRes.rows[0].id;
 
     // 2. Insert Ticket Details
     await client.query(`
-      INSERT INTO ticket_details (ticket_id, title, description, app_name, target_users, callback_url, target_ip)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-    `, [ticketId, title, description, app_name, target_users, callback_url, target_ip]);
+      INSERT INTO ticket_details (ticket_id, title, description, form_data)
+      VALUES ($1, $2, $3, $4)
+    `, [ticketId, title, description, form_data]);
 
     // 3. Insert History
     await createHistory(client, ticketId, req.user.id, null, initialStatusId, 'Tiket berhasil dibuat oleh pemohon.');
@@ -74,15 +102,25 @@ exports.getMyTickets = async (req, res) => {
   try {
     const result = await db.query(`
       SELECT t.id, t.ticket_number, t.progress, t.priority, t.created_at,
-             s.name as service_name, st.name as status_name
+             s.service_name as service_name, st.name as status_name, td.form_data, td.title, td.description
       FROM tickets t
       JOIN services s ON t.service_id = s.id
       JOIN ticket_statuses st ON t.status_id = st.id
+      LEFT JOIN ticket_details td ON td.ticket_id = t.id
       WHERE t.user_id = $1
       ORDER BY t.created_at DESC
     `, [req.user.id]);
-    
-    res.json({ success: true, data: result.rows, meta: { total: result.rows.length } });
+    const mappedRows = result.rows.map(t => ({
+      ...t,
+      status: t.status_name === 'PENDING' ? 'Verifikasi' 
+            : t.status_name === 'VERIFIED' ? 'Menunggu Validasi'
+            : t.status_name === 'ASSIGNED' ? 'Diproses'
+            : t.status_name === 'IN_PROGRESS' ? 'Diproses'
+            : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Selesai'
+            : t.status_name === 'COMPLETED' ? 'Selesai'
+            : t.status_name
+    }));
+    res.json({ success: true, data: mappedRows, meta: { total: mappedRows.length } });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error' });
   }
@@ -130,14 +168,25 @@ exports.getHelpdeskTickets = async (req, res) => {
   try {
     const result = await db.query(`
       SELECT t.id, t.ticket_number, t.created_at, u.full_name as pemohon,
-             s.name as service_name, st.name as status_name
+             s.service_name as service_name, st.name as status_name, td.form_data, td.title, td.description
       FROM tickets t
       JOIN users u ON t.user_id = u.id
       JOIN services s ON t.service_id = s.id
       JOIN ticket_statuses st ON t.status_id = st.id
+      LEFT JOIN ticket_details td ON td.ticket_id = t.id
       ORDER BY t.created_at DESC
     `);
-    res.json({ success: true, data: result.rows });
+    const mappedRows = result.rows.map(t => ({
+      ...t,
+      status: t.status_name === 'PENDING' ? 'Verifikasi' 
+            : t.status_name === 'VERIFIED' ? 'Menunggu Validasi'
+            : t.status_name === 'ASSIGNED' ? 'Diproses'
+            : t.status_name === 'IN_PROGRESS' ? 'Diproses'
+            : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Selesai'
+            : t.status_name === 'COMPLETED' ? 'Selesai'
+            : t.status_name
+    }));
+    res.json({ success: true, data: mappedRows });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error' });
   }
@@ -201,16 +250,27 @@ exports.getEmployeeTickets = async (req, res) => {
   try {
     const result = await db.query(`
       SELECT t.id, t.ticket_number, t.progress, t.created_at, u.full_name as pemohon,
-             s.name as service_name, st.name as status_name
+             s.service_name as service_name, st.name as status_name, td.form_data, td.title, td.description
       FROM tickets t
       JOIN ticket_assignments a ON a.ticket_id = t.id
       JOIN users u ON t.user_id = u.id
       JOIN services s ON t.service_id = s.id
       JOIN ticket_statuses st ON t.status_id = st.id
+      LEFT JOIN ticket_details td ON td.ticket_id = t.id
       WHERE a.assigned_to_user_id = $1 OR a.team_id = $2
       ORDER BY t.created_at DESC
     `, [req.user.id, req.user.teamId]);
-    res.json({ success: true, data: result.rows });
+    const mappedRows = result.rows.map(t => ({
+      ...t,
+      status: t.status_name === 'PENDING' ? 'Verifikasi' 
+            : t.status_name === 'VERIFIED' ? 'Menunggu Validasi'
+            : t.status_name === 'ASSIGNED' ? 'Diproses'
+            : t.status_name === 'IN_PROGRESS' ? 'Diproses'
+            : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Menunggu Konfirmasi User'
+            : t.status_name === 'COMPLETED' ? 'Selesai'
+            : t.status_name
+    }));
+    res.json({ success: true, data: mappedRows });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error' });
   }
@@ -255,14 +315,25 @@ exports.getAdminTickets = async (req, res) => {
   try {
     const result = await db.query(`
       SELECT t.id, t.ticket_number, t.progress, t.created_at, u.full_name as pemohon,
-             s.name as service_name, st.name as status_name
+             s.service_name as service_name, st.name as status_name, td.form_data, td.title, td.description
       FROM tickets t
       JOIN users u ON t.user_id = u.id
       JOIN services s ON t.service_id = s.id
       JOIN ticket_statuses st ON t.status_id = st.id
+      LEFT JOIN ticket_details td ON td.ticket_id = t.id
       ORDER BY t.created_at DESC
     `);
-    res.json({ success: true, data: result.rows });
+    const mappedRows = result.rows.map(t => ({
+      ...t,
+      status: t.status_name === 'PENDING' ? 'Verifikasi' 
+            : t.status_name === 'VERIFIED' ? 'Menunggu Validasi'
+            : t.status_name === 'ASSIGNED' ? 'Diproses'
+            : t.status_name === 'IN_PROGRESS' ? 'Diproses'
+            : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Selesai'
+            : t.status_name === 'COMPLETED' ? 'Selesai'
+            : t.status_name
+    }));
+    res.json({ success: true, data: mappedRows });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error' });
   }

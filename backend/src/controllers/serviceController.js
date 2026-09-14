@@ -5,11 +5,11 @@ const db = require('../config/database');
 // -----------------------------------------
 exports.getPublicServices = async (req, res) => {
   try {
+    const catsRes = await db.query('SELECT id, category_name as name FROM service_categories ORDER BY id ASC');
     const servicesRes = await db.query(`
-      SELECT s.*, c.name as category_name
+      SELECT s.*, s.service_name as name, c.category_name as category
       FROM services s
       JOIN service_categories c ON s.category_id = c.id
-      WHERE s.is_active = true
     `);
     
     // Get requirements for each service
@@ -20,7 +20,7 @@ exports.getPublicServices = async (req, res) => {
       return s;
     });
 
-    res.json({ success: true, data: services });
+    res.json({ success: true, data: services, categories: catsRes.rows });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Server error fetching services' });
@@ -32,7 +32,7 @@ exports.getPublicServices = async (req, res) => {
 // -----------------------------------------
 exports.getCategories = async (req, res) => {
   try {
-    const cats = await db.query('SELECT * FROM service_categories ORDER BY id ASC');
+    const cats = await db.query('SELECT id, category_name as name FROM service_categories ORDER BY id ASC');
     res.json({ success: true, data: cats.rows });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error' });
@@ -42,7 +42,7 @@ exports.getCategories = async (req, res) => {
 exports.createCategory = async (req, res) => {
   try {
     const { name } = req.body;
-    const result = await db.query('INSERT INTO service_categories (name) VALUES ($1) RETURNING *', [name]);
+    const result = await db.query('INSERT INTO service_categories (category_name) VALUES ($1) RETURNING id, category_name as name', [name]);
     res.status(201).json({ success: true, data: result.rows[0] });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error' });
@@ -53,7 +53,7 @@ exports.updateCategory = async (req, res) => {
   try {
     const { id } = req.params;
     const { name } = req.body;
-    const result = await db.query('UPDATE service_categories SET name = $1 WHERE id = $2 RETURNING *', [name, id]);
+    const result = await db.query('UPDATE service_categories SET category_name = $1 WHERE id = $2 RETURNING id, category_name as name', [name, id]);
     res.json({ success: true, data: result.rows[0] });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error' });
@@ -76,7 +76,7 @@ exports.deleteCategory = async (req, res) => {
 exports.getAdminServices = async (req, res) => {
   try {
     const servicesRes = await db.query(`
-      SELECT s.*, c.name as category_name
+      SELECT s.*, s.service_name as name, s.status = 'Aktif' as is_active, c.category_name as category_name
       FROM services s
       JOIN service_categories c ON s.category_id = c.id
       ORDER BY s.id ASC
@@ -96,12 +96,17 @@ exports.getAdminServices = async (req, res) => {
 };
 
 exports.createService = async (req, res) => {
-  const { category_id, name, target_sla, verification_type, sop_link, is_active } = req.body;
+  const { category_name, category_id, name, target_sla, verification_type, sop_link, is_active, form_schema } = req.body;
   try {
+    let finalCatId = category_id;
+    if (!finalCatId && category_name) {
+      const catRes = await db.query('SELECT id FROM service_categories WHERE category_name = $1', [category_name]);
+      if (catRes.rows.length > 0) finalCatId = catRes.rows[0].id;
+    }
     const result = await db.query(`
-      INSERT INTO services (category_id, name, target_sla, verification_type, sop_link, is_active)
-      VALUES ($1, $2, $3, $4, $5, $6) RETURNING *
-    `, [category_id, name, target_sla, verification_type, sop_link, is_active ?? true]);
+      INSERT INTO services (category_id, service_name, target_sla, verification_type, sop_link, status, form_schema)
+      VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *
+    `, [finalCatId, name, target_sla, verification_type, sop_link, is_active ? 'Aktif' : 'Tidak Aktif', JSON.stringify(form_schema || [])]);
     res.status(201).json({ success: true, data: result.rows[0] });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error' });
@@ -110,13 +115,18 @@ exports.createService = async (req, res) => {
 
 exports.updateService = async (req, res) => {
   const { id } = req.params;
-  const { category_id, name, target_sla, verification_type, sop_link, is_active } = req.body;
+  const { category_name, category_id, name, target_sla, verification_type, sop_link, is_active, form_schema } = req.body;
   try {
+    let finalCatId = category_id;
+    if (!finalCatId && category_name) {
+      const catRes = await db.query('SELECT id FROM service_categories WHERE category_name = $1', [category_name]);
+      if (catRes.rows.length > 0) finalCatId = catRes.rows[0].id;
+    }
     const result = await db.query(`
       UPDATE services 
-      SET category_id=$1, name=$2, target_sla=$3, verification_type=$4, sop_link=$5, is_active=$6, updated_at=CURRENT_TIMESTAMP
-      WHERE id = $7 RETURNING *
-    `, [category_id, name, target_sla, verification_type, sop_link, is_active, id]);
+      SET category_id=$1, service_name=$2, target_sla=$3, verification_type=$4, sop_link=$5, status=$6, form_schema=$7
+      WHERE id = $8 RETURNING *
+    `, [finalCatId, name, target_sla, verification_type, sop_link, is_active ? 'Aktif' : 'Tidak Aktif', JSON.stringify(form_schema || []), id]);
     res.json({ success: true, data: result.rows[0] });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error' });

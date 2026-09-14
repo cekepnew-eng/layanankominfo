@@ -5,7 +5,8 @@ import { authService } from '../../services/authService';
 import { Monitor, ArrowLeft, Lock, Mail, User, ShieldCheck, QrCode, Copy } from 'lucide-react';
 
 export const Register = () => {
-  const { login, users, setUsers } = useAuth();
+  const { login, register } = useAuth();
+  const { generate2FA, verifySetup2FA } = require('../../services/api').api;
   const navigate = useNavigate();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -19,6 +20,7 @@ export const Register = () => {
   const [otpError, setOtpError] = useState('');
   const [targetRole, setTargetRole] = useState('masyarakat');
   const [qrData, setQrData] = useState({ qrUrl: '', secretFormatted: '' });
+  const [tempToken, setTempToken] = useState('');
 
   useEffect(() => {
     if (showOtpModal) {
@@ -45,35 +47,56 @@ export const Register = () => {
       alert('Konfirmasi kata sandi tidak cocok! Pastikan kata sandi dan konfirmasi kata sandi sama.');
       return;
     }
-    const data = await authService.getOtpSecret(emailLower);
-    setQrData(data);
-    setOtpStep(1);
-    setOtpCode('');
-    setOtpError('');
-    setTargetRole('masyarakat');
-    setShowOtpModal(true);
+    const regResult = await register({ email: emailLower, password, fullName: name, phone: '00000' });
+    if (!regResult.success) {
+      alert(regResult.message || 'Registrasi gagal');
+      return;
+    }
+    
+    // Login to get token for 2FA setup
+    const loginResult = await login(emailLower, password);
+    if (!loginResult.success || !loginResult.tempToken) {
+      alert('Gagal login otomatis setelah registrasi');
+      return;
+    }
+    setTempToken(loginResult.tempToken);
+
+    try {
+      const qrRes = await generate2FA(loginResult.tempToken);
+      if (qrRes.success) {
+        setQrData({ qrUrl: qrRes.qrCodeUrl, secretFormatted: qrRes.secret });
+        setOtpStep(1);
+        setOtpCode('');
+        setOtpError('');
+        setTargetRole('masyarakat');
+        setShowOtpModal(true);
+      } else {
+        alert(qrRes.message || 'Gagal generate QR Code');
+      }
+    } catch (e) {
+      alert('Gagal generate QR Code: ' + e.message);
+    }
   };
 
   const handleOtpVerify = async (e) => {
     e.preventDefault();
-    const result = await authService.verifyOtp(email, otpCode);
-    if (result.success) {
-      const newUser = {
-        id: (users || []).length + 1,
-        name: name.trim(),
-        email: email.toLowerCase().trim(),
-        role: targetRole,
-        roles: [targetRole],
-        department: 'Masyarakat Umum'
-      };
-      if (setUsers && users) {
-        setUsers([...users, newUser]);
+    if (!otpCode || otpCode.length !== 6) {
+      setOtpError('Masukkan 6 digit kode OTP');
+      return;
+    }
+    
+    try {
+      const result = await verifySetup2FA(tempToken, otpCode);
+      if (result.success) {
+        // Save the real token
+        localStorage.setItem('spbe_token', result.token);
+        setShowOtpModal(false);
+        navigate('/dashboard');
+      } else {
+        setOtpError(result.message || 'Kode autentikasi salah!');
       }
-      login(newUser);
-      setShowOtpModal(false);
-      navigate('/dashboard');
-    } else {
-      setOtpError('Kode autentikasi salah! Masukkan 6 digit kode dari Google Authenticator (demo: 123456).');
+    } catch (err) {
+      setOtpError(err.message || 'Terjadi kesalahan saat verifikasi.');
     }
   };
 
@@ -310,10 +333,6 @@ export const Register = () => {
                       {otpError}
                     </p>
                   )}
-
-                  <div className="bg-sky-50 text-sky-850 p-3 rounded-xl border border-sky-100 text-xs sm:text-sm leading-relaxed font-semibold">
-                    Demo prototipe: masukkan kode <strong className="text-sky-950 font-black">123456</strong>
-                  </div>
 
                   <div className="flex gap-3 pt-2">
                     <button
