@@ -389,42 +389,13 @@ export const TicketHistory = () => {
   };
 
   const getRoleTabs = () => {
-    if (!user) return [];
-    switch (user.role) {
-      case 'user':
-      case 'masyarakat':
-        return [
-          { id: 'semua', label: 'Semua Tiket' },
-          { id: 'proses', label: 'Proses Pengerjaan' },
-          { id: 'selesai', label: 'Selesai (Menunggu SKM)' },
-          { id: 'dirating', label: 'Sudah Dirating' },
-          { id: 'pending', label: 'Pending' }
-        ];
-      case 'helpdesk':
-        return [
-          { id: 'semua', label: 'Semua Tiket' },
-          { id: 'antrean', label: 'Antrean Validasi' },
-          { id: 'proses', label: 'Dalam Pengerjaan' },
-          { id: 'dinilai', label: 'Selesai & Dinilai' },
-          { id: 'pending', label: 'Pending' }
-        ];
-      case 'pegawai':
-        return [
-          { id: 'semua', label: 'Semua Tugas' },
-          { id: 'aktif', label: 'Tugas Aktif' },
-          { id: 'pending', label: 'Tertunda / Sanggahan' },
-          { id: 'selesai', label: 'Selesai' }
-        ];
-      case 'admin':
-        return [
-          { id: 'semua', label: 'Semua Tiket' },
-          { id: 'proses', label: 'Tiket Proses' },
-          { id: 'selesai', label: 'Tiket Selesai' },
-          { id: 'pending', label: 'Tiket Pending' }
-        ];
-      default:
-        return [];
-    }
+    return [
+      { id: 'semua', label: 'Semua' },
+      { id: 'proses', label: 'Dalam Proses' },
+      { id: 'selesai', label: 'Belum Dinilai / SKM' },
+      { id: 'dirating', label: 'Selesai & Dinilai' },
+      { id: 'pending', label: 'Pending' }
+    ];
   };
 
   const tabs = getRoleTabs();
@@ -481,33 +452,11 @@ export const TicketHistory = () => {
     if (!user) return 0;
     let base = tickets || [];
     
-    switch (user.role?.toUpperCase()) {
-      case 'USER':
-      case 'MASYARAKAT':
-        if (tabId === 'proses') return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status === 'Diproses').length;
-        if (tabId === 'selesai') return base.filter(t => t.status === 'Selesai' && !t.rating).length;
-        if (tabId === 'dirating') return base.filter(t => t.status === 'Selesai' && t.rating).length;
-        if (tabId === 'pending') return base.filter(t => t.status === 'Pending').length;
-        return base.length;
-      case 'HELPDESK':
-        if (tabId === 'antrean') return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi').length;
-        if (tabId === 'proses') return base.filter(t => t.status === 'Diproses').length;
-        if (tabId === 'dinilai') return base.filter(t => t.status === 'Selesai').length;
-        if (tabId === 'pending') return base.filter(t => t.status === 'Pending').length;
-        return base.length;
-      case 'PEGAWAI':
-        if (tabId === 'aktif') return base.filter(t => t.status === 'Diproses').length;
-        if (tabId === 'pending') return base.filter(t => t.status === 'Pending').length;
-        if (tabId === 'selesai') return base.filter(t => t.status === 'Selesai').length;
-        return base.length;
-      case 'ADMIN':
-        if (tabId === 'proses') return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status === 'Diproses').length;
-        if (tabId === 'selesai') return base.filter(t => t.status === 'Selesai').length;
-        if (tabId === 'pending') return base.filter(t => t.status === 'Pending').length;
-        return base.length;
-      default:
-        return 0;
-    }
+    if (tabId === 'proses') return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status === 'Diproses').length;
+    if (tabId === 'selesai') return base.filter(t => t.status === 'Selesai' && !t.rating).length;
+    if (tabId === 'dirating') return base.filter(t => t.status === 'Selesai' && t.rating).length;
+    if (tabId === 'pending') return base.filter(t => t.status === 'Pending').length;
+    return base.length;
   };
 
   const getFilteredTickets = () => {
@@ -515,65 +464,19 @@ export const TicketHistory = () => {
     
     let base = tickets || [];
 
-    switch (user.role?.toUpperCase()) {
-      case 'USER':
-      case 'MASYARAKAT':
-        if (activeTab === 'proses') {
-          return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status === 'Diproses');
-        }
-        if (activeTab === 'selesai') {
-          return base.filter(t => t.status === 'Selesai' && !t.rating);
-        }
-        if (activeTab === 'dirating') {
-          return base.filter(t => t.status === 'Selesai' && t.rating);
-        }
-        if (activeTab === 'pending') {
-          return base.filter(t => t.status === 'Pending');
-        }
-        return base;
-
-      case 'HELPDESK':
-        if (activeTab === 'antrean') {
-          return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi');
-        }
-        if (activeTab === 'proses') {
-          return base.filter(t => t.status === 'Diproses');
-        }
-        if (activeTab === 'dinilai') {
-          return base.filter(t => t.status === 'Selesai');
-        }
-        if (activeTab === 'pending') {
-          return base.filter(t => t.status === 'Pending');
-        }
-        return base;
-
-      case 'PEGAWAI':
-        if (activeTab === 'aktif') {
-          return base.filter(t => t.status === 'Diproses');
-        }
-        if (activeTab === 'pending') {
-          return base.filter(t => t.status === 'Pending');
-        }
-        if (activeTab === 'selesai') {
-          return base.filter(t => t.status === 'Selesai');
-        }
-        return base;
-
-      case 'admin':
-        if (activeTab === 'proses') {
-          return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status === 'Diproses');
-        }
-        if (activeTab === 'selesai') {
-          return base.filter(t => t.status === 'Selesai');
-        }
-        if (activeTab === 'pending') {
-          return base.filter(t => t.status === 'Pending');
-        }
-        return base;
-
-      default:
-        return base;
+    if (activeTab === 'proses') {
+      return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status === 'Diproses');
     }
+    if (activeTab === 'selesai') {
+      return base.filter(t => t.status === 'Selesai' && !t.rating);
+    }
+    if (activeTab === 'dirating') {
+      return base.filter(t => t.status === 'Selesai' && t.rating);
+    }
+    if (activeTab === 'pending') {
+      return base.filter(t => t.status === 'Pending');
+    }
+    return base;
   };
 
   const filteredTickets = getFilteredTickets();

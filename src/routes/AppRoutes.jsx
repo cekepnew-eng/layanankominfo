@@ -19,7 +19,7 @@ import { useAuth } from '../context/AuthContext';
 
 const HistoryWrapper = () => {
   const { user } = useAuth();
-  if (user?.role === 'USER') {
+  if (user?.role === 'USER' || user?.role === 'MASYARAKAT') {
     return <MyTickets />;
   }
   return <TicketHistory />;
@@ -78,7 +78,7 @@ export const AppRoutes = () => {
         <Route 
           path="user/create-ticket" 
           element={
-            <ProtectedRoute allowedRoles={['USER', 'HELPDESK']}>
+            <ProtectedRoute allowedRoles={['USER', 'HELPDESK', 'MASYARAKAT']}>
               <CreateTicket />
             </ProtectedRoute>
           } 
@@ -86,7 +86,7 @@ export const AppRoutes = () => {
         <Route 
           path="history" 
           element={
-            <ProtectedRoute allowedRoles={['ADMIN', 'HELPDESK', 'PEGAWAI', 'USER']}>
+            <ProtectedRoute allowedRoles={['ADMIN', 'HELPDESK', 'PEGAWAI', 'USER', 'MASYARAKAT']}>
               <HistoryWrapper />
             </ProtectedRoute>
           } 
@@ -95,7 +95,7 @@ export const AppRoutes = () => {
         <Route 
           path="profile" 
           element={
-            <ProtectedRoute allowedRoles={['ADMIN', 'HELPDESK', 'PEGAWAI', 'USER']}>
+            <ProtectedRoute allowedRoles={['ADMIN', 'HELPDESK', 'PEGAWAI', 'USER', 'MASYARAKAT']}>
               <Profile />
             </ProtectedRoute>
           } 

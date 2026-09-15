@@ -59,8 +59,8 @@ export const ManageUsers = () => {
 
   const handleStartEdit = (u) => {
     setEditingUser(u);
-    setEditRoleVal(u.role || 'user');
-    setEditRolesVal(u.roles || [u.role || 'user']);
+    setEditRoleVal((u.role || 'user').toLowerCase());
+    setEditRolesVal((u.roles || [u.role || 'user']).map(r => r.toLowerCase()));
 
     const initialAssignments = {};
     if (u.team_id) {
@@ -70,27 +70,11 @@ export const ManageUsers = () => {
   };
 
   const handleToggleRoleCheckbox = (roleKey) => {
-    if (editRolesVal.includes(roleKey)) {
-      if (editRolesVal.length <= 1) {
-        setModalConfig({
-          isOpen: true,
-          type: 'warning',
-          title: 'Peran Tidak Boleh Kosong',
-          message: 'Setiap akun pengguna wajib memiliki minimal satu peran hak akses yang aktif.',
-          confirmText: 'Mengerti',
-          cancelText: '',
-          onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
-        });
-        return;
-      }
-      const newRoles = editRolesVal.filter(r => r !== roleKey);
-      setEditRolesVal(newRoles);
-      if (editRoleVal === roleKey) {
-        setEditRoleVal(newRoles[0]);
-      }
-    } else {
-      setEditRolesVal([...editRolesVal, roleKey]);
-    }
+    setEditRolesVal(prev => 
+      prev.includes(roleKey) 
+        ? prev.filter(r => r !== roleKey) 
+        : [...prev, roleKey]
+    );
   };
 
   useEffect(() => {
@@ -124,10 +108,30 @@ export const ManageUsers = () => {
     const primaryTeamId = assignedTeamIds.length > 0 ? assignedTeamIds[0] : null;
 
     try {
-      await api.updateUserRole(editingUser.id, { roleName: primaryRole, team_id: primaryTeamId });
+      await api.updateUserRole(editingUser.id, { roleNames: editRolesVal, team_id: primaryTeamId });
       await fetchUsers(); // Refresh from DB
       if (fetchTeams) {
         await fetchTeams();
+      }
+
+      if (editingUser.id === user.id) {
+        setEditingUser(null);
+        setModalConfig({
+          isOpen: true,
+          type: 'warning',
+          title: 'Sesi Diperbarui',
+          message: 'Anda baru saja mengubah hak akses akun Anda sendiri. Demi keamanan dan sinkronisasi dasbor, sistem akan mengarahkan Anda untuk login ulang.',
+          confirmText: 'Login Ulang',
+          cancelText: '',
+          onConfirm: () => {
+            setModalConfig(prev => ({ ...prev, isOpen: false }));
+            setUser(null);
+            localStorage.removeItem('spbe_user');
+            localStorage.removeItem('spbe_token');
+            window.location.href = '/auth/login';
+          }
+        });
+        return;
       }
 
       setEditingUser(null);
@@ -186,16 +190,16 @@ export const ManageUsers = () => {
 
   const tabs = [
     { id: 'semua', label: 'Semua', count: users.length },
-    { id: 'admin', label: 'Admin', count: users.filter(u => u.roles?.includes('admin')).length },
-    { id: 'helpdesk', label: 'Helpdesk', count: users.filter(u => u.roles?.includes('helpdesk')).length },
-    { id: 'pegawai', label: 'Pegawai', count: users.filter(u => u.roles?.includes('pegawai')).length },
-    { id: 'user', label: 'OPD', count: users.filter(u => u.roles?.includes('user')).length },
-    { id: 'masyarakat', label: 'Masyarakat', count: users.filter(u => u.roles?.includes('masyarakat')).length }
+    { id: 'admin', label: 'Admin', count: users.filter(u => u.roles?.some(r => r.toLowerCase() === 'admin')).length },
+    { id: 'helpdesk', label: 'Helpdesk', count: users.filter(u => u.roles?.some(r => r.toLowerCase() === 'helpdesk')).length },
+    { id: 'pegawai', label: 'Pegawai', count: users.filter(u => u.roles?.some(r => r.toLowerCase() === 'pegawai')).length },
+    { id: 'user', label: 'OPD', count: users.filter(u => u.roles?.some(r => r.toLowerCase() === 'user')).length },
+    { id: 'masyarakat', label: 'Masyarakat', count: users.filter(u => u.roles?.some(r => r.toLowerCase() === 'masyarakat')).length }
   ];
 
   const filteredUsers = (activeTab === 'semua' 
     ? users 
-    : users.filter(u => u.roles?.includes(activeTab))
+    : users.filter(u => u.roles?.some(r => r.toLowerCase() === activeTab))
   ).filter(u => {
     const query = searchQuery.toLowerCase().trim();
     if (!query) return true;
@@ -285,20 +289,25 @@ export const ManageUsers = () => {
                     <td className="px-6 py-4">{u.email}</td>
                     <td className="px-6 py-4">
                       <div className="flex flex-wrap gap-1.5 text-left">
-                        {u.roles?.map(r => (
+                        {u.roles?.map(r => {
+                          const rLower = r.toLowerCase();
+                          return (
                           <span key={r} className={`px-2.5 py-1 rounded-xl text-xs font-black uppercase tracking-wider border ${
-                            r === 'admin' ? 'bg-rose-50 text-rose-700 border-rose-100' :
-                            r === 'helpdesk' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                            r === 'pegawai' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' :
-                            r === 'masyarakat' ? 'bg-slate-100 text-slate-700 border border-slate-200' :
+                            rLower === 'admin' ? 'bg-rose-50 text-rose-700 border-rose-100' :
+                            rLower === 'helpdesk' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                            rLower === 'pegawai' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' :
+                            rLower === 'masyarakat' ? 'bg-slate-100 text-slate-700 border border-slate-200' :
                             'bg-sky-50 text-sky-700 border border-sky-100'
                           }`}>
-                            {r === 'user' ? 'OPD' : r === 'pegawai' ? 'Pegawai' : r}
+                            {rLower === 'user' ? 'OPD' : rLower === 'pegawai' ? 'Pegawai' : r}
                           </span>
-                        ))}
+                          );
+                        })}
                       </div>
                     </td>
-                    <td className="px-6 py-4">{u.department}</td>
+                    <td className="px-6 py-4">
+                      {u.department || (u.roles?.some(r => r.toLowerCase() === 'masyarakat') ? 'Masyarakat Umum' : 'Dinas Komunikasi dan Informatika')}
+                    </td>
                     <td className="px-6 py-4 text-center">
                       <div className="flex items-center justify-center gap-2">
                         <button 
@@ -338,7 +347,7 @@ export const ManageUsers = () => {
                 <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
                   <span className="text-xs font-black text-slate-400 uppercase tracking-wider">Identitas Pengguna</span>
                   <span className="text-[10px] font-extrabold text-slate-500 bg-slate-200/70 px-2 py-0.5 rounded-md uppercase tracking-wider flex items-center gap-1">
-                    <Lock className="w-3 h-3 text-slate-400" /> {editingUser.role === 'USER' || editingUser.roles?.includes('USER') ? 'Akun Mandiri' : 'Data Sinkron'}
+                    <Lock className="w-3 h-3 text-slate-400" /> {editingUser.role?.toUpperCase() === 'USER' || editingUser.roles?.some(r => r.toUpperCase() === 'USER') ? 'Akun Mandiri' : 'Data Sinkron'}
                   </span>
                 </div>
                 <div className="grid grid-cols-1 gap-2.5 text-left">
@@ -352,12 +361,12 @@ export const ManageUsers = () => {
                   </div>
                   <div>
                     <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                      {editingUser.role === 'USER' || editingUser.roles?.includes('USER') ? 'Kategori Pemohon' : 'Unit Kerja / Instansi'}
+                      {editingUser.role?.toUpperCase() === 'USER' || editingUser.roles?.some(r => r.toUpperCase() === 'USER') ? 'Kategori Pemohon' : 'Unit Kerja / Instansi'}
                     </span>
                     <p className="text-sm font-extrabold text-sky-700">{editingUser.department}</p>
                   </div>
                 </div>
-                {!(editingUser.role === 'USER' || editingUser.roles?.includes('USER')) && (
+                {!(editingUser.role?.toUpperCase() === 'USER' || editingUser.roles?.some(r => r.toUpperCase() === 'USER')) && (
                   <p className="text-[11px] text-slate-400 italic pt-1 border-t border-slate-200/50 leading-relaxed">
                     * Nama, email, dan unit kerja tersinkronisasi otomatis dari akun resmi instansi dan tidak dapat diubah manual oleh admin.
                   </p>
@@ -378,11 +387,11 @@ export const ManageUsers = () => {
                     
                     let isDisabled = false;
                     if (item.key === 'user') {
-                      if (editingUser.roles?.includes('USER') || editingUser.roles?.includes('masyarakat')) {
+                      if (editingUser.roles?.some(r => r.toUpperCase() === 'USER') || editingUser.roles?.some(r => r.toLowerCase() === 'masyarakat')) {
                         isDisabled = true;
                       }
                     } else if (item.key === 'masyarakat') {
-                      if (editingUser.roles?.includes('masyarakat') || editingUser.roles?.includes('USER')) {
+                      if (editingUser.roles?.some(r => r.toLowerCase() === 'masyarakat') || editingUser.roles?.some(r => r.toUpperCase() === 'USER')) {
                         isDisabled = true;
                       }
                     }

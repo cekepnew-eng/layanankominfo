@@ -64,10 +64,12 @@ exports.login = async (req, res) => {
     }
 
     const userRes = await db.query(
-      `SELECT u.*, r.name as role_name 
+      `SELECT u.*, array_agg(r.name) as roles 
        FROM users u 
-       JOIN roles r ON u.role_id = r.id 
-       WHERE u.email = $1 AND u.is_active = true`, 
+       JOIN user_roles ur ON u.id = ur.user_id 
+       JOIN roles r ON ur.role_id = r.id 
+       WHERE u.email = $1 AND u.is_active = true
+       GROUP BY u.id`, 
       [email]
     );
 
@@ -121,18 +123,32 @@ exports.login = async (req, res) => {
 exports.register = async (req, res) => {
   const { email, password, fullName, phone } = req.body;
   try {
-    // Basic user is always 'USER' (role_id 1)
-    const roleRes = await db.query("SELECT id FROM roles WHERE name = 'USER'");
+    const roleRes = await db.query("SELECT id FROM roles WHERE name = 'MASYARAKAT'");
     const roleId = roleRes.rows[0].id;
 
     const salt = await bcrypt.genSalt(10);
     const hash = await bcrypt.hash(password, salt);
 
-    const insertRes = await db.query(
-      `INSERT INTO users (email, password_hash, full_name, phone_number, role_id) 
-       VALUES ($1, $2, $3, $4, $5) RETURNING id, email, full_name`,
-      [email, hash, fullName, phone, roleId]
-    );
+    const client = await db.pool.connect();
+    let insertRes;
+    try {
+      await client.query('BEGIN');
+      insertRes = await client.query(
+        `INSERT INTO users (email, password_hash, full_name, phone_number) 
+         VALUES ($1, $2, $3, $4) RETURNING id, email, full_name`,
+        [email, hash, fullName, phone]
+      );
+      await client.query(
+        `INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)`,
+        [insertRes.rows[0].id, roleId]
+      );
+      await client.query('COMMIT');
+    } catch(err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
 
     res.status(201).json({ success: true, message: 'Registration successful', user: insertRes.rows[0] });
   } catch (err) {
@@ -147,8 +163,9 @@ exports.register = async (req, res) => {
 exports.getMe = async (req, res) => {
   try {
     const userRes = await db.query(
-      `SELECT u.id, u.email, u.full_name, u.phone_number, u.team_id, r.name as role_name 
-       FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = $1`,
+      `SELECT u.id, u.email, u.full_name, u.phone_number, u.team_id, array_agg(r.name) as roles 
+       FROM users u JOIN user_roles ur ON u.id = ur.user_id JOIN roles r ON ur.role_id = r.id 
+       WHERE u.id = $1 GROUP BY u.id`,
       [req.user.id]
     );
     if (userRes.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
@@ -227,15 +244,17 @@ exports.verifySetup2FA = async (req, res) => {
     );
 
     const updatedUserRes = await db.query(
-      `SELECT u.*, r.name as role_name 
+      `SELECT u.*, array_agg(r.name) as roles 
        FROM users u 
-       JOIN roles r ON u.role_id = r.id 
-       WHERE u.id = $1`, [req.user.id]
+       JOIN user_roles ur ON u.id = ur.user_id 
+       JOIN roles r ON ur.role_id = r.id 
+       WHERE u.id = $1 GROUP BY u.id`, [req.user.id]
     );
     const updatedUser = updatedUserRes.rows[0];
+    const primaryRole = updatedUser.roles.includes('USER') ? 'USER' : (updatedUser.roles.includes('MASYARAKAT') ? 'MASYARAKAT' : updatedUser.roles[0]);
 
     const token = jwt.sign(
-      { id: updatedUser.id, email: updatedUser.email, role: updatedUser.role_name, name: updatedUser.full_name, teamId: updatedUser.team_id },
+      { id: updatedUser.id, email: updatedUser.email, role: primaryRole, roles: updatedUser.roles, name: updatedUser.full_name, teamId: updatedUser.team_id },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
@@ -249,7 +268,8 @@ exports.verifySetup2FA = async (req, res) => {
         id: updatedUser.id,
         email: updatedUser.email,
         name: updatedUser.full_name,
-        role: updatedUser.role_name,
+        role: primaryRole,
+        roles: updatedUser.roles,
         teamId: updatedUser.team_id
       }
     });
@@ -275,10 +295,11 @@ exports.login2FA = async (req, res) => {
     if (decoded.purpose !== '2fa') return res.status(401).json({ success: false, message: 'Invalid token purpose' });
     
     const userRes = await db.query(
-      `SELECT u.*, r.name as role_name 
+      `SELECT u.*, array_agg(r.name) as roles 
        FROM users u 
-       JOIN roles r ON u.role_id = r.id 
-       WHERE u.id = $1`, 
+       JOIN user_roles ur ON u.id = ur.user_id
+       JOIN roles r ON ur.role_id = r.id 
+       WHERE u.id = $1 GROUP BY u.id`, 
       [decoded.id]
     );
     
@@ -331,8 +352,10 @@ exports.login2FA = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid OTP or Backup Code. Access Denied.' });
     }
     
+    const primaryRole = user.roles.includes('USER') ? 'USER' : (user.roles.includes('MASYARAKAT') ? 'MASYARAKAT' : user.roles[0]);
+
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role_name, name: user.full_name, teamId: user.team_id },
+      { id: user.id, email: user.email, role: primaryRole, roles: user.roles, name: user.full_name, teamId: user.team_id },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
@@ -344,7 +367,8 @@ exports.login2FA = async (req, res) => {
         id: user.id,
         email: user.email,
         name: user.full_name,
-        role: user.role_name,
+        role: primaryRole,
+        roles: user.roles,
         teamId: user.team_id
       }
     });

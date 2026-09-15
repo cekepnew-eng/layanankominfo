@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { authService } from '../../services/authService';
+import { api } from '../../services/api';
 import { Monitor, ArrowLeft, Lock, Mail, User, ShieldCheck, QrCode, Copy } from 'lucide-react';
 
 export const Register = () => {
-  const { login, register } = useAuth();
-  const { generate2FA, verifySetup2FA } = require('../../services/api').api;
+  const { login, register, setUser } = useAuth();
+  const { generate2FA, verifySetup2FA } = api;
   const navigate = useNavigate();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -90,6 +90,11 @@ export const Register = () => {
       if (result.success) {
         // Save the real token
         localStorage.setItem('spbe_token', result.token);
+        // Ensure role is preserved exactly from backend
+        if (result.user && result.user.role) {
+          result.user.role = result.user.role;
+        }
+        setUser(result.user);
         setShowOtpModal(false);
         navigate('/dashboard');
       } else {
@@ -124,10 +129,10 @@ export const Register = () => {
 
           <div className="space-y-6 max-w-md text-left">
             <h1 className="text-5xl lg:text-6xl font-black leading-tight tracking-tight text-white">
-              Satu Akses Layanan IT Instansi
+              Satu Akses Layanan Publik
             </h1>
             <p className="text-slate-400 text-lg leading-relaxed">
-              Daftarkan perwakilan dinas atau kecamatan Anda untuk mengelola integrasi sistem, pengamanan informasi, dan pengajuan fasilitas TIK secara mandiri.
+              Daftarkan akun Anda sebagai perwakilan masyarakat umum untuk mengajukan layanan publik, permohonan, maupun pelaporan ke Diskominfo secara mandiri.
             </p>
           </div>
 
@@ -147,8 +152,8 @@ export const Register = () => {
 
         <div className="mx-auto w-full max-w-sm space-y-8 text-left">
           <div className="space-y-3">
-            <h2 className="text-4xl font-black text-slate-900 tracking-tight">Daftar Baru</h2>
-            <p className="text-slate-500 text-base leading-relaxed">Isi formulir secara lengkap untuk mendaftarkan akun instansi dinas resmi Anda.</p>
+            <h2 className="text-4xl font-black text-slate-900 tracking-tight">Daftar Akun Masyarakat</h2>
+            <p className="text-slate-500 text-base leading-relaxed">Isi formulir secara lengkap untuk mendaftarkan akun masyarakat umum Anda.</p>
           </div>
 
           <form className="space-y-5" onSubmit={handleFormSubmit}>

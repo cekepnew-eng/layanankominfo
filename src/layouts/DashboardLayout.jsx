@@ -69,13 +69,15 @@ export const DashboardLayout = () => {
     { id: 'ADMIN', label: 'Admin (Master Data)' },
     { id: 'HELPDESK', label: 'Helpdesk (Validator)' },
     { id: 'PEGAWAI', label: 'Pegawai (Teknisi)' },
-    { id: 'USER', label: 'User (OPD / Dinas / Warga)' }
+    { id: 'USER', label: 'User (OPD / Dinas)' },
+    { id: 'MASYARAKAT', label: 'Masyarakat' }
   ];
 
   const getHistoryLabel = () => {
     if (!user) return 'Daftar Tiket';
     switch (user.role) {
       case 'USER':
+      case 'MASYARAKAT':
         return 'Tiket Saya';
       case 'HELPDESK':
         return 'Kelola Tiket';
@@ -122,6 +124,7 @@ export const DashboardLayout = () => {
       case 'PEGAWAI':
         return [home, history, profile];
       case 'USER':
+      case 'MASYARAKAT':
         return [home, ...userLinks, history, profile];
       default:
         return [home, history, profile];
@@ -151,7 +154,8 @@ export const DashboardLayout = () => {
 
   const getProfileRoleLabel = () => {
     if (!user) return '';
-    if (user.role === 'USER') return 'OPD / Warga';
+    if (user.role === 'USER') return 'OPD';
+    if (user.role === 'MASYARAKAT') return 'Masyarakat';
     if (user.role === 'ADMIN') return 'Admin';
     if (user.role === 'HELPDESK') return 'Helpdesk';
     if (user.role === 'PEGAWAI') return 'Pegawai';
@@ -160,7 +164,8 @@ export const DashboardLayout = () => {
 
   const getProfileDeptLabel = () => {
     if (!user) return '';
-    return user.department || 'Dinas Kominfo';
+    if (user.role === 'MASYARAKAT' || user.roles?.includes('MASYARAKAT') || user.roles?.includes('masyarakat')) return 'Masyarakat Umum';
+    return user.department || 'Dinas Komunikasi dan Informatika';
   };
 
   const getProfileRoleBadgeClass = () => {
@@ -208,7 +213,8 @@ export const DashboardLayout = () => {
                   ADMIN: 'Dasbor Admin',
                   HELPDESK: 'Dasbor Helpdesk',
                   PEGAWAI: 'Dasbor Pegawai',
-                  USER: 'Dasbor Warga / OPD'
+                  USER: 'Dasbor OPD',
+                  MASYARAKAT: 'Dasbor Masyarakat'
                 };
                 return <option key={r} value={r}>{labels[r] || r}</option>;
               })}
@@ -281,34 +287,7 @@ export const DashboardLayout = () => {
           </div>
 
           <div className="flex items-center gap-4">
-            <div className="relative">
-              <button 
-                onClick={() => setShowRoleSelector(!showRoleSelector)}
-                className="flex items-center gap-2 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold tracking-wide transition-all"
-              >
-                <span>Simulasi Role</span>
-                <ChevronDown className="w-4 h-4" />
-              </button>
-              
-              {showRoleSelector && (
-                <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-lg shadow-xl py-1.5 z-30">
-                  {roles.map((r) => (
-                    <button
-                      key={r.id}
-                      onClick={() => {
-                        login(r.id);
-                        setShowRoleSelector(false);
-                      }}
-                      className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-all ${
-                        user?.role === r.id ? 'font-bold text-sky-600' : 'text-slate-700'
-                      }`}
-                    >
-                      {r.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+              {/* Simulasi Role removed as real auth is implemented */}
 
             <Link 
               to="/dashboard/profile"

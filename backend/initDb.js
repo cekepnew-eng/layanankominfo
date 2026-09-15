@@ -14,6 +14,7 @@ const initDatabase = async () => {
     DROP TABLE IF EXISTS service_categories CASCADE;
     DROP TABLE IF EXISTS notifications CASCADE;
     DROP TABLE IF EXISTS device_tokens CASCADE;
+    DROP TABLE IF EXISTS user_roles CASCADE;
     DROP TABLE IF EXISTS users CASCADE;
     DROP TABLE IF EXISTS teams CASCADE;
     DROP TABLE IF EXISTS roles CASCADE;
@@ -37,7 +38,6 @@ const initDatabase = async () => {
       password_hash VARCHAR(255) NOT NULL,
       full_name VARCHAR(255) NOT NULL,
       phone_number VARCHAR(50),
-      role_id INT REFERENCES roles(id),
       team_id INT REFERENCES teams(id) NULL,
       is_active BOOLEAN DEFAULT true,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -49,6 +49,12 @@ const initDatabase = async () => {
       fcm_token VARCHAR(255) UNIQUE NOT NULL,
       device_type VARCHAR(50),
       last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS user_roles (
+      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      role_id INT REFERENCES roles(id) ON DELETE CASCADE,
+      PRIMARY KEY (user_id, role_id)
     );
 
     CREATE TABLE IF NOT EXISTS ticket_statuses (

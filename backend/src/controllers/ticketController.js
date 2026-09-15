@@ -82,7 +82,7 @@ exports.createTicket = async (req, res) => {
     await createNotification(client, req.user.id, ticketId, 'INFO', 'Tiket Dibuat', `Tiket ${ticket_number} berhasil diajukan.`);
     
     // Notify Helpdesk
-    const helpdesks = await client.query("SELECT id FROM users WHERE role_id = (SELECT id FROM roles WHERE name='HELPDESK')");
+    const helpdesks = await client.query("SELECT u.id FROM users u JOIN user_roles ur ON u.id = ur.user_id JOIN roles r ON ur.role_id = r.id WHERE r.name='HELPDESK'");
     for (let hd of helpdesks.rows) {
       await createNotification(client, hd.id, ticketId, 'ACTION_REQUIRED', 'Tiket Baru', `Tiket baru ${ticket_number} menunggu verifikasi.`);
     }

@@ -15,7 +15,14 @@ const authenticateToken = (req, res, next) => {
 
 const authorizeRole = (rolesArray) => {
   return (req, res, next) => {
-    if (!req.user || !rolesArray.includes(req.user.role)) {
+    if (!req.user) {
+      return res.status(403).json({ success: false, message: 'Forbidden: Insufficient privileges' });
+    }
+    
+    const userRoles = req.user.roles || [req.user.role];
+    const hasAccess = userRoles.some(r => rolesArray.includes(r));
+    
+    if (!hasAccess) {
       return res.status(403).json({ success: false, message: 'Forbidden: Insufficient privileges' });
     }
     next();
