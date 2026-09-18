@@ -20,21 +20,33 @@ const seedData = async () => {
 
     // 2. Users (Passwords are plain for now as temporary auth)
     const users = [
-      { email: 'admin@bogor.go.id', pass: 'admin123', name: 'Ahmad Faisal', role: 'ADMIN', phone: '08111111', team: null },
-      { email: 'helpdesk@bogor.go.id', pass: 'helpdesk123', name: 'Siti Rahmawati', role: 'HELPDESK', phone: '08222222', team: null },
-      { email: 'opd@bogor.go.id', pass: 'opd123', name: 'Kepala Dinkes', role: 'USER', phone: '08333333', team: null },
-      { email: 'pegawai@bogor.go.id', pass: 'pegawai123', name: 'Budi Utomo', role: 'PEGAWAI', phone: '08444444', team: 'Tim Infrastruktur' },
-      { email: 'masyarakat@gmail.com', pass: 'warga123', name: 'Rian Hidayat', role: 'MASYARAKAT', phone: '08555555', team: null }
+      { email: 'admin@bogor.go.id', pass: 'admin123', name: 'Administrator Sistem', role: 'ADMIN', department: 'Dinas Komunikasi dan Informatika', phone: '08111111', teams: [] },
+      { email: 'helpdesk@bogor.go.id', pass: 'admin123', name: 'Helpdesk Diskominfo', role: 'HELPDESK', department: 'Dinas Komunikasi dan Informatika', phone: '08222222', teams: [] },
+      { email: 'opd@bogor.go.id', pass: 'admin123', name: 'Kepala Dinas Kesehatan', role: 'USER', department: 'Dinas Kesehatan', phone: '08333333', teams: [] },
+      { email: 'pegawai@bogor.go.id', pass: 'admin123', name: 'Pegawai Teknis', role: 'PEGAWAI', department: 'Dinas Komunikasi dan Informatika', phone: '08444444', teams: ['Tim Infrastruktur', 'Tim Aplikasi'] },
+      { email: 'masyarakat@bogor.go.id', pass: 'admin123', name: 'Warga Kota Bogor', role: 'MASYARAKAT', department: 'Masyarakat Umum', phone: '08555555', teams: [] }
     ];
 
     for (let u of users) {
       // Upsert User
       const check = await db.query('SELECT id FROM users WHERE email = $1', [u.email]);
       if (check.rows.length === 0) {
-        await db.query(
-          'INSERT INTO users (email, password_hash, full_name, phone_number, role_id, team_id) VALUES ($1, $2, $3, $4, $5, $6)',
-          [u.email, u.pass, u.name, u.phone, roleMap[u.role], u.team ? teamMap[u.team] : null]
+        const userRes = await db.query(
+          'INSERT INTO users (email, password_hash, full_name, phone_number, role_id, department) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+          [u.email, u.pass, u.name, u.phone, roleMap[u.role], u.department]
         );
+        const userId = userRes.rows[0].id;
+
+        // Insert into user_roles (this is what the frontend reads)
+        await db.query('INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [userId, roleMap[u.role]]);
+
+        if (u.teams && u.teams.length > 0) {
+          for (let teamName of u.teams) {
+             if (teamMap[teamName]) {
+               await db.query('INSERT INTO team_members (user_id, team_id) VALUES ($1, $2)', [userId, teamMap[teamName]]);
+             }
+          }
+        }
       }
     }
 

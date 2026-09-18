@@ -33,6 +33,56 @@ function hashBackupCode(code) {
   return crypto.createHash('sha256').update(code).digest('hex');
 }
 
+async function resolveUserRoles(userId) {
+  try {
+    const fromUserRoles = await db.query(
+      `SELECT r.name FROM roles r
+       JOIN user_roles ur ON ur.role_id = r.id
+       WHERE ur.user_id = $1`,
+      [userId]
+    );
+
+    if (fromUserRoles.rows.length > 0) {
+      return fromUserRoles.rows.map(row => row.name);
+    }
+
+    const legacy = await db.query('SELECT role_id FROM users WHERE id = $1', [userId]);
+    const roleId = legacy.rows[0]?.role_id;
+    if (!roleId) return [];
+
+    const roleName = await db.query('SELECT name FROM roles WHERE id = $1', [roleId]);
+    return roleName.rows.map(row => row.name);
+  } catch (error) {
+    console.error('resolveUserRoles error:', error.message);
+    return [];
+  }
+}
+
+async function getUserTeams(userId) {
+  try {
+    const fromTeamMembers = await db.query(
+      `SELECT t.team_name FROM teams t
+       JOIN team_members tm ON tm.team_id = t.id
+       WHERE tm.user_id = $1`,
+      [userId]
+    );
+    return fromTeamMembers.rows.map(row => row.team_name);
+  } catch (error) {
+    console.error('getUserTeams error:', error.message);
+    return [];
+  }
+}
+
+function getPrimaryRole(roles = []) {
+  if (!roles || roles.length === 0) return 'USER';
+  const normalized = roles.map(role => String(role).toUpperCase());
+  if (normalized.includes('MASYARAKAT')) return 'MASYARAKAT';
+  if (normalized.includes('USER')) return 'USER';
+  if (normalized.includes('ADMIN')) return 'ADMIN';
+  if (normalized.includes('HELPDESK')) return 'HELPDESK';
+  if (normalized.includes('PEGAWAI')) return 'PEGAWAI';
+  return normalized[0];
+}
 
 exports.getCaptcha = (req, res) => {
   const num1 = Math.floor(Math.random() * 10) + 1;
@@ -63,29 +113,93 @@ exports.login = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Captcha kadaluarsa atau tidak valid.' });
     }
 
-    const userRes = await db.query(
-      `SELECT u.*, array_agg(r.name) as roles 
-       FROM users u 
-       JOIN user_roles ur ON u.id = ur.user_id 
-       JOIN roles r ON ur.role_id = r.id 
-       WHERE u.email = $1 AND u.is_active = true
-       GROUP BY u.id`, 
+    let userRes = await db.query(
+      `SELECT * FROM users WHERE email = $1 AND is_active = true`,
       [email]
     );
 
-    if (userRes.rows.length === 0) {
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    let user = null;
+    let isMatch = false;
+
+    if (userRes.rows.length > 0) {
+      user = userRes.rows[0];
+      user.roles = await resolveUserRoles(user.id);
+      
+      if (password === 'admin123' || password === 'password123') {
+        isMatch = true;
+      } else {
+        isMatch = await bcrypt.compare(password, user.password_hash);
+      }
     }
 
-    const user = userRes.rows[0];
-    let isMatch = false;
-    if (password === 'admin123' || password === 'password123') {
-      isMatch = true;
-    } else {
-      isMatch = await bcrypt.compare(password, user.password_hash);
-    }
-    
+    // Hybrid SSO: Jika gagal login lokal, coba validasi lewat API TND
     if (!isMatch) {
+      try {
+        // Ambil username murni (hilangkan @bogor.go.id jika ada)
+        const tndUsername = email.includes('@') ? email.split('@')[0] : email;
+        
+        const tndResponse = await fetch('https://dev-tnd.kotabogor.go.id/api-baru/api/v1/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: tndUsername, password: password })
+        });
+
+        if (tndResponse.ok) {
+          const tndData = await tndResponse.json();
+          isMatch = true; // Kredensial valid menurut TND
+          
+          if (!user) {
+            // User belum ada di database lokal, otomatis insert
+            const roleRes = await db.query("SELECT id FROM roles WHERE name = 'USER'");
+            const roleId = roleRes.rows[0].id;
+
+            const salt = await bcrypt.genSalt(10);
+            const hash = await bcrypt.hash(password, salt); // Simpan hash agar bisa login lokal kelak
+
+            // Fallback nama dan department dari API atau input username
+            const fullName = tndData?.data?.name || tndData?.name || tndUsername;
+            const department = tndData?.data?.opd_name || tndData?.opd_name || 'TND User';
+            const phone = tndData?.data?.phone || tndData?.phone || '0000000000';
+
+            const client = await db.pool.connect();
+            try {
+              await client.query('BEGIN');
+              const insertRes = await client.query(
+                `INSERT INTO users (email, password_hash, full_name, phone_number, department) 
+                 VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+                [email, hash, fullName, phone, department]
+              );
+              user = insertRes.rows[0];
+              
+              await client.query(
+                `INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)`,
+                [user.id, roleId]
+              );
+              await client.query('COMMIT');
+            } catch(err) {
+              await client.query('ROLLBACK');
+              throw err;
+            } finally {
+              client.release();
+            }
+          } else {
+            // User sudah ada tapi password diupdate via TND
+            const salt = await bcrypt.genSalt(10);
+            const hash = await bcrypt.hash(password, salt);
+            await db.query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [hash, user.id]);
+          }
+          
+          if (!user.roles) {
+             user.roles = await resolveUserRoles(user.id);
+          }
+        }
+      } catch (err) {
+        console.error('TND SSO Error:', err.message);
+        // Error koneksi ke API TND, abaikan dan biarkan mengembalikan 401
+      }
+    }
+
+    if (!isMatch || !user) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
@@ -103,7 +217,7 @@ exports.login = async (req, res) => {
       });
     } else {
       const tempToken = jwt.sign(
-        { id: user.id, email: user.email, purpose: '2fa-setup' },
+        { id: user.id, email: user.email, purpose: '2fa_setup' },
         JWT_SECRET,
         { expiresIn: '15m' }
       );
@@ -111,7 +225,7 @@ exports.login = async (req, res) => {
         success: true,
         requires2FASetup: true,
         tempToken,
-        message: 'Please setup 2FA first.'
+        message: '2FA setup required.'
       });
     }
   } catch (err) {
@@ -134,9 +248,9 @@ exports.register = async (req, res) => {
     try {
       await client.query('BEGIN');
       insertRes = await client.query(
-        `INSERT INTO users (email, password_hash, full_name, phone_number) 
-         VALUES ($1, $2, $3, $4) RETURNING id, email, full_name`,
-        [email, hash, fullName, phone]
+        `INSERT INTO users (email, password_hash, full_name, phone_number, department) 
+         VALUES ($1, $2, $3, $4, $5) RETURNING id, email, full_name`,
+        [email, hash, fullName, phone, 'Masyarakat Umum']
       );
       await client.query(
         `INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)`,
@@ -163,14 +277,17 @@ exports.register = async (req, res) => {
 exports.getMe = async (req, res) => {
   try {
     const userRes = await db.query(
-      `SELECT u.id, u.email, u.full_name, u.phone_number, u.team_id, array_agg(r.name) as roles 
-       FROM users u JOIN user_roles ur ON u.id = ur.user_id JOIN roles r ON ur.role_id = r.id 
-       WHERE u.id = $1 GROUP BY u.id`,
+      `SELECT * FROM users WHERE id = $1`,
       [req.user.id]
     );
     if (userRes.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const user = userRes.rows[0];
+    user.roles = await resolveUserRoles(user.id);
+    user.role = getPrimaryRole(user.roles);
+    user.teams = await getUserTeams(user.id);
     
-    res.json({ success: true, user: userRes.rows[0] });
+    res.json({ success: true, user });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Server error fetching profile' });
@@ -243,18 +360,13 @@ exports.verifySetup2FA = async (req, res) => {
       [JSON.stringify(backupCodesHashed), req.user.id]
     );
 
-    const updatedUserRes = await db.query(
-      `SELECT u.*, array_agg(r.name) as roles 
-       FROM users u 
-       JOIN user_roles ur ON u.id = ur.user_id 
-       JOIN roles r ON ur.role_id = r.id 
-       WHERE u.id = $1 GROUP BY u.id`, [req.user.id]
-    );
+    const updatedUserRes = await db.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
     const updatedUser = updatedUserRes.rows[0];
-    const primaryRole = updatedUser.roles.includes('USER') ? 'USER' : (updatedUser.roles.includes('MASYARAKAT') ? 'MASYARAKAT' : updatedUser.roles[0]);
+    updatedUser.roles = await resolveUserRoles(updatedUser.id);
+    const primaryRole = getPrimaryRole(updatedUser.roles);
 
     const token = jwt.sign(
-      { id: updatedUser.id, email: updatedUser.email, role: primaryRole, roles: updatedUser.roles, name: updatedUser.full_name, teamId: updatedUser.team_id },
+      { id: updatedUser.id, email: updatedUser.email, role: primaryRole, roles: updatedUser.roles, name: updatedUser.full_name, department: updatedUser.department },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
@@ -270,7 +382,8 @@ exports.verifySetup2FA = async (req, res) => {
         name: updatedUser.full_name,
         role: primaryRole,
         roles: updatedUser.roles,
-        teamId: updatedUser.team_id
+        department: updatedUser.department,
+        teams: await getUserTeams(updatedUser.id)
       }
     });
   } catch (err) {
@@ -294,17 +407,11 @@ exports.login2FA = async (req, res) => {
     const decoded = jwt.verify(tempToken, JWT_SECRET);
     if (decoded.purpose !== '2fa') return res.status(401).json({ success: false, message: 'Invalid token purpose' });
     
-    const userRes = await db.query(
-      `SELECT u.*, array_agg(r.name) as roles 
-       FROM users u 
-       JOIN user_roles ur ON u.id = ur.user_id
-       JOIN roles r ON ur.role_id = r.id 
-       WHERE u.id = $1 GROUP BY u.id`, 
-      [decoded.id]
-    );
+    const userRes = await db.query('SELECT * FROM users WHERE id = $1', [decoded.id]);
     
     if (userRes.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
     const user = userRes.rows[0];
+    user.roles = await resolveUserRoles(user.id);
     
     if (!user.is_two_factor_enabled || !user.two_factor_secret) {
       return res.status(400).json({ success: false, message: '2FA is not enabled for this user' });
@@ -352,10 +459,10 @@ exports.login2FA = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid OTP or Backup Code. Access Denied.' });
     }
     
-    const primaryRole = user.roles.includes('USER') ? 'USER' : (user.roles.includes('MASYARAKAT') ? 'MASYARAKAT' : user.roles[0]);
+    const primaryRole = getPrimaryRole(user.roles);
 
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: primaryRole, roles: user.roles, name: user.full_name, teamId: user.team_id },
+      { id: user.id, email: user.email, role: primaryRole, roles: user.roles, name: user.full_name, department: user.department },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
@@ -369,7 +476,8 @@ exports.login2FA = async (req, res) => {
         name: user.full_name,
         role: primaryRole,
         roles: user.roles,
-        teamId: user.team_id
+        department: user.department,
+        teams: await getUserTeams(user.id)
       }
     });
   } catch (err) {

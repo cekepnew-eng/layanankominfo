@@ -52,8 +52,8 @@ export const CreateTicket = () => {
   const [createdTicketId, setCreatedTicketId] = useState('');
   const [inactiveCategoryNotice, setInactiveCategoryNotice] = useState('');
 
-  const activeTicket = (user?.role === 'USER') 
-    ? tickets.find(t => t.status_name !== 'COMPLETED')
+  const activeTicket = (user?.role === 'USER' || user?.role === 'MASYARAKAT' || user?.role === 'masyarakat') 
+    ? tickets.find(t => t.status_name !== 'COMPLETED' && t.status_name !== 'REJECTED')
     : null;
 
   const handleCompleteSkm = (t) => {
@@ -240,7 +240,7 @@ export const CreateTicket = () => {
         <div className="space-y-2">
           <h3 className="text-2xl font-black text-slate-900 tracking-tight">Tiket Sedang Berjalan</h3>
           <p className="text-slate-500 text-base leading-relaxed">
-            Anda masih memiliki tiket yang belum selesai (<strong>{activeTicket.ticket_number} - {activeTicket.service_name}</strong>). Harap tunggu atau selesaikan tiket tersebut (SKM/Rating) sebelum mengajukan tiket baru.
+            Anda masih memiliki tiket yang belum selesai (<strong>{activeTicket.ticket_number || activeTicket.id} - {activeTicket.service_name}</strong>). Harap tunggu atau selesaikan tiket tersebut (SKM/Rating) sebelum mengajukan tiket baru.
           </p>
         </div>
         <div className="pt-2 flex flex-col gap-3">

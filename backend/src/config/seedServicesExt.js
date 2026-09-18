@@ -37,7 +37,7 @@ const seedServicesExt = async () => {
 
     for (const cat of categories) {
       await client.query(
-        "INSERT INTO service_categories (name) VALUES ($1) ON CONFLICT (name) DO NOTHING",
+        "INSERT INTO service_categories (category_name) VALUES ($1) ON CONFLICT (category_name) DO NOTHING",
         [cat]
       );
     }
@@ -55,16 +55,16 @@ const seedServicesExt = async () => {
     ];
 
     for (const mapping of servicesMapping) {
-      const catRes = await client.query("SELECT id FROM service_categories WHERE name = $1", [mapping.cat]);
+      const catRes = await client.query("SELECT id FROM service_categories WHERE category_name = $1", [mapping.cat]);
       if (catRes.rows.length > 0) {
         const catId = catRes.rows[0].id;
         for (const srvName of mapping.services) {
           // Check if exist
-          const checkSrv = await client.query("SELECT id FROM services WHERE name = $1 AND category_id = $2", [srvName, catId]);
+          const checkSrv = await client.query("SELECT id FROM services WHERE service_name = $1 AND category_id = $2", [srvName, catId]);
           if (checkSrv.rows.length === 0) {
              await client.query(
-               "INSERT INTO services (category_id, name, target_sla, verification_type, is_active) VALUES ($1, $2, $3, $4, $5)",
-               [catId, srvName, '7 Hari', 'Wajib Verifikasi', true]
+               "INSERT INTO services (category_id, service_name, target_sla, verification_type, status) VALUES ($1, $2, $3, $4, $5)",
+               [catId, srvName, '7 Hari', 'Wajib Verifikasi', 'Aktif']
              );
           }
         }

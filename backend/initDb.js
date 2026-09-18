@@ -15,6 +15,7 @@ const initDatabase = async () => {
     DROP TABLE IF EXISTS notifications CASCADE;
     DROP TABLE IF EXISTS device_tokens CASCADE;
     DROP TABLE IF EXISTS user_roles CASCADE;
+    DROP TABLE IF EXISTS team_members CASCADE;
     DROP TABLE IF EXISTS users CASCADE;
     DROP TABLE IF EXISTS teams CASCADE;
     DROP TABLE IF EXISTS roles CASCADE;
@@ -38,9 +39,20 @@ const initDatabase = async () => {
       password_hash VARCHAR(255) NOT NULL,
       full_name VARCHAR(255) NOT NULL,
       phone_number VARCHAR(50),
-      team_id INT REFERENCES teams(id) NULL,
+      department VARCHAR(255),
+      role_id INT REFERENCES roles(id),
       is_active BOOLEAN DEFAULT true,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      is_two_factor_enabled BOOLEAN DEFAULT false,
+      two_factor_secret TEXT,
+      backup_codes JSONB DEFAULT '[]'::jsonb,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS team_members (
+      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      team_id INT REFERENCES teams(id) ON DELETE CASCADE,
+      PRIMARY KEY (user_id, team_id)
     );
 
     CREATE TABLE IF NOT EXISTS device_tokens (

@@ -1,4 +1,9 @@
-const BASE_URL = 'http://localhost:5000/api';
+const configuredApiUrl = import.meta.env.VITE_API_URL;
+const currentHostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+const defaultApiOrigin = `http://${currentHostname}:5000`;
+const BASE_URL = `${(configuredApiUrl || defaultApiOrigin).replace(/\/$/, '')}/api`;
+
+export const API_BASE_URL = BASE_URL;
 
 const getHeaders = () => {
   const token = localStorage.getItem('spbe_token');
@@ -264,6 +269,10 @@ export const api = {
   },
   getNotifications: async () => {
     const res = await fetch(`${BASE_URL}/notifications`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+  getMobileSync: async () => {
+    const res = await fetch(`${BASE_URL}/mobile/sync`, { headers: getHeaders() });
     return handleResponse(res);
   },
   readNotification: async (id) => {

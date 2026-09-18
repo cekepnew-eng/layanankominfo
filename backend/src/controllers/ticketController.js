@@ -257,9 +257,9 @@ exports.getEmployeeTickets = async (req, res) => {
       JOIN services s ON t.service_id = s.id
       JOIN ticket_statuses st ON t.status_id = st.id
       LEFT JOIN ticket_details td ON td.ticket_id = t.id
-      WHERE a.assigned_to_user_id = $1 OR a.team_id = $2
+      WHERE a.assigned_to_user_id = $1 OR a.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
       ORDER BY t.created_at DESC
-    `, [req.user.id, req.user.teamId]);
+    `, [req.user.id]);
     const mappedRows = result.rows.map(t => ({
       ...t,
       status: t.status_name === 'PENDING' ? 'Verifikasi' 

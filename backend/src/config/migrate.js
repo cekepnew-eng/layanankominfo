@@ -21,6 +21,7 @@ const runMigration = async () => {
       DROP TABLE IF EXISTS services CASCADE;
       DROP TABLE IF EXISTS service_categories CASCADE;
       DROP TABLE IF EXISTS team_members CASCADE;
+      DROP TABLE IF EXISTS user_roles CASCADE;
       DROP TABLE IF EXISTS teams CASCADE;
       DROP TABLE IF EXISTS users CASCADE;
       DROP TABLE IF EXISTS roles CASCADE;
@@ -37,7 +38,7 @@ const runMigration = async () => {
       -- 2. teams
       CREATE TABLE teams (
         id SERIAL PRIMARY KEY,
-        name VARCHAR(100) UNIQUE NOT NULL,
+        team_name VARCHAR(100) UNIQUE NOT NULL,
         description TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
@@ -50,12 +51,23 @@ const runMigration = async () => {
         full_name VARCHAR(255) NOT NULL,
         phone_number VARCHAR(50),
         role_id INT REFERENCES roles(id),
+        team_id INT REFERENCES teams(id),
         is_active BOOLEAN DEFAULT true,
+        is_two_factor_enabled BOOLEAN DEFAULT false,
+        two_factor_secret TEXT,
+        backup_codes JSONB DEFAULT '[]'::jsonb,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
-      -- 4. team_members
+      -- 4. user_roles
+      CREATE TABLE user_roles (
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        role_id INT REFERENCES roles(id) ON DELETE CASCADE,
+        PRIMARY KEY (user_id, role_id)
+      );
+
+      -- 5. team_members
       CREATE TABLE team_members (
         id SERIAL PRIMARY KEY,
         team_id INT REFERENCES teams(id) ON DELETE CASCADE,
@@ -64,22 +76,23 @@ const runMigration = async () => {
         UNIQUE(team_id, user_id)
       );
 
-      -- 5. service_categories
+      -- 6. service_categories
       CREATE TABLE service_categories (
         id SERIAL PRIMARY KEY,
-        name VARCHAR(255) UNIQUE NOT NULL,
+        category_name VARCHAR(255) UNIQUE NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
-      -- 6. services
+      -- 7. services
       CREATE TABLE services (
         id SERIAL PRIMARY KEY,
         category_id INT REFERENCES service_categories(id) ON DELETE CASCADE,
-        name VARCHAR(255) NOT NULL,
+        service_name VARCHAR(255) NOT NULL,
         target_sla VARCHAR(100) DEFAULT '1-3 Hari',
         verification_type VARCHAR(50) DEFAULT 'Wajib Verifikasi',
         sop_link VARCHAR(255),
-        is_active BOOLEAN DEFAULT true,
+        status VARCHAR(50) DEFAULT 'Aktif',
+        form_schema JSONB DEFAULT '[]'::jsonb,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
@@ -118,6 +131,7 @@ const runMigration = async () => {
         ticket_id UUID REFERENCES tickets(id) ON DELETE CASCADE,
         title VARCHAR(255) NOT NULL,
         description TEXT,
+        form_data JSONB DEFAULT '{}'::jsonb,
         app_name VARCHAR(255),
         target_users VARCHAR(255),
         callback_url VARCHAR(255),
@@ -192,7 +206,8 @@ const runMigration = async () => {
 
     console.log('Seeding Master Data (Roles & Statuses)...');
     await client.query(`
-      INSERT INTO roles (name) VALUES ('USER'), ('HELPDESK'), ('PEGAWAI'), ('ADMIN');
+      INSERT INTO roles (name) VALUES ('MASYARAKAT'), ('USER'), ('HELPDESK'), ('PEGAWAI'), ('ADMIN')
+      ON CONFLICT (name) DO NOTHING;
       
       INSERT INTO ticket_statuses (id, name, description) VALUES 
       (1, 'PENDING', 'Menunggu Verifikasi'),
@@ -201,12 +216,19 @@ const runMigration = async () => {
       (4, 'ASSIGNED', 'Ditugaskan ke tim/pegawai'),
       (5, 'IN_PROGRESS', 'Sedang dikerjakan'),
       (6, 'WAITING_USER_CONFIRMATION', 'Pekerjaan selesai 100%, menunggu rating pemohon'),
-      (7, 'COMPLETED', 'Selesai dan sudah diberi rating');
+      (7, 'COMPLETED', 'Selesai dan sudah diberi rating')
+      ON CONFLICT (id) DO NOTHING;
       
-      INSERT INTO service_categories (name) VALUES 
+      INSERT INTO service_categories (category_name) VALUES 
       ('Pengelolaan Aplikasi Informatika'),
-      ('Pengelolaan Sumber Daya & Perangkat Keras'),
-      ('Penerapan Persandian & Keamanan Informasi');
+      ('Pengelolaan Sumber Daya & Perangkat Informatika'),
+      ('Penerapan Persandian & Keamanan Informasi'),
+      ('Tata Kelola SPBE'),
+      ('Statistik Sektoral'),
+      ('Satu Data Daerah'),
+      ('Informasi & Komunikasi Publik'),
+      ('Domain & Infrastruktur Pendukung')
+      ON CONFLICT (category_name) DO NOTHING;
     `);
 
     await client.query('COMMIT');

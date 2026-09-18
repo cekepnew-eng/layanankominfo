@@ -50,32 +50,26 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password, captchaToken, captchaAnswer) => {
     try {
-      // Fetch langsung ke backend untuk menghindari cache Vite pada file api.js
-      const res = await fetch('http://localhost:5000/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password, captchaToken, captchaAnswer })
-      });
-      
-      const response = await res.json();
-      
-      if (!res.ok) {
-        throw new Error(response.message || 'Login gagal');
-      }
+      const response = await api.login(email, password, captchaToken, captchaAnswer);
 
       if (response.success && (response.requires2FA || response.requires2FASetup)) {
         return response;
       }
       if (response.success) {
-        localStorage.setItem('spbe_token', response.token);
-        const userData = response.user;
+        const token = response.token || localStorage.getItem('spbe_token');
+        if (token) {
+          localStorage.setItem('spbe_token', token);
+        }
+        const userData = response.user || { id: null, email: '', name: '', role: 'USER', roles: ['USER'] };
         if (userData && userData.role) {
-          userData.role = userData.role;
+          userData.role = String(userData.role).toUpperCase();
+        }
+        if (userData && userData.roles) {
+          userData.roles = userData.roles.map((role) => String(role).toUpperCase());
         }
         setUser(userData);
-        return { success: true };
+        localStorage.setItem('spbe_user', JSON.stringify(userData));
+        return { success: true, token, user: userData };
       }
     } catch (err) {
       return { success: false, message: err.message };

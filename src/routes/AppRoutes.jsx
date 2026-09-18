@@ -18,10 +18,6 @@ import { ProtectedRoute } from './ProtectedRoute';
 import { useAuth } from '../context/AuthContext';
 
 const HistoryWrapper = () => {
-  const { user } = useAuth();
-  if (user?.role === 'USER' || user?.role === 'MASYARAKAT') {
-    return <MyTickets />;
-  }
   return <TicketHistory />;
 };
 

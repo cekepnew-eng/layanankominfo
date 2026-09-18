@@ -317,7 +317,11 @@ export const ManageServices = () => {
     const isActive = editStatus === 'Aktif';
 
     try {
-      const form_schema = getServiceFormFields(editName, formTemplate);
+      // Use existing form_schema if it exists, otherwise generate default
+      const form_schema = editingService.form_schema && editingService.form_schema.length > 0 
+        ? editingService.form_schema 
+        : getServiceFormFields(editName, editingService.template || 'standar');
+        
       await api.updateService(editingService.id, {
         category_name: editCategory,
         name: editName,

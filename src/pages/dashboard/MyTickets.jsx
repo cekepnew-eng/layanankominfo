@@ -311,7 +311,7 @@ export const MyTickets = () => {
             </div>
           )}
 
-          {selectedTicket.status === 'Selesai' && !selectedTicket.rating && (
+          {selectedTicket.status_name === 'WAITING_USER_CONFIRMATION' && (
             <div className="bg-sky-50/50 p-4 rounded-xl border border-sky-100/50 space-y-4">
               <div className="flex gap-2.5 text-sky-800">
                 <CheckCircle2 className="w-5 h-5 shrink-0 text-sky-600" />

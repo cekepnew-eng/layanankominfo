@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getCurrentLogTimeFormatted, formatLogDateDisplay } from '../../utils/dateUtils';
 import { TicketDetailModal } from '../../components/TicketDetailModal';
+import { SkmModal } from '../../components/SkmModal';
 import { api } from '../../services/api';
 import { ActionModal } from '../../components/ActionModal';
 import { 
@@ -165,6 +166,8 @@ export const TicketHistory = () => {
   const [bastFileSize, setBastFileSize] = useState('');
   const [bastFileUrl, setBastFileUrl] = useState('/bast_selesai.pdf');
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showSkmModal, setShowSkmModal] = useState(false);
+  const [showInlineRating, setShowInlineRating] = useState(false);
   const bastInputRef = useRef(null);
 
   const [modalConfig, setModalConfig] = useState({
@@ -196,6 +199,7 @@ export const TicketHistory = () => {
       setTempRemainingDays(selectedTicket.remainingDays !== undefined ? selectedTicket.remainingDays : 3);
       setIsFinished(selectedTicket.status === 'Selesai');
       setFileName('');
+      setShowInlineRating(false);
     }
   }, [selectedTicket?.id]);
 
@@ -969,7 +973,7 @@ export const TicketHistory = () => {
                 </div>
               )}
 
-              {(user?.role === 'USER' || user?.role === 'MASYARAKAT') && selectedTicket.status === 'Menunggu Konfirmasi User' && (
+              {(user?.role === 'USER' || user?.role === 'MASYARAKAT') && selectedTicket.status === 'Selesai' && !selectedTicket.rating && (
                 <div className="bg-gradient-to-br from-indigo-50/50 to-sky-50/50 border border-indigo-100 rounded-2xl p-5 space-y-4 text-left">
                   <div className="flex items-center gap-2 text-indigo-700">
                     <Star className="w-5 h-5 fill-indigo-100 text-indigo-650" />
@@ -978,7 +982,16 @@ export const TicketHistory = () => {
                   
                   <p className="text-sm text-slate-500 leading-relaxed">Pekerjaan fisik telah selesai 100%. Silakan berikan konfirmasi dan ulasan rating untuk kualitas pelayanan kami.</p>
                   
-                  <div className="flex justify-between items-center bg-white border border-indigo-100 rounded-xl p-4 shadow-sm">
+                  {!showInlineRating ? (
+                    <button 
+                      onClick={() => setShowSkmModal(true)}
+                      className="w-full px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-indigo-500/20 cursor-pointer"
+                    >
+                      Isi SKM & Penilaian
+                    </button>
+                  ) : (
+                    <>
+                      <div className="flex justify-between items-center bg-white border border-indigo-100 rounded-xl p-4 shadow-sm">
                     <div className="space-y-0.5 text-left">
                       <span className="text-slate-700 font-extrabold text-xs uppercase tracking-wider block">Kualitas Pelayanan (Overall)</span>
                       <span className="text-[10px] text-slate-400 font-semibold block">Penilaian umum kinerja pelayanan SPBE</span>
@@ -1067,10 +1080,12 @@ export const TicketHistory = () => {
 
                   <button 
                     onClick={() => handleConfirmAndRate(selectedTicket.uuid)}
-                    className="w-full px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-indigo-500/20"
+                    className="w-full px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-indigo-500/20 cursor-pointer"
                   >
                     Konfirmasi Selesai & Kirim Ulasan
                   </button>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -1107,6 +1122,16 @@ export const TicketHistory = () => {
         isOpen={showDetailModal} 
         onClose={() => setShowDetailModal(false)} 
         ticket={selectedTicket} 
+      />
+
+      <SkmModal
+        isOpen={showSkmModal}
+        onClose={() => setShowSkmModal(false)}
+        ticket={selectedTicket}
+        onConfirm={() => {
+          setShowSkmModal(false);
+          setShowInlineRating(true);
+        }}
       />
 
       <ActionModal

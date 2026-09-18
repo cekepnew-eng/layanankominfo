@@ -16,11 +16,17 @@ export const ManageUsers = () => {
   const fetchUsers = async () => {
     try {
       const response = await api.getUsers();
-      if (response && response.data) {
-        setUsers(response.data);
-      }
+      const userList = response?.data || response?.users || [];
+      const normalizedUsers = userList.map((u) => ({
+        ...u,
+        roles: Array.isArray(u.roles) ? u.roles.map(r => String(r).toUpperCase()) : [String(u.role || 'USER').toUpperCase()],
+        role: String(u.role || u.roles?.[0] || 'USER').toUpperCase(),
+        department: u.department || u.team || 'Dinas Komunikasi dan Informatika'
+      }));
+      setUsers(normalizedUsers);
     } catch (err) {
       console.error('Error fetching users:', err);
+      setUsers([]);
     } finally {
       setLoading(false);
     }
@@ -60,7 +66,12 @@ export const ManageUsers = () => {
   const handleStartEdit = (u) => {
     setEditingUser(u);
     setEditRoleVal((u.role || 'user').toLowerCase());
-    setEditRolesVal((u.roles || [u.role || 'user']).map(r => r.toLowerCase()));
+    
+    let initialRoles = (u.roles || [u.role || 'user']).map(r => r.toLowerCase());
+    if (initialRoles.some(r => r !== 'masyarakat' && r !== 'user')) {
+      if (!initialRoles.includes('user')) initialRoles.push('user');
+    }
+    setEditRolesVal(initialRoles);
 
     const initialAssignments = {};
     if (u.team_id) {
@@ -70,11 +81,25 @@ export const ManageUsers = () => {
   };
 
   const handleToggleRoleCheckbox = (roleKey) => {
-    setEditRolesVal(prev => 
-      prev.includes(roleKey) 
+    setEditRolesVal(prev => {
+      let newRoles = prev.includes(roleKey) 
         ? prev.filter(r => r !== roleKey) 
-        : [...prev, roleKey]
-    );
+        : [...prev, roleKey];
+        
+      if (roleKey === 'masyarakat' && !prev.includes('masyarakat')) {
+        newRoles = ['masyarakat'];
+      } else if (roleKey !== 'masyarakat' && !prev.includes(roleKey)) {
+        newRoles = newRoles.filter(r => r !== 'masyarakat');
+      }
+
+      if (newRoles.some(r => r !== 'masyarakat' && r !== 'user')) {
+        if (!newRoles.includes('user')) newRoles.push('user');
+      }
+
+      if (newRoles.length === 0) newRoles = ['masyarakat']; // Fallback
+
+      return newRoles;
+    });
   };
 
   useEffect(() => {
@@ -386,12 +411,16 @@ export const ManageUsers = () => {
                     const isChecked = editRolesVal.includes(item.key);
                     
                     let isDisabled = false;
-                    if (item.key === 'user') {
-                      if (editingUser.roles?.some(r => r.toUpperCase() === 'USER') || editingUser.roles?.some(r => r.toLowerCase() === 'masyarakat')) {
+                    if (item.key === 'masyarakat') {
+                      if (editRolesVal.some(r => r !== 'masyarakat')) {
                         isDisabled = true;
                       }
-                    } else if (item.key === 'masyarakat') {
-                      if (editingUser.roles?.some(r => r.toLowerCase() === 'masyarakat') || editingUser.roles?.some(r => r.toUpperCase() === 'USER')) {
+                    } else if (item.key === 'user') {
+                      if (editRolesVal.some(r => r !== 'masyarakat' && r !== 'user')) {
+                        isDisabled = true; // Cannot uncheck if admin/helpdesk/pegawai
+                      }
+                    } else {
+                      if (editRolesVal.includes('masyarakat')) {
                         isDisabled = true;
                       }
                     }
@@ -417,7 +446,7 @@ export const ManageUsers = () => {
                           {item.label}
                           {isDisabled && (
                             <span className="text-[10px] text-slate-400 ml-1.5 font-normal">
-                              (Permanen)
+                              (Tidak Kompatibel)
                             </span>
                           )}
                         </label>

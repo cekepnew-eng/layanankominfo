@@ -69,25 +69,14 @@ export const DashboardLayout = () => {
     { id: 'ADMIN', label: 'Admin (Master Data)' },
     { id: 'HELPDESK', label: 'Helpdesk (Validator)' },
     { id: 'PEGAWAI', label: 'Pegawai (Teknisi)' },
-    { id: 'USER', label: 'User (OPD / Dinas)' },
+    { id: 'USER', label: 'OPD (Dinas / Perangkat Daerah)' },
     { id: 'MASYARAKAT', label: 'Masyarakat' }
   ];
 
   const getHistoryLabel = () => {
-    if (!user) return 'Daftar Tiket';
-    switch (user.role) {
-      case 'USER':
-      case 'MASYARAKAT':
-        return 'Tiket Saya';
-      case 'HELPDESK':
-        return 'Kelola Tiket';
-      case 'PEGAWAI':
-        return 'Tiket Pekerjaan';
-      case 'ADMIN':
-        return 'Daftar Tiket SPBE';
-      default:
-        return 'Daftar Tiket';
-    }
+    if (!user) return 'Kelola Tiket';
+    if (user.role === 'MASYARAKAT') return 'Tiket Saya';
+    return 'Kelola Tiket';
   };
 
   const getMenuLinks = () => {

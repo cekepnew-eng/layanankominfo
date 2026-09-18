@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { api } from '../../services/api';
 import { 
   FileText, 
   Clock, 
@@ -50,6 +51,7 @@ export const Overview = () => {
   const [globalRatings, setGlobalRatings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [adminUsers, setAdminUsers] = useState([]);
+  const [adminTeams, setAdminTeams] = useState([]);
 
   // Fallback variables to prevent ReferenceErrors
   const users = [];
@@ -60,36 +62,23 @@ export const Overview = () => {
     const fetchData = async () => {
       try {
         if (user.role === 'ADMIN') {
-          const res = await fetch('http://localhost:5000/api/admin/tickets', {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('spbe_token')}` }
-          });
-          const data = await res.json();
-          setTickets(data.data || []);
-          
-          const uRes = await fetch('http://localhost:5000/api/admin/users', {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('spbe_token')}` }
-          });
-          const uData = await uRes.json();
-          if (uData.success) {
-            setAdminUsers(uData.data);
-          }
+          const [data, uData, teamsData, tData] = await Promise.all([
+            api.getAdminTickets(),
+            api.getUsers(),
+            api.getTeams(),
+            api.getHelpdeskTickets()
+          ]);
+          setTickets(tData.data || data.data || []);
+          setAdminUsers(uData.data || []);
+          setAdminTeams(teamsData.data || []);
         } else if (user.role === 'HELPDESK') {
-          const res = await fetch('http://localhost:5000/api/helpdesk/tickets', {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('spbe_token')}` }
-          });
-          const data = await res.json();
+          const data = await api.getHelpdeskTickets();
           setTickets(data.data || []);
         } else if (user.role === 'PEGAWAI') {
-          const res = await fetch('http://localhost:5000/api/employee/tickets', {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('spbe_token')}` }
-          });
-          const data = await res.json();
+          const data = await api.getEmployeeTickets();
           setTickets(data.data || []);
         } else {
-          const res = await fetch('http://localhost:5000/api/my/tickets', {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('spbe_token')}` }
-          });
-          const data = await res.json();
+          const data = await api.getMyTickets();
           setTickets(data.data || []);
         }
       } catch (err) {
@@ -125,7 +114,7 @@ export const Overview = () => {
   ];
 
   const categoryCounts = categoriesList.map(cat => {
-    const count = completedTickets.filter(t => t.service === cat.name || cat.services.includes(t.service)).length;
+    const count = completedTickets.filter(t => t.service_name === cat.name || cat.services.includes(t.service_name)).length;
     return { name: cat.name, count };
   }).sort((a, b) => b.count - a.count);
 
@@ -175,7 +164,7 @@ export const Overview = () => {
           </div>
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tim Pelaksana</p>
-            <p className="text-xl font-black text-slate-800 mt-0.5">{teams ? teams.length : 8} Tim Kerja</p>
+            <p className="text-xl font-black text-slate-800 mt-0.5">{adminTeams.length} Tim Kerja</p>
           </div>
         </div>
 
@@ -304,15 +293,27 @@ export const Overview = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-base text-slate-650">
-                {(tickets || []).filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi').map((t, index) => (
-                  <tr key={t.id || index} className="hover:bg-slate-50 transition-all">
-                    <td className="px-6 py-4 font-bold text-slate-850">{t.ticket_number || t.id}</td>
-                    <td className="px-6 py-4">{(t.opd || t.department || 'Masyarakat').split(' Kota ')[0]}</td>
-                    <td className="px-6 py-4">{t.service_name || t.service || 'Layanan SPBE'}</td>
-                    <td className="px-6 py-4">{t.title || t.requestType || '-'}</td>
-                    <td className="px-6 py-4">{t.created_at ? new Date(t.created_at).toLocaleDateString() : t.date}</td>
-                  </tr>
-                ))}
+                {(() => {
+                  const queue = (tickets || []).filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status_name === 'PENDING' || t.status_name === 'VERIFIED');
+                  if (queue.length === 0) {
+                    return (
+                      <tr>
+                        <td colSpan="5" className="px-6 py-8 text-center text-slate-500 font-bold">
+                          Tidak ada antrean tiket yang menunggu verifikasi saat ini.
+                        </td>
+                      </tr>
+                    );
+                  }
+                  return queue.map((t, index) => (
+                    <tr key={t.id || index} className="hover:bg-slate-50 transition-all">
+                      <td className="px-6 py-4 font-bold text-slate-850">{t.ticket_number || t.id}</td>
+                      <td className="px-6 py-4">{(t.opd || t.department || 'Masyarakat').split(' Kota ')[0]}</td>
+                      <td className="px-6 py-4">{t.service_name || t.service || 'Layanan SPBE'}</td>
+                      <td className="px-6 py-4">{t.title || t.requestType || '-'}</td>
+                      <td className="px-6 py-4">{t.created_at ? new Date(t.created_at).toLocaleDateString() : t.date}</td>
+                    </tr>
+                  ));
+                })()}
               </tbody>
             </table>
           </div>
@@ -321,20 +322,22 @@ export const Overview = () => {
     </div>
   );
 
+
   const renderPegawaiDashboard = () => {
-    // We fetch teams from API or just use fallback
-    const myTeamNames = [user?.team_name || 'Tim Aplikasi & Sistem Informasi'];
+    const myTeamNames = user?.teams && user.teams.length > 0 ? user.teams : ['Belum ada tim kerja'];
     const pegawaiTickets = (tickets || []);
     const activeTasks = pegawaiTickets.filter(t => t.status_name === 'IN_PROGRESS' || t.status === 'Diproses');
     const priorityTask = activeTasks.length > 0 ? activeTasks[0] : null;
 
-
-    const myTeams = [{ id: 1, name: myTeamNames[0], members: ['Anda'] }];
-    const userTeam = myTeamNames[0];
+    const myTeams = myTeamNames.map((name, idx) => ({
+      id: idx + 1,
+      name,
+      members: ['Anda'] // Ideally fetched, but we only have team names for now.
+    }));
 
     const subtitleText = myTeams.length > 1
       ? `Kelola tiket tugas pengerjaan yang ditugaskan kepada ${myTeams.length} Tim Kerja Anda (${myTeams.map(t => t.name).join(', ')}), perbarui progres, dan laporkan BAST.`
-      : myTeams.length === 1
+      : myTeams.length === 1 && myTeams[0].name !== 'Belum ada tim kerja'
         ? `Kelola tiket tugas pengerjaan yang ditugaskan kepada ${myTeams[0].name}, perbarui progres, dan laporkan BAST.`
         : 'Kelola tiket tugas pengerjaan teknis, perbarui progres, dan laporkan BAST.';
 
@@ -371,7 +374,7 @@ export const Overview = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
             {myTeams.map((t) => {
-              const teamActiveTasks = tickets.filter(tk => (tk.team || getTicketTeam(tk)) === t.name && tk.status === 'Diproses').length;
+              const teamActiveTasks = tickets.filter(tk => (tk.team || tk.team_name || '') === t.name && tk.status === 'Diproses').length;
               return (
                 <div 
                   key={t.id} 
@@ -447,7 +450,7 @@ export const Overview = () => {
                     </span>
                     <h4 className="font-extrabold text-slate-850 text-base mt-1">{priorityTask.title}</h4>
                     <p className="text-base text-slate-500">
-                      Diajukan oleh: {priorityTask.opd} | Penanggung Jawab: {priorityTask.team || userTeam}
+                      Diajukan oleh: {priorityTask.opd} | Penanggung Jawab: {priorityTask.team || '-'}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 self-stretch md:self-auto">

@@ -79,10 +79,7 @@ export const TicketDetailModal = ({ isOpen, onClose, ticket }) => {
                 <span className="text-[10px] font-bold text-amber-600 block">(Tertangguh)</span>
               )}
             </div>
-            <div className="space-y-0.5 text-right">
-              <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block">Tingkat Progres</span>
-              <span className="text-sm font-black text-slate-800">{ticket.progress || 0}% Selesai</span>
-            </div>
+
           </div>
 
           <div className="space-y-3">

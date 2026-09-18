@@ -6,7 +6,7 @@ import { api } from '../../services/api';
 import { Monitor, ArrowLeft, Lock, Mail, ChevronRight, Check, ShieldCheck, QrCode, Copy } from 'lucide-react';
 
 export const Login = () => {
-  const { login, login2FA } = useAuth();
+  const { login, login2FA, setUser } = useAuth();
   const navigate = useNavigate();
   
   const [identifier, setIdentifier] = useState('');
@@ -24,9 +24,7 @@ export const Login = () => {
 
   const loadCaptcha = async () => {
     try {
-      // Fetch langsung ke backend untuk menghindari cache Vite pada file api.js
-      const res = await fetch('http://localhost:5000/api/auth/captcha');
-      const data = await res.json();
+      const data = await api.getCaptcha();
       
       if (data.success) {
         setCaptchaData({ text: data.text, token: data.token });
@@ -102,6 +100,33 @@ export const Login = () => {
     };
   }, [showOtpModal]);
 
+  const normalizeLoginEmail = (value) => {
+    const raw = (value || '').trim().toLowerCase();
+    if (!raw) return '';
+
+    if (raw.includes('@')) {
+      const [localPart, domainPart] = raw.split('@');
+      if (!localPart || !domainPart) return raw;
+
+      const normalizedDomain = domainPart.replace(/^kota\./, '').replace(/^(bogor\.)?id$/i, 'bogor.go.id');
+      if (domainPart.toLowerCase().includes('bogor')) {
+        return `${localPart}@${normalizedDomain}`;
+      }
+
+      return raw;
+    }
+
+    if (['admin', 'helpdesk', 'pegawai', 'user'].includes(raw)) {
+      return `${raw}@bogor.go.id`;
+    }
+
+    if (raw === 'masyarakat') {
+      return 'masyarakat@bogor.go.id';
+    }
+
+    return raw;
+  };
+
   const handleStandardLogin = (e) => {
     if (e) e.preventDefault();
     if (!identifier.trim() || !password) {
@@ -112,14 +137,8 @@ export const Login = () => {
       alert('Silakan isi Captcha terlebih dahulu!');
       return;
     }
-    let email = identifier.trim();
-    if (!email.includes('@') && email !== 'admin' && email !== 'helpdesk' && email !== 'pegawai' && email !== 'user' && email !== 'masyarakat') {
-      email = email + '@bogor.go.id';
-    } else if (email === 'masyarakat') {
-      email = 'masyarakat@gmail.com';
-    } else if (['admin', 'helpdesk', 'pegawai', 'user'].includes(email)) {
-      email = email + '@bogor.go.id';
-    }
+
+    const email = normalizeLoginEmail(identifier);
     triggerLogin(email, password, captchaData.token, captchaAnswer);
   };
 
@@ -133,7 +152,7 @@ export const Login = () => {
       alert('Silakan isi Captcha terlebih dahulu!');
       return;
     }
-    const emailLower = identifier.toLowerCase().trim();
+    const emailLower = normalizeLoginEmail(identifier);
     triggerLogin(emailLower, password, captchaData.token, captchaAnswer);
   };
 
@@ -147,7 +166,7 @@ export const Login = () => {
       alert('Silakan isi Captcha terlebih dahulu!');
       return;
     }
-    triggerLogin(identifier, password, captchaData.token, captchaAnswer);
+    triggerLogin(normalizeLoginEmail(identifier), password, captchaData.token, captchaAnswer);
   };
 
   const handleQuickLogin = async (role) => {
@@ -156,12 +175,24 @@ export const Login = () => {
       helpdesk: 'helpdesk@bogor.go.id',
       pegawai: 'pegawai@bogor.go.id',
       user: 'opd@bogor.go.id',
-      masyarakat: 'masyarakat@gmail.com'
+      masyarakat: 'masyarakat@bogor.go.id'
     };
-    const email = quickEmails[role] || 'masyarakat@gmail.com';
+    const quickPasswords = {
+      admin: 'admin123',
+      helpdesk: 'admin123',
+      pegawai: 'admin123',
+      user: 'admin123',
+      masyarakat: 'admin123'
+    };
+
+    const email = quickEmails[role] || 'masyarakat@bogor.go.id';
+    const password = quickPasswords[role] || 'admin123';
     setIdentifier(email);
-    setPassword('admin123');
-    triggerLogin(email, 'admin123', captchaData.token, captchaData.text ? captchaData.text.split(' ')[2] * 1 + captchaData.text.split(' ')[4].replace('?','') * 1 : '');
+    setPassword(password);
+
+    const match = captchaData.text?.match(/(\d+)\s*\+\s*(\d+)/i);
+    const answer = match ? Number(match[1]) + Number(match[2]) : '';
+    triggerLogin(email, password, captchaData.token, String(answer));
   };
 
   const handleOtpVerify = async (e) => {
@@ -177,9 +208,15 @@ export const Login = () => {
       try {
         const result = await api.verifySetup2FA(tempToken, otpCode);
         if (result.success) {
+          const userData = result.user || { id: null, email: '', name: '', role: 'USER', roles: ['USER'] };
+          if (userData.role) userData.role = String(userData.role).toUpperCase();
+          if (userData.roles) userData.roles = userData.roles.map((role) => String(role).toUpperCase());
+
           localStorage.setItem('spbe_token', result.token);
+          localStorage.setItem('spbe_user', JSON.stringify(userData));
+          setUser(userData);
           setShowOtpModal(false);
-          window.location.href = '/dashboard';
+          navigate('/dashboard');
         } else {
           setOtpError(result.message || 'Kode autentikasi salah!');
         }
@@ -498,13 +535,15 @@ export const Login = () => {
                   )}
 
                   <div className="flex gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setOtpStep(1)}
-                      className="flex-1 py-3 px-5 border border-slate-200 hover:bg-slate-50 rounded-xl text-sm sm:text-base font-bold text-slate-700 transition-all cursor-pointer"
-                    >
-                      &larr; Kembali
-                    </button>
+                    {qrData.qrUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setOtpStep(1)}
+                        className="flex-1 py-3 px-5 border border-slate-200 hover:bg-slate-50 rounded-xl text-sm sm:text-base font-bold text-slate-700 transition-all cursor-pointer"
+                      >
+                        &larr; Kembali
+                      </button>
+                    )}
                     <button
                       type="submit"
                       className="flex-1 py-3 px-5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md shadow-sky-500/20 cursor-pointer"

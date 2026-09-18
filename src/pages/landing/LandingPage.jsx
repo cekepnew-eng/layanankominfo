@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { api } from '../../services/api';
 import { 
   Search, 
   ChevronRight, 
@@ -32,6 +33,7 @@ export const LandingPage = () => {
   const [selectedDrawerCategory, setSelectedDrawerCategory] = useState(null);
   const [liveTickets, setLiveTickets] = useState([]);
   const [activeFaqId, setActiveFaqId] = useState(null);
+  const [dbCategories, setDbCategories] = useState([]);
 
   const { ratings, tickets } = useAuth();
   const displayTestimonials = ratings ? ratings.filter(r => r.selectedForLanding) : [];
@@ -124,7 +126,56 @@ export const LandingPage = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const categories = [
+  useEffect(() => {
+    const loadServiceCatalog = async () => {
+      try {
+        const res = await api.getPublicServices();
+        const catalog = res?.categories || [];
+        const items = res?.data || [];
+
+        if (!catalog.length) return;
+
+        const categoryMap = {};
+        catalog.forEach((cat) => {
+          categoryMap[cat.name] = {
+            id: cat.id,
+            title: cat.name,
+            desc: 'Layanan teknis dan pelayanan digital untuk kebutuhan OPD Pemerintah Kota Bogor.',
+            icon: [
+              Cpu, Globe, Shield, FileText, BarChart2, Database, Megaphone, GraduationCap
+            ][(cat.id - 1) % 8],
+            color: [
+              'text-blue-600 bg-blue-50 border-blue-100',
+              'text-emerald-600 bg-emerald-50 border-emerald-100',
+              'text-rose-600 bg-rose-50 border-rose-100',
+              'text-amber-600 bg-amber-50 border-amber-100',
+              'text-cyan-600 bg-cyan-50 border-cyan-100',
+              'text-teal-600 bg-teal-50 border-teal-100',
+              'text-violet-600 bg-violet-50 border-violet-100',
+              'text-slate-700 bg-slate-100 border-slate-200'
+            ][(cat.id - 1) % 8],
+            services: (items || [])
+              .filter((s) => (s.category || s.category_name) === cat.name)
+              .map((s) => ({
+                name: s.name || s.service_name,
+                sla: s.target_sla || '7 Hari',
+                sop: s.sop_link || 'sop-default.pdf',
+                items: (s.requirements || []).map((req) => req.document_name || 'Dokumen persyaratan') || ['Dokumen persyaratan']
+              }))
+          };
+        });
+
+        const mapped = Object.values(categoryMap).filter((cat) => cat.services.length > 0);
+        if (mapped.length > 0) setDbCategories(mapped);
+      } catch (error) {
+        console.error('Gagal memuat katalog layanan dari backend:', error);
+      }
+    };
+
+    loadServiceCatalog();
+  }, []);
+
+  const fallbackCategories = [
     {
       id: 'cat1',
       title: 'Pengelolaan Aplikasi Informatika',
@@ -258,6 +309,8 @@ export const LandingPage = () => {
       answer: 'Target waktu penyelesaian (SLA) bervariasi bergantung pada kompleksitas layanan yang diajukan. Contohnya, gangguan jaringan minor diselesaikan dalam waktu 1-3 hari kerja, sedangkan permohonan pengembangan aplikasi baru berskala besar memiliki target 30-90 hari kerja.'
     }
   ];
+
+  const categories = dbCategories.length > 0 ? dbCategories : fallbackCategories;
 
   const filteredCategories = categories.filter(cat => {
     if (!searchQuery) return true;
