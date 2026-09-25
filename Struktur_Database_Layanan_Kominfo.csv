@@ -1,0 +1,91 @@
+Table Name,Column Name,Data Type,Constraints,Foreign Key
+roles,id,SERIAL,PRIMARY KEY,
+roles,name,VARCHAR(50),UNIQUE NOT NULL,
+teams,id,SERIAL,PRIMARY KEY,
+teams,team_name,VARCHAR(100),UNIQUE NOT NULL,
+teams,description,TEXT,,
+users,id,UUID,PRIMARY KEY DEFAULT gen_random_uuid(),
+users,email,VARCHAR(255),UNIQUE NOT NULL,
+users,password_hash,VARCHAR(255),NOT NULL,
+users,full_name,VARCHAR(255),NOT NULL,
+users,phone_number,VARCHAR(50),,
+users,department,VARCHAR(255),,
+users,role_id,INT,,REFERENCES roles(id)
+users,is_active,BOOLEAN,DEFAULT true,
+users,is_two_factor_enabled,BOOLEAN,DEFAULT false,
+users,two_factor_secret,TEXT,,
+users,backup_codes,JSONB,DEFAULT '[]'::jsonb,
+users,created_at,TIMESTAMP,DEFAULT CURRENT_TIMESTAMP,
+users,updated_at,TIMESTAMP,DEFAULT CURRENT_TIMESTAMP,
+team_members,user_id,UUID,PRIMARY KEY,REFERENCES users(id) ON DELETE CASCADE
+team_members,team_id,INT,PRIMARY KEY,REFERENCES teams(id) ON DELETE CASCADE
+device_tokens,id,SERIAL,PRIMARY KEY,
+device_tokens,user_id,UUID,,REFERENCES users(id)
+device_tokens,fcm_token,VARCHAR(255),UNIQUE NOT NULL,
+device_tokens,device_type,VARCHAR(50),,
+device_tokens,last_active,TIMESTAMP,DEFAULT CURRENT_TIMESTAMP,
+user_roles,user_id,UUID,PRIMARY KEY,REFERENCES users(id) ON DELETE CASCADE
+user_roles,role_id,INT,PRIMARY KEY,REFERENCES roles(id) ON DELETE CASCADE
+ticket_statuses,id,SERIAL,PRIMARY KEY,
+ticket_statuses,name,VARCHAR(50),UNIQUE NOT NULL,
+service_categories,id,SERIAL,PRIMARY KEY,
+service_categories,category_name,VARCHAR(255),UNIQUE NOT NULL,
+services,id,SERIAL,PRIMARY KEY,
+services,category_id,INT,,REFERENCES service_categories(id)
+services,service_name,VARCHAR(255),NOT NULL,
+services,target_sla,VARCHAR(100),DEFAULT '1-3 Hari',
+services,verification_type,VARCHAR(50),DEFAULT 'Wajib Verifikasi',
+services,sop_link,VARCHAR(255),,
+services,status,VARCHAR(50),DEFAULT 'Aktif',
+services,form_schema,JSONB,DEFAULT '[]'::jsonb,
+service_requirements,id,SERIAL,PRIMARY KEY,
+service_requirements,service_id,INT,,REFERENCES services(id)
+service_requirements,document_name,VARCHAR(255),NOT NULL,
+service_requirements,is_mandatory,BOOLEAN,DEFAULT true,
+tickets,id,UUID,PRIMARY KEY DEFAULT gen_random_uuid(),
+tickets,ticket_number,VARCHAR(50),UNIQUE NOT NULL,
+tickets,user_id,UUID,,REFERENCES users(id)
+tickets,service_id,INT,,REFERENCES services(id)
+tickets,status_id,INT,,REFERENCES ticket_statuses(id)
+tickets,priority,VARCHAR(50),DEFAULT 'MEDIUM',
+tickets,progress,INT,DEFAULT 0,
+tickets,created_at,TIMESTAMP,DEFAULT CURRENT_TIMESTAMP,
+tickets,updated_at,TIMESTAMP,DEFAULT CURRENT_TIMESTAMP,
+ticket_details,id,SERIAL,PRIMARY KEY,
+ticket_details,ticket_id,UUID,,REFERENCES tickets(id) ON DELETE CASCADE
+ticket_details,title,VARCHAR(255),,
+ticket_details,description,TEXT,,
+ticket_details,form_data,JSONB,DEFAULT '{}'::jsonb,
+ticket_assignments,id,SERIAL,PRIMARY KEY,
+ticket_assignments,ticket_id,UUID,,REFERENCES tickets(id) ON DELETE CASCADE
+ticket_assignments,team_id,INT,,REFERENCES teams(id)
+ticket_assignments,assigned_to_user_id,UUID,,REFERENCES users(id)
+ticket_assignments,assigned_by_user_id,UUID,,REFERENCES users(id)
+ticket_assignments,created_at,TIMESTAMP,DEFAULT CURRENT_TIMESTAMP,
+ticket_histories,id,SERIAL,PRIMARY KEY,
+ticket_histories,ticket_id,UUID,,REFERENCES tickets(id) ON DELETE CASCADE
+ticket_histories,changed_by_user_id,UUID,,REFERENCES users(id)
+ticket_histories,old_status_id,INT,,REFERENCES ticket_statuses(id)
+ticket_histories,new_status_id,INT,,REFERENCES ticket_statuses(id)
+ticket_histories,log_description,TEXT,,
+ticket_histories,created_at,TIMESTAMP,DEFAULT CURRENT_TIMESTAMP,
+ticket_feedback,id,SERIAL,PRIMARY KEY,
+ticket_feedback,ticket_id,UUID,,REFERENCES tickets(id) ON DELETE CASCADE
+ticket_feedback,user_id,UUID,,REFERENCES users(id)
+ticket_feedback,rating,INT,CHECK (rating BETWEEN 1 AND 5),
+ticket_feedback,comment,TEXT,,
+ticket_feedback,created_at,TIMESTAMP,DEFAULT CURRENT_TIMESTAMP,
+notifications,id,SERIAL,PRIMARY KEY,
+notifications,user_id,UUID,,REFERENCES users(id)
+notifications,ticket_id,UUID,,REFERENCES tickets(id) ON DELETE CASCADE
+notifications,type,VARCHAR(50),,
+notifications,title,VARCHAR(255),NOT NULL,
+notifications,message,TEXT,NOT NULL,
+notifications,is_read,BOOLEAN,DEFAULT false,
+notifications,created_at,TIMESTAMP,DEFAULT CURRENT_TIMESTAMP,
+skm_surveys,id,SERIAL,PRIMARY KEY,
+skm_surveys,ticket_id,UUID,,REFERENCES tickets(id) ON DELETE CASCADE
+skm_surveys,q1_answer,VARCHAR(50),NOT NULL,
+skm_surveys,q2_answer,VARCHAR(50),NOT NULL,
+skm_surveys,q3_answer,VARCHAR(50),NOT NULL,
+skm_surveys,created_at,TIMESTAMP,DEFAULT CURRENT_TIMESTAMP,

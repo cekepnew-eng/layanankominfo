@@ -5,109 +5,8 @@ import { SopModal } from '../../components/SopModal';
 import { api } from '../../services/api';
 import { ActionModal } from '../../components/ActionModal';
 
-const getServiceFormFields = (serviceName, template) => {
-  if (template === 'aplikasi') {
-    return [
-      { label: 'Nama Aplikasi', type: 'text', placeholder: 'Contoh: Portal Layanan Kesehatan' },
-      { label: 'Platform Aplikasi', type: 'select', options: ['Web', 'Mobile (Android/iOS)', 'Desktop'] },
-      { label: 'Deskripsi Kebutuhan / Fitur', type: 'textarea', placeholder: 'Jelaskan modul atau fitur yang dibutuhkan...' },
-      { label: 'Surat Permohonan Resmi', type: 'file' }
-    ];
-  }
-  if (template === 'server') {
-    return [
-      { label: 'Nama Sistem / Database', type: 'text', placeholder: 'Contoh: DB Sektoral Dinas' },
-      { label: 'Spesifikasi CPU', type: 'select', options: ['2 Core', '4 Core', '8 Core', '16 Core'] },
-      { label: 'Spesifikasi RAM', type: 'select', options: ['4 GB', '8 GB', '16 GB', '32 GB'] },
-      { label: 'Kapasitas SSD', type: 'select', options: ['50 GB', '100 GB', '250 GB', '500 GB'] },
-      { label: 'Sistem Operasi', type: 'select', options: ['Ubuntu Server 22.04', 'CentOS 7', 'Windows Server 2019', 'Rocky Linux'] },
-      { label: 'Surat Permohonan & TOR Spesifikasi', type: 'file' }
-    ];
-  }
-  if (template === 'jaringan') {
-    return [
-      { label: 'Lokasi Pemasangan / Gedung', type: 'text', placeholder: 'Contoh: Gedung A Lantai 2' },
-      { label: 'Jenis Kebutuhan', type: 'select', options: ['Pemasangan Access Point Wifi', 'Instalasi Kabel LAN Baru', 'Akses VPN Staf', 'Penyetelan Bandwidth'] },
-      { label: 'Jumlah Node / Pengguna', type: 'number', placeholder: 'Estimasi jumlah pengguna...' },
-      { label: 'Surat Permohonan & Denah Ruangan', type: 'file' }
-    ];
-  }
-  if (template === 'zoom') {
-    return [
-      { label: 'Nama Kegiatan / Agenda', type: 'text', placeholder: 'Contoh: Sosialisasi Imunisasi Puskesmas' },
-      { label: 'Tanggal & Waktu Kegiatan', type: 'datetime-local' },
-      { label: 'Kapasitas Peserta', type: 'select', options: ['100 Peserta', '300 Peserta', '500 Peserta', '1000 Peserta'] },
-      { label: 'Butuh Operator Diskominfo', type: 'select', options: ['Tidak', 'Ya (Asistensi Teknis)'] },
-      { label: 'Surat Permohonan Resmi', type: 'file' }
-    ];
-  }
-  if (template === 'keamanan') {
-    return [
-      { label: 'Nama Aplikasi / Domain Uji', type: 'text', placeholder: 'Contoh: https://esir.bogor.go.id' },
-      { label: 'Ruang Lingkup Asesmen', type: 'select', options: ['Uji Penetrasi Web (VAPT)', 'Audit Keamanan Informasi', 'Setup Antivirus Server'] },
-      { label: 'Kontak Teknis Pengelola', type: 'text', placeholder: 'Nama & No. WhatsApp penanggung jawab...' },
-      { label: 'Surat Permohonan & Surat Pernyataan Kepemilikan Sistem', type: 'file' }
-    ];
-  }
-  if (template === 'standar') {
-    return [
-      { label: 'Judul Permohonan', type: 'text', placeholder: 'Judul pengajuan...' },
-      { label: 'Deskripsi Kebutuhan', type: 'textarea', placeholder: 'Jelaskan kebutuhan layanan secara lengkap...' },
-      { label: 'Surat Permohonan Resmi', type: 'file' }
-    ];
-  }
-
-  if (!serviceName) return [];
-  const nameLower = serviceName.toLowerCase();
-  if (nameLower.includes('aplikasi') || nameLower.includes('uks') || nameLower.includes('sistem')) {
-    return [
-      { label: 'Nama Aplikasi', type: 'text', placeholder: 'Contoh: Portal Layanan Kesehatan' },
-      { label: 'Platform Aplikasi', type: 'select', options: ['Web', 'Mobile (Android/iOS)', 'Desktop'] },
-      { label: 'Deskripsi Kebutuhan / Fitur', type: 'textarea', placeholder: 'Jelaskan modul atau fitur yang dibutuhkan...' },
-      { label: 'Surat Permohonan Resmi', type: 'file' }
-    ];
-  }
-  if (nameLower.includes('server') || nameLower.includes('hosting')) {
-    return [
-      { label: 'Nama Sistem / Database', type: 'text', placeholder: 'Contoh: DB Sektoral Dinas' },
-      { label: 'Spesifikasi CPU', type: 'select', options: ['2 Core', '4 Core', '8 Core', '16 Core'] },
-      { label: 'Spesifikasi RAM', type: 'select', options: ['4 GB', '8 GB', '16 GB', '32 GB'] },
-      { label: 'Kapasitas SSD', type: 'select', options: ['50 GB', '100 GB', '250 GB', '500 GB'] },
-      { label: 'Sistem Operasi', type: 'select', options: ['Ubuntu Server 22.04', 'CentOS 7', 'Windows Server 2019', 'Rocky Linux'] },
-      { label: 'Surat Permohonan & TOR Spesifikasi', type: 'file' }
-    ];
-  }
-  if (nameLower.includes('jaringan') || nameLower.includes('wifi') || nameLower.includes('infrastruktur')) {
-    return [
-      { label: 'Lokasi Pemasangan / Gedung', type: 'text', placeholder: 'Contoh: Gedung A Lantai 2' },
-      { label: 'Jenis Kebutuhan', type: 'select', options: ['Pemasangan Access Point Wifi', 'Instalasi Kabel LAN Baru', 'Akses VPN Staf', 'Penyetelan Bandwidth'] },
-      { label: 'Jumlah Node / Pengguna', type: 'number', placeholder: 'Estimasi jumlah pengguna...' },
-      { label: 'Surat Permohonan & Denah Ruangan', type: 'file' }
-    ];
-  }
-  if (nameLower.includes('zoom') || nameLower.includes('conference') || nameLower.includes('publikasi') || nameLower.includes('informasi')) {
-    return [
-      { label: 'Nama Kegiatan / Agenda', type: 'text', placeholder: 'Contoh: Sosialisasi Imunisasi Puskesmas' },
-      { label: 'Tanggal & Waktu Kegiatan', type: 'datetime-local' },
-      { label: 'Kapasitas Peserta', type: 'select', options: ['100 Peserta', '300 Peserta', '500 Peserta', '1000 Peserta'] },
-      { label: 'Butuh Operator Diskominfo', type: 'select', options: ['Tidak', 'Ya (Asistensi Teknis)'] },
-      { label: 'Surat Permohonan Resmi', type: 'file' }
-    ];
-  }
-  if (nameLower.includes('keamanan') || nameLower.includes('vapt') || nameLower.includes('sandi') || nameLower.includes('csirt')) {
-    return [
-      { label: 'Nama Aplikasi / Domain Uji', type: 'text', placeholder: 'Contoh: https://esir.bogor.go.id' },
-      { label: 'Ruang Lingkup Asesmen', type: 'select', options: ['Uji Penetrasi Web (VAPT)', 'Audit Keamanan Informasi', 'Setup Antivirus Server'] },
-      { label: 'Kontak Teknis Pengelola', type: 'text', placeholder: 'Nama & No. WhatsApp penanggung jawab...' },
-      { label: 'Surat Permohonan & Surat Pernyataan Kepemilikan Sistem', type: 'file' }
-    ];
-  }
-  return [
-    { label: 'Judul Permohonan', type: 'text', placeholder: 'Judul pengajuan...' },
-    { label: 'Deskripsi Kebutuhan', type: 'textarea', placeholder: 'Jelaskan kebutuhan layanan secara lengkap...' },
-    { label: 'Surat Permohonan Resmi', type: 'file' }
-  ];
-};
+import { FormBuilder } from '../../components/FormBuilder';
+import { parseFileValue } from '../../utils/fileUtils';
 
 const parseSlaValues = (slaStr) => {
   if (!slaStr) return { min: '', max: '' };
@@ -131,8 +30,15 @@ const formatSlaString = (min, max) => {
   if (minClean) {
     return `${minClean} Hari`;
   }
-  return '7 Hari';
+  return '';
 };
+
+const getBase64 = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.readAsDataURL(file);
+  reader.onload = () => resolve(reader.result);
+  reader.onerror = error => reject(error);
+});
 
 export const ManageServices = () => {
   // Removed useAuth because we added it manually
@@ -141,38 +47,47 @@ export const ManageServices = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [name, setName] = useState('');
-  const [category, setCategory] = useState('Pengelolaan Aplikasi Informatika');
+  const [category, setCategory] = useState('Aplikasi Informatika');
   const [slaMin, setSlaMin] = useState('');
   const [slaMax, setSlaMax] = useState('');
-  const [fieldCount, setFieldCount] = useState(4);
+  const [formSchema, setFormSchema] = useState([]);
   const [sop, setSop] = useState('');
+  const [sopFile, setSopFile] = useState(null);
   const [requiredDocs, setRequiredDocs] = useState('');
+  const [requiredDocsFile, setRequiredDocsFile] = useState(null);
   const [requiresHelpdesk, setRequiresHelpdesk] = useState(true);
   const [serviceStatus, setServiceStatus] = useState('Aktif');
-  const [formTemplate, setFormTemplate] = useState('standar');
   const { user } = useAuth();
   const [services, setServices] = useState([]);
+  const [teams, setTeams] = useState([]);
+  const [defaultTeamId, setDefaultTeamId] = useState('');
   const [loading, setLoading] = useState(true);
 
+  const fetchServices = async () => {
+    setLoading(true);
+    try {
+      const [res, teamsRes] = await Promise.all([api.getAdminServices(), api.getTeams()]);
+      const mappedData = (res.data || []).map(s => ({
+        ...s,
+        category: s.category_name || s.category,
+        status: s.status || (s.is_active ? 'Aktif' : 'Tahap Pengembangan'),
+        sla: s.target_sla || s.sla,
+        requiresHelpdesk: s.verification_type !== 'Otomatis',
+        sop: s.sop_link,
+        requiredDocs: s.required_docs,
+        defaultTeamId: s.default_team_id
+      }));
+      setServices(mappedData);
+      setTeams(teamsRes.data || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await api.getAdminServices();
-        const mappedData = (res.data || []).map(s => ({
-          ...s,
-          category: s.category_name || s.category,
-          status: s.is_active ? 'Aktif' : 'Tahap Pengembangan',
-          sla: s.target_sla || s.sla,
-          requiresHelpdesk: s.verification_type !== 'Otomatis'
-        }));
-        setServices(mappedData);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
+    fetchServices();
   }, []);
 
   const [selectedPreviewService, setSelectedPreviewService] = useState(null);
@@ -185,10 +100,13 @@ export const ManageServices = () => {
   const [editCategory, setEditCategory] = useState('');
   const [editSlaMin, setEditSlaMin] = useState('');
   const [editSlaMax, setEditSlaMax] = useState('');
-  const [editFieldCount, setEditFieldCount] = useState(4);
+  const [editFormSchema, setEditFormSchema] = useState([]);
   const [editSop, setEditSop] = useState('');
+  const [editSopFile, setEditSopFile] = useState(null);
   const [editRequiredDocs, setEditRequiredDocs] = useState('');
+  const [editRequiredDocsFile, setEditRequiredDocsFile] = useState(null);
   const [editRequiresHelpdesk, setEditRequiresHelpdesk] = useState(true);
+  const [editDefaultTeamId, setEditDefaultTeamId] = useState('');
   const [editStatus, setEditStatus] = useState('Aktif');
 
   const [modalConfig, setModalConfig] = useState({
@@ -215,16 +133,7 @@ export const ManageServices = () => {
     };
   }, [selectedPreviewService, editingService, viewingSop]);
 
-  const categoriesList = [
-    'Pengelolaan Aplikasi Informatika',
-    'Pengelolaan Sumber Daya & Perangkat Informatika',
-    'Penerapan Persandian & Keamanan Informasi',
-    'Tata Kelola SPBE',
-    'Statistik Sektoral',
-    'Satu Data Daerah',
-    'Informasi & Komunikasi Publik',
-    'Domain & Infrastruktur Pendukung'
-  ];
+  const categoriesList = [...new Set(services.map(s => s.category))].filter(Boolean).sort();
 
   const toggleServiceStatus = async (id) => {
     const service = services.find(s => s.id === id);
@@ -238,6 +147,9 @@ export const ManageServices = () => {
         target_sla: service.sla,
         verification_type: service.requiresHelpdesk !== false ? 'Wajib Verifikasi' : 'Otomatis',
         is_active: isActive,
+        status: service.status,
+        sop_link: service.sop,
+        required_docs: service.requiredDocs,
         form_schema: service.form_schema || []
       });
       setServices(prev => prev.map(s => s.id === id ? { ...s, status: nextStatus } : s));
@@ -258,6 +170,9 @@ export const ManageServices = () => {
         target_sla: service.sla,
         verification_type: nextReq ? 'Wajib Verifikasi' : 'Otomatis',
         is_active: service.status === 'Aktif',
+        status: service.status,
+        sop_link: service.sop,
+        required_docs: service.requiredDocs,
         form_schema: service.form_schema || []
       });
       setServices(prev => prev.map(s => s.id === id ? { ...s, requiresHelpdesk: nextReq } : s));
@@ -280,6 +195,9 @@ export const ManageServices = () => {
           target_sla: s.sla,
           verification_type: s.requiresHelpdesk !== false ? 'Wajib Verifikasi' : 'Otomatis',
           is_active: isActive,
+          status: s.status,
+          sop_link: s.sop,
+          required_docs: s.requiredDocs,
           form_schema: s.form_schema || []
         })
       ));
@@ -297,16 +215,25 @@ export const ManageServices = () => {
 
   const handleOpenEdit = (s) => {
     const slaVals = parseSlaValues(s.sla);
-    const initialFieldCount = s.fieldCount || getServiceFormFields(s.name, s.template).length || 4;
     setEditingService(s);
-    setEditName(s.name);
-    setEditCategory(s.category);
-    setEditSlaMin(slaVals.min);
-    setEditSlaMax(slaVals.max);
-    setEditFieldCount(initialFieldCount);
+    setEditName(s.name || '');
+    setEditCategory(s.category || 'Aplikasi Informatika');
+    setEditSlaMin(slaVals.min || '');
+    setEditSlaMax(slaVals.max || '');
+    
+    let schema = s.form_schema || [];
+    if (typeof schema === 'string') {
+      try { schema = JSON.parse(schema); } catch(e) { schema = []; }
+    }
+    if (!Array.isArray(schema)) schema = [];
+    setEditFormSchema(schema);
+    
     setEditSop(s.sop || 'sop_layanan.pdf');
+    setEditSopFile(null);
     setEditRequiredDocs(s.requiredDocs || '');
+    setEditRequiredDocsFile(null);
     setEditRequiresHelpdesk(s.requiresHelpdesk !== false);
+    setEditDefaultTeamId(s.defaultTeamId || '');
     setEditStatus(s.status || 'Tahap Pengembangan');
   };
 
@@ -314,24 +241,33 @@ export const ManageServices = () => {
     e.preventDefault();
     const formattedSla = formatSlaString(editSlaMin, editSlaMax);
     const verificationType = editRequiresHelpdesk ? 'Wajib Verifikasi' : 'Otomatis';
-    const isActive = editStatus === 'Aktif';
-
     try {
-      // Use existing form_schema if it exists, otherwise generate default
-      const form_schema = editingService.form_schema && editingService.form_schema.length > 0 
-        ? editingService.form_schema 
-        : getServiceFormFields(editName, editingService.template || 'standar');
+      let finalSop = editSop;
+      if (editSopFile) {
+        const b64 = await getBase64(editSopFile);
+        finalSop = `${editSopFile.name}|||${b64}`;
+      }
+      
+      let finalReqDocs = editRequiredDocs;
+      if (editRequiredDocsFile) {
+        const b64 = await getBase64(editRequiredDocsFile);
+        finalReqDocs = `${editRequiredDocsFile.name}|||${b64}`;
+      }
+
+      const form_schema = editFormSchema;
         
       await api.updateService(editingService.id, {
         category_name: editCategory,
         name: editName,
         target_sla: formattedSla,
         verification_type: verificationType,
-        is_active: isActive,
+        status: editStatus,
+        sop_link: finalSop,
+        required_docs: finalReqDocs,
+        default_team_id: editRequiresHelpdesk ? null : (editDefaultTeamId || null),
         form_schema
       });
-      const res = await api.getAdminServices();
-      setServices(res.data || []);
+      await fetchServices();
       setEditingService(null);
       setModalConfig({
         isOpen: true,
@@ -347,66 +283,71 @@ export const ManageServices = () => {
     }
   };
 
-  const handlePromptDeleteService = (s) => {
+  const handlePromptDeleteService = (service) => {
     setModalConfig({
       isOpen: true,
       type: 'danger',
-      title: 'Konfirmasi Hapus Layanan SPBE',
-      message: `Apakah Anda yakin ingin menghapus layanan "${s.name}" dari katalog SPBE? Alur pengajuan dan parameter formulir untuk layanan ini akan dinonaktifkan secara permanen.`,
-      confirmText: 'Ya, Hapus Layanan',
+      title: 'Hapus Layanan',
+      message: `Apakah Anda yakin ingin menghapus layanan "${service.name}"?`,
+      confirmText: 'Hapus',
       cancelText: 'Batal',
-      onConfirm: () => executeDeleteService(s.id)
+      onConfirm: async () => {
+        try {
+          await api.deleteService(service.id);
+          await fetchServices();
+          setModalConfig(prev => ({ ...prev, isOpen: false }));
+        } catch (err) {
+          alert('Gagal menghapus: ' + err.message);
+          setModalConfig(prev => ({ ...prev, isOpen: false }));
+        }
+      }
     });
-  };
-
-  const executeDeleteService = async (id) => {
-    try {
-      await api.deleteService(id);
-      setServices(prev => prev.filter(s => s.id !== id));
-      setModalConfig({
-        isOpen: true,
-        type: 'success',
-        title: 'Layanan Berhasil Dihapus',
-        message: 'Master data layanan SPBE telah berhasil dihapus dari sistem.',
-        confirmText: 'Selesai',
-        cancelText: '',
-        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
-      });
-    } catch (err) {
-      alert('Gagal menghapus layanan: ' + err.message);
-    }
   };
 
   const handleAddService = async (e) => {
     e.preventDefault();
     const formattedSla = formatSlaString(slaMin, slaMax);
     const verificationType = requiresHelpdesk ? 'Wajib Verifikasi' : 'Otomatis';
-    const isActive = serviceStatus === 'Aktif';
-
     try {
-      const form_schema = getServiceFormFields(name, formTemplate);
+      let finalSop = sop;
+      if (sopFile) {
+        const b64 = await getBase64(sopFile);
+        finalSop = `${sopFile.name}|||${b64}`;
+      }
+
+      let finalReqDocs = requiredDocs;
+      if (requiredDocsFile) {
+        const b64 = await getBase64(requiredDocsFile);
+        finalReqDocs = `${requiredDocsFile.name}|||${b64}`;
+      }
+
+      const form_schema = formSchema;
       await api.createService({
         category_name: category,
         name,
         target_sla: formattedSla,
         verification_type: verificationType,
-        is_active: isActive,
+        status: serviceStatus,
+        sop_link: finalSop,
+        required_docs: finalReqDocs,
+        default_team_id: requiresHelpdesk ? null : (defaultTeamId || null),
         form_schema
       });
       
-      const res = await api.getAdminServices();
-      setServices(res.data || []);
+      await fetchServices();
       
       setName('');
-      setCategory('Pengelolaan Aplikasi Informatika');
+      setCategory('Aplikasi Informatika');
       setSlaMin('');
       setSlaMax('');
-      setFieldCount(4);
+      setFormSchema([]);
       setSop('');
+      setSopFile(null);
       setRequiredDocs('');
+      setRequiredDocsFile(null);
       setRequiresHelpdesk(true);
+      setDefaultTeamId('');
       setServiceStatus('Aktif');
-      setFormTemplate('standar');
       setShowAddForm(false);
       setModalConfig({
         isOpen: true,
@@ -464,7 +405,7 @@ export const ManageServices = () => {
               <input
                 type="text"
                 required
-                value={name}
+                value={name ?? ""}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Contoh: Layanan Jaringan Intra Pemerintah"
                 className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold"
@@ -474,7 +415,7 @@ export const ManageServices = () => {
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Kategori Proses Bisnis</label>
               <select
-                value={category}
+                value={category ?? ""}
                 onChange={(e) => setCategory(e.target.value)}
                 className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold"
               >
@@ -482,20 +423,6 @@ export const ManageServices = () => {
                   <option key={cat} value={cat}>{cat}</option>
                 ))}
               </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Jumlah Field Formulir</label>
-              <input
-                type="number"
-                min="1"
-                max="20"
-                required
-                value={fieldCount}
-                onChange={(e) => setFieldCount(e.target.value)}
-                placeholder="4"
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold"
-              />
             </div>
 
             <div className="col-span-2">
@@ -507,7 +434,7 @@ export const ManageServices = () => {
                       type="number"
                       min="1"
                       required
-                      value={slaMin}
+                      value={slaMin ?? ""}
                       onChange={(e) => setSlaMin(e.target.value)}
                       placeholder="Contoh: 7"
                       className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold pr-12"
@@ -523,7 +450,7 @@ export const ManageServices = () => {
                     <input
                       type="number"
                       min="1"
-                      value={slaMax}
+                      value={slaMax ?? ""}
                       onChange={(e) => setSlaMax(e.target.value)}
                       placeholder="Contoh: 10 (Opsional)"
                       className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold pr-12"
@@ -541,13 +468,33 @@ export const ManageServices = () => {
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Verifikasi Helpdesk</label>
               <select
                 value={requiresHelpdesk ? 'true' : 'false'}
-                onChange={(e) => setRequiresHelpdesk(e.target.value === 'true')}
+                onChange={(e) => {
+                  setRequiresHelpdesk(e.target.value === 'true');
+                  if (e.target.value === 'true') setDefaultTeamId('');
+                }}
                 className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold"
               >
                 <option value="true">Wajib Verifikasi Manual Helpdesk</option>
                 <option value="false">Otomatis Langsung Diproses (Bypass)</option>
               </select>
             </div>
+
+            {!requiresHelpdesk && (
+              <div>
+                <label className="block text-xs font-bold text-emerald-600 uppercase tracking-wider mb-1">Tim Pelaksana Otomatis</label>
+                <select
+                  required={!requiresHelpdesk}
+                  value={defaultTeamId ?? ""}
+                  onChange={(e) => setDefaultTeamId(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-emerald-300 bg-emerald-50 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 font-semibold"
+                >
+                  <option value="" disabled>Pilih Tim Teknis</option>
+                  {teams.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Status Layanan</label>
@@ -558,6 +505,7 @@ export const ManageServices = () => {
               >
                 <option value="Aktif">Aktif (Dapat Diajukan Pemohon)</option>
                 <option value="Tahap Pengembangan">Tahap Pengembangan</option>
+                <option value="Sembunyikan">Sembunyikan</option>
               </select>
             </div>
 
@@ -570,13 +518,13 @@ export const ManageServices = () => {
                       <FileCheck className="w-4 h-4" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs font-bold text-slate-800 truncate">{sop || 'sop_layanan.pdf'}</p>
+                      <p className="text-xs font-bold text-slate-800 truncate">{sopFile ? sopFile.name : (sop ? parseFileValue(sop).name : 'sop_layanan.pdf')}</p>
                       <span className="text-[10px] font-bold text-emerald-600">Dokumen PDF Terpilih</span>
                     </div>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setViewingSop({ name: name || 'Layanan Baru', sop: sop || 'sop_layanan.pdf' })}
+                    onClick={() => setViewingSop({ name: name || 'Layanan Baru', sop: sopFile ? URL.createObjectURL(sopFile) : (sop || 'sop_layanan.pdf') })}
                     className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer shadow-2xs"
                   >
                     Lihat PDF
@@ -591,7 +539,7 @@ export const ManageServices = () => {
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) {
-                        setSop(file.name);
+                        setSopFile(file);
                       }
                     }}
                     className="hidden"
@@ -600,31 +548,40 @@ export const ManageServices = () => {
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Templat Formulir Dasar</label>
-              <select
-                value={formTemplate}
-                onChange={(e) => setFormTemplate(e.target.value)}
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold"
-              >
-                <option value="standar">Formulir Standar (Umum)</option>
-                <option value="aplikasi">Formulir Layanan Aplikasi</option>
-                <option value="server">Formulir Server & Hosting</option>
-                <option value="jaringan">Formulir Jaringan & Infrastruktur</option>
-                <option value="zoom">Formulir Webinar & Zoom Meeting</option>
-                <option value="keamanan">Formulir Keamanan Informasi / VAPT</option>
-              </select>
+            <div className="col-span-2">
+              <FormBuilder schema={formSchema} onChange={setFormSchema} />
             </div>
 
             <div className="col-span-2">
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Dokumen yang Harus Disiapkan Pemohon</label>
-              <textarea
-                rows={2}
-                value={requiredDocs}
-                onChange={(e) => setRequiredDocs(e.target.value)}
-                placeholder="Contoh: Surat Permohonan Resmi OPD, KAK / Kerangka Acuan Kerja, Berkas Pendukung"
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-sky-500 font-medium"
-              />
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Dokumen yang Harus Disiapkan Pemohon (Template)</label>
+              <div className="border border-slate-200 bg-slate-50/80 rounded-2xl p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                      <FileCheck className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs sm:text-sm font-bold text-slate-800 truncate">{requiredDocsFile ? requiredDocsFile.name : (requiredDocs ? parseFileValue(requiredDocs).name : 'Belum Ada Dokumen')}</p>
+                      <span className="text-[11px] font-bold text-emerald-600">Template / Referensi Dokumen</span>
+                    </div>
+                  </div>
+                </div>
+                <label className="flex items-center justify-center gap-2 py-2.5 px-4 border border-dashed border-amber-300 hover:border-amber-500 rounded-xl bg-white hover:bg-amber-50/50 cursor-pointer transition-all text-xs sm:text-sm font-bold text-amber-700">
+                  <Upload className="w-4 h-4" />
+                  <span>Unggah Template Dokumen (PDF)</span>
+                  <input
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setRequiredDocsFile(file);
+                      }
+                    }}
+                    className="hidden"
+                  />
+                </label>
+              </div>
             </div>
           </div>
 
@@ -802,8 +759,8 @@ export const ManageServices = () => {
                           <td className="px-5 py-4 max-w-[240px]">
                             <div className="flex items-start gap-1.5 text-xs text-slate-650 leading-relaxed font-medium">
                               <FileText className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
-                              <span className="line-clamp-2" title={s.requiredDocs || 'Surat Permohonan Resmi OPD, KAK / Dokumen Pendukung'}>
-                                {s.requiredDocs || 'Surat Permohonan Resmi OPD, KAK / Dokumen Pendukung'}
+                              <span className="line-clamp-2" title={s.requiredDocs ? parseFileValue(s.requiredDocs).name : 'Surat Permohonan Resmi OPD, KAK / Dokumen Pendukung'}>
+                                {s.requiredDocs ? parseFileValue(s.requiredDocs).name : 'Surat Permohonan Resmi OPD, KAK / Dokumen Pendukung'}
                               </span>
                             </div>
                           </td>
@@ -815,7 +772,7 @@ export const ManageServices = () => {
                               title="Klik untuk melihat dokumen SOP PDF"
                             >
                               <FileCheck className="w-3.5 h-3.5 text-sky-600 shrink-0 group-hover:scale-110 transition-transform" />
-                              <span className="truncate">{s.sop || 'sop_layanan.pdf'}</span>
+                              <span className="truncate">{s.sop ? parseFileValue(s.sop).name : 'sop_layanan.pdf'}</span>
                               <ExternalLink className="w-3 h-3 text-sky-500 ml-0.5 opacity-70 group-hover:opacity-100 shrink-0" />
                             </button>
                           </td>
@@ -829,7 +786,7 @@ export const ManageServices = () => {
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-sky-50 text-slate-700 hover:text-sky-700 border border-slate-200 hover:border-sky-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
                             >
                               <Eye className="w-3.5 h-3.5 text-slate-400" />
-                              <span>{s.fieldCount || getServiceFormFields(s.name, s.template).length || 4} Field</span>
+                              <span>{(s.form_schema && s.form_schema.length) || 0} Field</span>
                             </button>
                           </td>
                           <td className="px-5 py-4 text-center">
@@ -912,31 +869,25 @@ export const ManageServices = () => {
             <div className="p-6 space-y-5 max-h-[60vh] overflow-y-auto">
               <div className="bg-amber-50 border border-amber-200/70 p-4 rounded-2xl text-xs sm:text-sm leading-relaxed text-amber-800 font-medium">
                 <span className="font-extrabold uppercase tracking-wide block mb-1 text-xs">💡 Informasi Best-Practice SPBE:</span>
-                Setiap layanan SPBE memiliki form dinamis sesuai SOP. Pratinjau berikut menampilkan rancangan kolom formulir yang akan diisi pemohon ({selectedPreviewService.fieldCount || getServiceFormFields(selectedPreviewService.name, selectedPreviewService.template).length || 4} Field).
+                Setiap layanan SPBE memiliki form dinamis sesuai SOP. Pratinjau berikut menampilkan rancangan kolom formulir yang akan diisi pemohon ({(selectedPreviewService.form_schema && selectedPreviewService.form_schema.length) || 0} Field).
               </div>
 
               <div className="space-y-4 bg-slate-50/70 border border-slate-200/80 p-5 rounded-2xl">
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block border-b border-slate-200/60 pb-2 mb-3">
-                  Tampilan Formulir Pemohon ({selectedPreviewService.fieldCount || getServiceFormFields(selectedPreviewService.name, selectedPreviewService.template).length || 4} Field)
+                  Tampilan Formulir Pemohon ({(selectedPreviewService.form_schema && selectedPreviewService.form_schema.length) || 0} Field)
                 </span>
                 {(() => {
-                  const baseFields = getServiceFormFields(selectedPreviewService.name, selectedPreviewService.template);
-                  const targetCount = selectedPreviewService.fieldCount || baseFields.length || 4;
-                  let displayFields = [...baseFields];
-                  if (displayFields.length < targetCount) {
-                    for (let i = displayFields.length + 1; i <= targetCount; i++) {
-                      displayFields.push({
-                        label: `Field Kebutuhan Teknis #${i}`,
-                        type: 'text',
-                        placeholder: `Isi parameter teknis ke-${i}...`
-                      });
-                    }
-                  } else if (displayFields.length > targetCount) {
-                    displayFields = displayFields.slice(0, targetCount);
+                  const displayFields = selectedPreviewService.form_schema || [];
+                  if (displayFields.length === 0) {
+                    return (
+                      <div className="text-center py-6">
+                        <p className="text-sm font-bold text-slate-500">Belum ada field yang dikonfigurasi pada layanan ini.</p>
+                      </div>
+                    );
                   }
 
                   return displayFields.map((field, index) => (
-                    <div key={index} className="space-y-1.5">
+                    <div key={field.id || field.name || index} className="space-y-1.5">
                       <label className="text-xs sm:text-sm font-bold text-slate-700 block">{field.label}</label>
                       {field.type === 'textarea' ? (
                         <textarea 
@@ -1007,7 +958,7 @@ export const ManageServices = () => {
                 <input
                   type="text"
                   required
-                  value={editName}
+                  value={editName ?? ""}
                   onChange={(e) => setEditName(e.target.value)}
                   className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-semibold"
                 />
@@ -1017,7 +968,7 @@ export const ManageServices = () => {
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Kategori Proses Bisnis</label>
                   <select
-                    value={editCategory}
+                    value={editCategory ?? ""}
                     onChange={(e) => setEditCategory(e.target.value)}
                     className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm sm:text-base bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-semibold"
                   >
@@ -1025,18 +976,6 @@ export const ManageServices = () => {
                       <option key={cat} value={cat}>{cat}</option>
                     ))}
                   </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Jumlah Field Formulir</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="20"
-                    required
-                    value={editFieldCount}
-                    onChange={(e) => setEditFieldCount(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-semibold"
-                  />
                 </div>
               </div>
 
@@ -1049,7 +988,7 @@ export const ManageServices = () => {
                         type="number"
                         min="1"
                         required
-                        value={editSlaMin}
+                        value={editSlaMin ?? ""}
                         onChange={(e) => setEditSlaMin(e.target.value)}
                         placeholder="Contoh: 7"
                         className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-semibold pr-14"
@@ -1065,7 +1004,7 @@ export const ManageServices = () => {
                       <input
                         type="number"
                         min="1"
-                        value={editSlaMax}
+                        value={editSlaMax ?? ""}
                         onChange={(e) => setEditSlaMax(e.target.value)}
                         placeholder="Contoh: 10 (Opsional)"
                         className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-semibold pr-14"
@@ -1084,22 +1023,42 @@ export const ManageServices = () => {
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Verifikasi Helpdesk</label>
                   <select
                     value={editRequiresHelpdesk ? 'true' : 'false'}
-                    onChange={(e) => setEditRequiresHelpdesk(e.target.value === 'true')}
+                    onChange={(e) => {
+                      setEditRequiresHelpdesk(e.target.value === 'true');
+                      if (e.target.value === 'true') setEditDefaultTeamId('');
+                    }}
                     className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm sm:text-base bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-semibold"
                   >
                     <option value="true">Wajib Verifikasi Manual Helpdesk</option>
                     <option value="false">Otomatis Langsung Diproses (Bypass)</option>
                   </select>
                 </div>
-                <div>
+                {!editRequiresHelpdesk && (
+                  <div>
+                    <label className="block text-xs font-bold text-emerald-600 uppercase tracking-wider mb-1.5">Tim Pelaksana Otomatis</label>
+                    <select
+                      required={!editRequiresHelpdesk}
+                      value={editDefaultTeamId ?? ""}
+                      onChange={(e) => setEditDefaultTeamId(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-emerald-300 bg-emerald-50 rounded-xl text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-semibold"
+                    >
+                      <option value="" disabled>Pilih Tim Teknis</option>
+                      {teams.map(t => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <div className={!editRequiresHelpdesk ? "col-span-1 sm:col-span-2" : ""}>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Status Layanan</label>
                   <select
-                    value={editStatus}
+                    value={editStatus ?? "Aktif"}
                     onChange={(e) => setEditStatus(e.target.value)}
                     className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm sm:text-base bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-semibold"
                   >
                     <option value="Aktif">Aktif</option>
                     <option value="Tahap Pengembangan">Tahap Pengembangan</option>
+                    <option value="Sembunyikan">Sembunyikan</option>
                   </select>
                 </div>
               </div>
@@ -1113,13 +1072,13 @@ export const ManageServices = () => {
                         <FileCheck className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-xs sm:text-sm font-bold text-slate-800 truncate">{editSop || 'sop_layanan.pdf'}</p>
+                        <p className="text-xs sm:text-sm font-bold text-slate-800 truncate">{editSopFile ? editSopFile.name : (editSop ? parseFileValue(editSop).name : 'sop_layanan.pdf')}</p>
                         <span className="text-[11px] font-bold text-emerald-600">Dokumen PDF Terpasang</span>
                       </div>
                     </div>
                     <button
                       type="button"
-                      onClick={() => setViewingSop({ name: editName || 'Pratinjau SOP', sop: editSop || 'sop_layanan.pdf' })}
+                      onClick={() => setViewingSop({ name: editName || 'Pratinjau SOP', sop: editSopFile ? URL.createObjectURL(editSopFile) : (editSop || 'sop_layanan.pdf') })}
                       className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer shadow-2xs"
                     >
                       Lihat PDF
@@ -1134,7 +1093,7 @@ export const ManageServices = () => {
                       onChange={(e) => {
                         const file = e.target.files?.[0];
                         if (file) {
-                          setEditSop(file.name);
+                          setEditSopFile(file);
                         }
                       }}
                       className="hidden"
@@ -1143,15 +1102,40 @@ export const ManageServices = () => {
                 </div>
               </div>
 
+              <div className="col-span-1 sm:col-span-2">
+                <FormBuilder schema={editFormSchema} onChange={setEditFormSchema} />
+              </div>
+
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Dokumen yang Harus Disiapkan Pemohon</label>
-                <textarea
-                  rows={2}
-                  value={editRequiredDocs}
-                  onChange={(e) => setEditRequiredDocs(e.target.value)}
-                  placeholder="Contoh: Surat Permohonan Resmi OPD, KAK / Kerangka Acuan Kerja, Berkas Pendukung"
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-medium"
-                />
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Dokumen yang Harus Disiapkan Pemohon (Template)</label>
+                <div className="border border-slate-200 bg-slate-50/80 rounded-2xl p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                        <FileCheck className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs sm:text-sm font-bold text-slate-800 truncate">{editRequiredDocsFile ? editRequiredDocsFile.name : (editRequiredDocs ? parseFileValue(editRequiredDocs).name : 'Belum Ada Dokumen')}</p>
+                        <span className="text-[11px] font-bold text-emerald-600">Template / Referensi Dokumen</span>
+                      </div>
+                    </div>
+                  </div>
+                  <label className="flex items-center justify-center gap-2 py-2.5 px-4 border border-dashed border-amber-300 hover:border-amber-500 rounded-xl bg-white hover:bg-amber-50/50 cursor-pointer transition-all text-xs sm:text-sm font-bold text-amber-700">
+                    <Upload className="w-4 h-4" />
+                    <span>Ganti / Unggah Template Dokumen (PDF)</span>
+                    <input
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setEditRequiredDocsFile(file);
+                        }
+                      }}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
@@ -1189,8 +1173,8 @@ export const ManageServices = () => {
         isOpen={!!viewingSop}
         onClose={() => setViewingSop(null)}
         serviceName={viewingSop?.name}
-        sopFileName={viewingSop?.sop}
-        fileUrl="/sop_layanan.pdf"
+        sopFileName={viewingSop?.sop?.startsWith?.('data:') ? 'SOP_Document.pdf' : viewingSop?.sop}
+        fileUrl={viewingSop?.sop}
       />
     </div>
   );

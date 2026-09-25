@@ -21,6 +21,7 @@ export const Login = () => {
   const [qrData, setQrData] = useState({ qrUrl: '', secretFormatted: '' });
   const [captchaData, setCaptchaData] = useState({ text: '', token: '' });
   const [captchaAnswer, setCaptchaAnswer] = useState('');
+  const [trustDevice, setTrustDevice] = useState(false);
 
   const loadCaptcha = async () => {
     try {
@@ -225,7 +226,7 @@ export const Login = () => {
       }
     } else {
       // Normal Login
-      const result = await login2FA(tempToken, otpCode);
+      const result = await login2FA(tempToken, otpCode, trustDevice);
       if (result && result.success) {
         setShowOtpModal(false);
         navigate('/dashboard');
@@ -291,7 +292,7 @@ export const Login = () => {
           <div className="space-y-4">
             <div className="space-y-1.5">
               <label htmlFor="identifier" className="block text-xs font-bold text-slate-550 uppercase tracking-wider">
-                Email Gmail / Username TND / NIP
+                Email / NIK / Username TND / NIP
               </label>
               <div className="relative rounded-xl border border-slate-200 bg-slate-50/50 focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500/20 transition-all">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-450">
@@ -303,7 +304,7 @@ export const Login = () => {
                   required
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
-                  placeholder="Gmail atau Username TND / NIP"
+                  placeholder="Email, NIK, atau Username TND / NIP"
                   className="block w-full pl-11 pr-4 py-3 bg-transparent text-slate-800 text-base placeholder-slate-400 focus:outline-none"
                 />
               </div>
@@ -358,19 +359,11 @@ export const Login = () => {
             <div className="space-y-2.5 pt-4">
               <button
                 type="button"
-                onClick={handleStandardLogin}
+                onClick={handleGmailSubmit}
                 className="w-full py-3.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 text-base font-extrabold text-white shadow-md shadow-sky-500/10 hover:shadow-lg hover:shadow-sky-500/15 transition-all flex items-center justify-center gap-2.5 cursor-pointer"
               >
-                <span>Masuk</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleGmailSubmit}
-                className="w-full py-3.5 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-base font-extrabold text-white shadow-md shadow-red-500/10 hover:shadow-lg hover:shadow-red-500/15 transition-all flex items-center justify-center gap-2.5 cursor-pointer"
-              >
                 <Mail className="w-5 h-5" />
-                <span>Masuk dengan Gmail (Masyarakat)</span>
+                <span>Masuk sebagai Masyarakat (Email/NIK)</span>
               </button>
 
               <button
@@ -532,6 +525,21 @@ export const Login = () => {
                     <p className="text-xs sm:text-sm font-bold text-rose-600 bg-rose-50 border border-rose-100 p-3 rounded-xl">
                       {otpError}
                     </p>
+                  )}
+
+                  {!qrData.qrUrl && (
+                    <div className="flex items-center gap-2 pt-1">
+                      <input 
+                        type="checkbox" 
+                        id="trustDevice" 
+                        checked={trustDevice}
+                        onChange={(e) => setTrustDevice(e.target.checked)}
+                        className="w-4 h-4 text-sky-600 rounded border-slate-300 focus:ring-sky-500"
+                      />
+                      <label htmlFor="trustDevice" className="text-sm text-slate-600 font-semibold cursor-pointer select-none">
+                        Percayai device ini selama 30 hari
+                      </label>
+                    </div>
                   )}
 
                   <div className="flex gap-3 pt-2">

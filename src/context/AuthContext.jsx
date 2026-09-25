@@ -50,7 +50,8 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password, captchaToken, captchaAnswer) => {
     try {
-      const response = await api.login(email, password, captchaToken, captchaAnswer);
+      const trustedDeviceToken = localStorage.getItem('spbe_trusted_device');
+      const response = await api.login(email, password, captchaToken, captchaAnswer, trustedDeviceToken);
 
       if (response.success && (response.requires2FA || response.requires2FASetup)) {
         return response;
@@ -76,11 +77,14 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const login2FA = async (tempToken, otp) => {
+  const login2FA = async (tempToken, otp, trustDevice = false) => {
     try {
-      const response = await api.login2FA(tempToken, otp);
+      const response = await api.login2FA(tempToken, otp, trustDevice);
       if (response.success) {
         localStorage.setItem('spbe_token', response.token);
+        if (response.trustedDeviceToken) {
+          localStorage.setItem('spbe_trusted_device', response.trustedDeviceToken);
+        }
         const userData = response.user;
         if (userData && userData.role) {
           userData.role = userData.role;

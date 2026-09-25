@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { ActionModal } from '../../components/ActionModal';
 
 const availableServices = [
-  'Pengelolaan Aplikasi Informatika',
+  'Aplikasi Informatika',
   'Pengelolaan Sumber Daya & Perangkat Informatika',
   'Penerapan Persandian & Keamanan Informasi',
   'Tata Kelola SPBE'
@@ -12,7 +12,21 @@ const availableServices = [
 
 import { api } from '../../services/api';
 export const ManageTeams = () => {
-  const { teams, setTeams, fetchTeams, users } = useAuth();
+  const { teams, setTeams, fetchTeams } = useAuth();
+  const [users, setUsers] = useState([]);
+
+  useEffect(() => {
+    const loadUsers = async () => {
+      try {
+        const response = await api.getUsers();
+        const userList = response?.data || response?.users || [];
+        setUsers(userList);
+      } catch (err) {
+        console.error('Error fetching users:', err);
+      }
+    };
+    loadUsers();
+  }, []);
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [teamName, setTeamName] = useState('');
@@ -50,7 +64,7 @@ export const ManageTeams = () => {
     onConfirm: null
   });
 
-  const pegawaiList = users ? users.filter(u => u.roles?.includes('PEGAWAI') || u.role === 'PEGAWAI') : [];
+  const pegawaiList = users ? users.filter(u => ['PEGAWAI', 'ADMIN', 'HELPDESK'].includes(u.role)) : [];
 
   const handleAddTeam = async (e) => {
     e.preventDefault();

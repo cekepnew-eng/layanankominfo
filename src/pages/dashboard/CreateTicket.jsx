@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PlusCircle, FileText, FileCheck, Upload, ChevronRight, ArrowLeft, Clock, AlertTriangle, Search, CheckCircle2, Eye } from 'lucide-react';
+import { PlusCircle, FileText, FileCheck, Upload, ChevronRight, ArrowLeft, Clock, AlertTriangle, Search, CheckCircle2, Eye, Download } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getCurrentDateFormatted, getCurrentLogTimeFormatted } from '../../utils/dateUtils';
 import { SkmModal } from '../../components/SkmModal';
 import { SopModal } from '../../components/SopModal';
 import { api } from '../../services/api';
 import { ActionModal } from '../../components/ActionModal';
+import { parseFileValue } from '../../utils/fileUtils';
 
 export const CreateTicket = () => {
   const { user } = useAuth();
@@ -21,12 +22,41 @@ export const CreateTicket = () => {
     const load = async () => {
       try {
         const svcRes = await api.getPublicServices();
-        setServices(svcRes.data || []);
-        if (svcRes.categories) {
-          setCategories(svcRes.categories);
+        const mappedServices = (svcRes.data || []).map(s => ({
+          ...s,
+          requiredDocs: s.required_docs || s.requiredDocs,
+          sop: s.sop_link || s.sop
+        }));
+        setServices(mappedServices);
+        
+        let cats = svcRes.categories || [];
+        if (cats.length > 0) {
+          setCategories(cats);
         }
+        
         const tktRes = await api.getMyTickets();
         setTickets(tktRes.data || []);
+
+        let foundDraftSubService = null;
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('ticket_draft_')) {
+            foundDraftSubService = key.replace('ticket_draft_', '');
+            break;
+          }
+        }
+        
+        if (foundDraftSubService) {
+          setSelectedSubService(foundDraftSubService);
+          const srv = mappedServices.find(s => s.name === foundDraftSubService);
+          if (srv && srv.category) {
+             const cat = cats.find(c => c.name === srv.category);
+             if (cat) setSelectedCategory(cat);
+             else setSelectedCategory({ name: srv.category });
+          }
+          setStep(3);
+        }
+
       } catch (e) {
         console.error(e);
       }
@@ -51,6 +81,76 @@ export const CreateTicket = () => {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [createdTicketId, setCreatedTicketId] = useState('');
   const [inactiveCategoryNotice, setInactiveCategoryNotice] = useState('');
+
+  // Draft Feature: Load draft when sub-service is selected
+  useEffect(() => {
+    if (selectedSubService && services && services.length > 0) {
+      const draft = localStorage.getItem(`ticket_draft_${selectedSubService}`);
+      if (draft) {
+        try {
+          const parsed = JSON.parse(draft);
+          
+          // Get current valid keys from schema
+          const srv = services.find(s => s.name === selectedSubService);
+          let validKeys = [];
+          if (srv) {
+            let schema = srv.form_schema || [];
+            if (typeof schema === 'string') {
+              try { schema = JSON.parse(schema); } catch (e) { schema = []; }
+            }
+            if (!Array.isArray(schema)) schema = [];
+
+            const extractKeys = (fields) => {
+              fields.forEach(f => {
+                if (f.type === 'group') {
+                  extractKeys(f.subFields || []);
+                } else if (f.type !== 'file') {
+                  validKeys.push(f.name || f.label);
+                }
+              });
+            };
+            extractKeys(schema);
+          }
+
+          // Filter out deleted fields from formData
+          let cleanFormData = {};
+          const loadedFormData = parsed.formData || {};
+          Object.keys(loadedFormData).forEach(key => {
+            if (validKeys.includes(key)) {
+              cleanFormData[key] = loadedFormData[key];
+            }
+          });
+
+          setFormData(cleanFormData);
+          setTitle(parsed.title || '');
+          setDescription(parsed.description || '');
+          if (parsed.uploadedFile) {
+            setUploadedFile(parsed.uploadedFile);
+            setUploadedFileUrl(parsed.uploadedFileUrl);
+            setUploadedFileSize(parsed.uploadedFileSize);
+          }
+        } catch (e) {
+          setFormData({});
+          setTitle('');
+          setDescription('');
+        }
+      } else {
+        setFormData({});
+        setTitle('');
+        setDescription('');
+        setUploadedFile('');
+      }
+    }
+  }, [selectedSubService, services]);
+
+  // Draft Feature: Save draft when formData changes
+  useEffect(() => {
+    if (selectedSubService && Object.keys(formData).length > 0) {
+      localStorage.setItem(`ticket_draft_${selectedSubService}`, JSON.stringify({
+        formData
+      }));
+    }
+  }, [formData, selectedSubService]);
 
   const activeTicket = (user?.role === 'USER' || user?.role === 'MASYARAKAT' || user?.role === 'masyarakat') 
     ? tickets.find(t => t.status_name !== 'COMPLETED' && t.status_name !== 'REJECTED')
@@ -82,47 +182,6 @@ export const CreateTicket = () => {
 
 
 
-  const subServicesAptikaOPD = [
-    'Pembuatan Aplikasi Baru (Web/Mobile)',
-    'Penambahan Fitur Aplikasi Dinas',
-    'Perbaikan Bug / Error Sistem',
-    'Integrasi Single Sign-On (SSO) TND',
-    'Pengajuan Integrasi API SPLP',
-    'Pemeliharaan Server Aplikasi Dinas',
-    'Migrasi Server / Database Aplikasi',
-    'Pemasangan SSL (HTTPS) Domain Dinas',
-    'Permohonan Rekomendasi Aplikasi Baru',
-    'Evaluasi Kelayakan Sistem Aplikasi',
-    'Uji Kesesuaian Sistem (UKS) Tahap Awal',
-    'Uji Kesesuaian Sistem (UKS) Pasca Uji Coba',
-    'Uji Celah Keamanan (Vulnerability Assessment)',
-    'Simulasi Serangan Siber (Penetration Testing)',
-    'Audit Kode Sumber Aplikasi (Code Review)',
-    'Pendampingan Teknis Penggunaan Aplikasi',
-    'Pembuatan Akun Portal Layanan Digital',
-    'Penyusunan Arsitektur SPBE Dinas',
-    'Sosialisasi Pengisian Metadata Statistik',
-    'Pengajuan Domain Instansi Baru',
-    'Peminjaman Lisensi Webinar Zoom Dinas',
-    'Setup Virtual Machine Server (Hosting)',
-    'Penyelidikan Insiden Kebocoran Data (CSIRT)',
-    'Pelatihan Keamanan Informasi Staf (Security Awareness)',
-    'Upgrade Bandwidth Internet Gedung Dinas',
-    'Pemasangan Switch Hub Tambahan TIK',
-    'Audit Akses Jaringan Dinas',
-    'Konfigurasi Peta Rencana TI Daerah',
-    'Pemulihan Data Backup Server'
-  ];
-
-  const subServicesMasyarakat = [
-    'Pengaduan Koneksi Wifi Publik',
-    'Permintaan Data Dataset Sektoral',
-    'Sosialisasi Layanan Digital Publik',
-    'Permohonan Informasi Publik PPID'
-  ];
-
-  const activeSubServices = (user?.role === 'MASYARAKAT' || user?.role === 'masyarakat') ? subServicesMasyarakat : subServicesAptikaOPD;
-
   const isCategoryActive = (catName) => {
     const catServices = services.filter(s => s.category === catName);
     return catServices.some(s => s.status === 'Aktif');
@@ -130,48 +189,7 @@ export const CreateTicket = () => {
 
   const getSubServicesForCategory = (cat) => {
     if (!cat) return [];
-    if (cat.name === 'Pengelolaan Aplikasi Informatika') {
-      return (user?.role === 'MASYARAKAT' || user?.role === 'masyarakat') ? subServicesMasyarakat : subServicesAptikaOPD;
-    }
     return services.filter(s => s.category === cat.name).map(s => s.name);
-  };
-
-  const APTIKA_SERVICE_MAPPING = {
-    'Pembuatan Aplikasi Baru (Web/Mobile)': 'Pengembangan & Pengelolaan Aplikasi',
-    'Penambahan Fitur Aplikasi Dinas': 'Pengembangan & Pengelolaan Aplikasi',
-    'Perbaikan Bug / Error Sistem': 'Pengembangan & Pengelolaan Aplikasi',
-    'Integrasi Single Sign-On (SSO) TND': 'Integrasi & Interoperabilitas SPBE',
-    'Pengajuan Integrasi API SPLP': 'Integrasi & Interoperabilitas SPBE',
-    'Pemeliharaan Server Aplikasi Dinas': 'Server Perangkat Daerah',
-    'Migrasi Server / Database Aplikasi': 'Server Perangkat Daerah',
-    'Pemasangan SSL (HTTPS) Domain Dinas': 'Domain & Subdomain Pemerintah Daerah',
-    'Permohonan Rekomendasi Aplikasi Baru': 'Rekomendasi & Evaluasi Aplikasi',
-    'Evaluasi Kelayakan Sistem Aplikasi': 'Rekomendasi & Evaluasi Aplikasi',
-    'Uji Kesesuaian Sistem (UKS) Tahap Awal': 'Uji Kesesuaian Sistem (UKS)',
-    'Uji Kesesuaian Sistem (UKS) Pasca Uji Coba': 'Uji Kesesuaian Sistem (UKS)',
-    'Uji Celah Keamanan (Vulnerability Assessment)': 'Keamanan Aplikasi / VAPT',
-    'Simulasi Serangan Siber (Penetration Testing)': 'Keamanan Aplikasi / VAPT',
-    'Audit Kode Sumber Aplikasi (Code Review)': 'Keamanan Aplikasi / VAPT',
-    'Pendampingan Teknis Penggunaan Aplikasi': 'Peningkatan Kapasitas SDM TIK',
-    'Pembuatan Akun Portal Layanan Digital': 'Portal Pelayanan Digital',
-    'Penyusunan Arsitektur SPBE Dinas': 'Arsitektur & Peta Rencana SPBE',
-    'Sosialisasi Pengisian Metadata Statistik': 'Statistik Sektoral',
-    'Pengajuan Domain Instansi Baru': 'Domain & Subdomain Pemerintah Daerah',
-    'Peminjaman Lisensi Webinar Zoom Dinas': 'Video Conference / Zoom',
-    'Setup Virtual Machine Server (Hosting)': 'Server Perangkat Daerah',
-    'Penyelidikan Insiden Kebocoran Data (CSIRT)': 'CSIRT / Respons Insiden',
-    'Pelatihan Keamanan Informasi Staf (Security Awareness)': 'Security Awareness',
-    'Upgrade Bandwidth Internet Gedung Dinas': 'Jaringan Intra Pemerintah',
-    'Pemasangan Switch Hub Tambahan TIK': 'Perangkat Jaringan & Komunikasi',
-    'Audit Akses Jaringan Dinas': 'Audit Teknologi Informasi',
-    'Konfigurasi Peta Rencana TI Daerah': 'Arsitektur & Peta Rencana SPBE',
-    'Pemulihan Data Backup Server': 'Server Perangkat Daerah',
-    
-    // Masyarakat Mapping
-    'Pengaduan Koneksi Wifi Publik': 'Wifi Publik',
-    'Permintaan Data Dataset Sektoral': 'Statistik Sektoral',
-    'Sosialisasi Layanan Digital Publik': 'Informasi & Komunikasi Publik',
-    'Permohonan Informasi Publik PPID': 'Pelayanan Informasi Publik'
   };
 
   const handleSelectCategory = (cat) => {
@@ -187,8 +205,13 @@ export const CreateTicket = () => {
     if (file) {
       setUploadedFile(file.name);
       setUploadedFileSize((file.size / 1024).toFixed(1) + ' KB');
-      const url = URL.createObjectURL(file);
-      setUploadedFileUrl(url);
+      
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setUploadedFileUrl(ev.target.result);
+        setFormData(prev => ({ ...prev, 'Berkas_Persyaratan': ev.target.result, 'Nama_File_Persyaratan': file.name }));
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -200,7 +223,7 @@ export const CreateTicket = () => {
   const handleExecuteSubmit = async () => {
     setShowConfirmModal(false);
     
-    const actualServiceName = APTIKA_SERVICE_MAPPING[selectedSubService] || selectedSubService;
+    const actualServiceName = selectedSubService;
     const serviceObj = (services || []).find(s => s.name === actualServiceName);
     
     if (!serviceObj) {
@@ -224,6 +247,8 @@ export const CreateTicket = () => {
       if (res && res.data) {
         setCreatedTicketId(res.data.id || `REQ-2026-0${Math.floor(132 + Math.random() * 800)}`);
       }
+      localStorage.removeItem(`ticket_draft_${selectedSubService}`);
+      setFormData({});
       setShowSuccessModal(true);
     } catch (err) {
       console.error('Gagal menyimpan ke database backend', err);
@@ -317,9 +342,7 @@ export const CreateTicket = () => {
                       )}
                     </div>
                     <p className="text-sm text-slate-400">
-                      {cat.name === 'Pengelolaan Aplikasi Informatika' ? 
-                        `${(user?.role === 'MASYARAKAT' || user?.role === 'masyarakat') ? subServicesMasyarakat.length : subServicesAptikaOPD.length} Layanan Terhubung (${activeCount > 0 ? ((user?.role === 'MASYARAKAT' || user?.role === 'masyarakat') ? subServicesMasyarakat.length : subServicesAptikaOPD.length) : 0} Aktif)` 
-                        : `${catServices.length} Layanan Terhubung (${activeCount} Aktif)`}
+                      {`${catServices.length} Layanan Terhubung (${activeCount} Aktif)`}
                     </p>
                   </div>
                   {active && <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-sky-600 transition-all" />}
@@ -385,7 +408,7 @@ export const CreateTicket = () => {
               return (
                 <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
                   {filtered.map((sub, idx) => {
-                    const actualServiceName = APTIKA_SERVICE_MAPPING[sub] || sub;
+                    const actualServiceName = sub;
                     const srv = (services || []).find(s => s.name === actualServiceName);
                     const isActive = srv ? srv.status === 'Aktif' : true;
                     const desc = srv ? (srv.description || `Permohonan terkait ${sub}`) : `Permohonan terkait ${sub}`;
@@ -453,7 +476,14 @@ export const CreateTicket = () => {
                             <div>
                               <strong className="text-slate-850 font-extrabold">Dokumen yang harus disiapkan: </strong>
                               <span className="text-slate-650 font-medium">
-                                {srv?.requiredDocs || 'Surat Permohonan Resmi OPD, KAK / TOR, Dokumen Pendukung'}
+                                {(() => {
+                                  const reqParsed = parseFileValue(srv?.requiredDocs);
+                                  const isDataUrl = reqParsed.data && reqParsed.data.startsWith('data:');
+                                  if (isDataUrl) {
+                                    return <a href={reqParsed.data} download={reqParsed.name || "Template_Persyaratan.pdf"} className="text-sky-600 hover:underline font-bold" onClick={e => e.stopPropagation()}>Unduh: {reqParsed.name}</a>;
+                                  }
+                                  return reqParsed.name || 'Surat Permohonan Resmi OPD, KAK / TOR, Dokumen Pendukung';
+                                })()}
                               </span>
                             </div>
                           </div>
@@ -462,7 +492,7 @@ export const CreateTicket = () => {
                               <FileCheck className="w-3.5 h-3.5 text-sky-600 shrink-0" />
                               <strong className="text-slate-850 font-extrabold font-sans">SOP Layanan: </strong>
                               <span className="font-mono font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-100">
-                                {srv?.sop || 'sop_layanan.pdf'}
+                                {parseFileValue(srv?.sop).name || 'sop_layanan.pdf'}
                               </span>
                             </div>
                             <button
@@ -516,7 +546,7 @@ export const CreateTicket = () => {
               <p className="text-sm text-slate-400 mt-1">Lengkapi informasi pengajuan sub-layanan berikut.</p>
               
               {(() => {
-                const actualServiceName = APTIKA_SERVICE_MAPPING[selectedSubService] || selectedSubService;
+                const actualServiceName = selectedSubService;
                 const srv = (services || []).find(s => s.name === actualServiceName);
                 const reqDocs = srv?.requiredDocs || 'Surat Permohonan Resmi OPD, KAK / Dokumen Pendukung';
                 const sopFile = srv?.sop || 'sop-layanan.pdf';
@@ -528,7 +558,21 @@ export const CreateTicket = () => {
                       </div>
                       <div className="min-w-0">
                         <span className="text-xs font-black text-amber-850 uppercase tracking-wider block">Dokumen yang Harus Disiapkan Pemohon:</span>
-                        <p className="text-sm font-bold text-slate-800 mt-0.5 leading-relaxed">{reqDocs}</p>
+                        <div className="text-sm font-bold text-slate-800 mt-0.5 leading-relaxed">
+                          {(() => {
+                            const reqParsed = parseFileValue(reqDocs);
+                            const isDataUrl = reqParsed.data && reqParsed.data.startsWith('data:');
+                            if (isDataUrl) {
+                              return (
+                                <a href={reqParsed.data} download={reqParsed.name || "Template_Persyaratan.pdf"} className="inline-flex items-center gap-1.5 text-sky-600 hover:text-sky-700 bg-white border border-sky-200 px-3 py-1 rounded-lg">
+                                  <Download className="w-4 h-4" />
+                                  Unduh: {reqParsed.name}
+                                </a>
+                              );
+                            }
+                            return reqParsed.name;
+                          })()}
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center justify-between gap-3 pt-2.5 border-t border-sky-100 flex-wrap text-xs">
@@ -537,7 +581,7 @@ export const CreateTicket = () => {
                           <FileCheck className="w-4 h-4 text-sky-600 shrink-0" />
                           <span className="font-extrabold text-slate-700">SOP Pelayanan:</span>
                           <span className="font-mono font-bold text-sky-700 bg-white px-2 py-0.5 rounded border border-sky-200">
-                            {sopFile}
+                            {parseFileValue(sopFile).name}
                           </span>
                         </div>
                         <button
@@ -576,130 +620,114 @@ export const CreateTicket = () => {
           )}
 
           {(() => {
-            const actualServiceName = APTIKA_SERVICE_MAPPING[selectedSubService] || selectedSubService;
+            const actualServiceName = selectedSubService;
             const srv = (services || []).find(s => s.name === actualServiceName);
-            const schema = srv?.form_schema || [];
-            return schema.filter(f => f.type !== 'file').map((field, idx) => (
-              <div key={idx} className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">{field.label}</label>
-                {field.type === 'select' ? (
-                  <select
-                    required
-                    value={formData[field.label] || ''}
-                    onChange={(e) => setFormData({...formData, [field.label]: e.target.value})}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold bg-white"
-                  >
-                    <option value="">-- Pilih --</option>
-                    {(field.options || []).map((opt, i) => (
-                      <option key={i} value={opt}>{opt}</option>
-                    ))}
-                  </select>
-                ) : field.type === 'textarea' ? (
-                  <textarea
-                    required
-                    rows={4}
-                    value={formData[field.label] || ''}
-                    onChange={(e) => setFormData({...formData, [field.label]: e.target.value})}
-                    placeholder={field.placeholder || ''}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold"
-                  />
-                ) : field.type === 'file' ? (
-                   <input type="file" className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm" onChange={handleFileChange} />
-                ) : (
-                  <input
-                    type={field.type || 'text'}
-                    required
-                    value={formData[field.label] || ''}
-                    onChange={(e) => setFormData({...formData, [field.label]: e.target.value})}
-                    placeholder={field.placeholder || ''}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold"
-                  />
-                )}
-              </div>
-            ));
-          })()}
+            let schema = srv?.form_schema || [];
+            
+            if (typeof schema === 'string') {
+              try { schema = JSON.parse(schema); } catch (e) { schema = []; }
+            }
+            if (!Array.isArray(schema)) schema = [];
 
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Judul Ringkas Permohonan</label>
-            <input
-              type="text"
-              required
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Contoh: Pengajuan integrasi SSO akun dinas untuk aplikasi SIMPATIK"
-              className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Deskripsi Kebutuhan Detail</label>
-            <textarea
-              required
-              rows={4}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Jelaskan kebutuhan teknis layanan secara detail..."
-              className="w-full px-4 py-3 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold"
-            />
-          </div>
-
-          <div className="space-y-3">
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Unggah Dokumen Persyaratan (.PDF)</label>
-            <input
-              type="file"
-              ref={fileInputRef}
-              accept=".pdf,application/pdf"
-              onChange={handleFileChange}
-              className="hidden"
-            />
-            <div 
-              onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-slate-200 hover:border-sky-500 rounded-2xl p-6 text-center space-y-3 bg-slate-50/50 hover:bg-slate-50 transition-all cursor-pointer group"
-            >
-              <Upload className="w-8 h-8 text-slate-400 group-hover:text-sky-600 transition-colors mx-auto" />
-              <div>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    fileInputRef.current?.click();
-                  }}
-                  className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-bold shadow-xs transition-all"
-                >
-                  Pilih Dokumen PDF
-                </button>
-                <p className="text-xs text-slate-400 mt-2">Maksimal ukuran file 10MB. Format dokumen resmi PDF.</p>
-              </div>
-              {uploadedFile && (
-                <div 
-                  onClick={(e) => e.stopPropagation()}
-                  className="flex items-center justify-between p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800"
-                >
-                  <div className="flex items-center gap-2 truncate">
-                    <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span className="truncate">{uploadedFile} ({uploadedFileSize || 'Valid PDF'})</span>
+            const renderField = (field) => {
+              if (field.type === 'group') {
+                return (
+                  <div key={field.id || field.name} className="border border-slate-200 bg-slate-50/70 p-4 rounded-xl space-y-4 shadow-sm">
+                    <label className="block text-sm font-black text-slate-800 uppercase tracking-wider border-b border-slate-200 pb-2">{field.label}</label>
+                    <div className="pl-3 border-l-2 border-sky-300 space-y-4 pt-1">
+                      {(field.subFields || []).map(sub => renderField(sub))}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <a
-                      href={uploadedFileUrl || '/dokumen_permohonan.pdf'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-2.5 py-1 bg-white border border-emerald-300 text-emerald-700 rounded-lg hover:bg-emerald-100 transition-all"
-                    >
-                      Buka PDF
-                    </a>
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="text-slate-500 hover:text-slate-700 underline text-[11px]"
-                    >
-                      Ganti
-                    </button>
+                );
+              }
+
+              const fieldKey = field.label || field.name;
+
+              if (field.type === 'file') {
+                return (
+                  <div key={field.id || fieldKey} className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      {field.label} {field.required !== false && <span className="text-red-500">*</span>}
+                    </label>
+                    <div className="border-2 border-dashed border-slate-200 hover:border-sky-500 rounded-2xl p-4 text-center bg-slate-50 transition-all">
+                      <input
+                        type="file"
+                        accept=".pdf,image/*"
+                        required={field.required !== false && !formData[fieldKey]}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                             const reader = new FileReader();
+                             reader.onload = (ev) => {
+                               setFormData({...formData, [fieldKey]: ev.target.result, [`${fieldKey}_name`]: file.name});
+                             };
+                             reader.readAsDataURL(file);
+                          }
+                        }}
+                        className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100 cursor-pointer"
+                      />
+                      {formData[`${fieldKey}_name`] && (
+                        <p className="mt-3 text-xs font-bold text-emerald-600 bg-emerald-50 py-1.5 px-3 rounded-lg inline-block border border-emerald-100">
+                          ✓ File terpilih: {formData[`${fieldKey}_name`]}
+                        </p>
+                      )}
+                    </div>
                   </div>
+                );
+              }
+
+              return (
+                <div key={field.id || fieldKey} className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    {field.label} {field.required !== false && <span className="text-red-500">*</span>}
+                  </label>
+                  {field.type === 'select' ? (
+                    <select
+                      required={field.required !== false}
+                      value={formData[fieldKey] || ''}
+                      onChange={(e) => setFormData({...formData, [fieldKey]: e.target.value})}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-semibold bg-white transition-all"
+                    >
+                      <option value="">-- Pilih --</option>
+                      {(field.options || []).map((opt, i) => (
+                        <option key={i} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  ) : field.type === 'textarea' ? (
+                    <textarea
+                      required={field.required !== false}
+                      rows={4}
+                      value={formData[fieldKey] || ''}
+                      onChange={(e) => setFormData({...formData, [fieldKey]: e.target.value})}
+                      placeholder={field.placeholder || ''}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-semibold transition-all"
+                    />
+                  ) : (
+                    <input
+                      type={field.type || 'text'}
+                      required={field.required !== false}
+                      value={formData[fieldKey] || ''}
+                      onChange={(e) => setFormData({...formData, [fieldKey]: e.target.value})}
+                      placeholder={field.placeholder || ''}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-semibold transition-all"
+                    />
+                  )}
                 </div>
-              )}
-            </div>
-          </div>
+              );
+            };
+
+            return (
+              <>
+                {schema.length > 0 ? (
+                  schema.map(f => renderField(f))
+                ) : (
+                  <div className="p-6 bg-slate-50 border border-slate-200 border-dashed rounded-2xl text-center text-slate-500 font-medium text-sm">
+                    Belum ada field yang dikonfigurasi untuk layanan ini.
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
           <button
             type="submit"
@@ -714,8 +742,8 @@ export const CreateTicket = () => {
         isOpen={!!viewingSop}
         onClose={() => setViewingSop(null)}
         serviceName={viewingSop?.name}
-        sopFileName={viewingSop?.sop}
-        fileUrl="/sop_layanan.pdf"
+        sopFileName={viewingSop?.sop?.startsWith?.('data:') ? 'SOP_Document.pdf' : viewingSop?.sop}
+        fileUrl={viewingSop?.sop}
       />
 
       <ActionModal
@@ -736,17 +764,19 @@ export const CreateTicket = () => {
           <div className="flex justify-between">
             <span className="text-slate-400">Instansi / Asal:</span>
             <span className="font-bold text-slate-800 text-right">
-              {user?.role === 'helpdesk' ? (helpdeskInstansi.trim() || 'Masyarakat Umum') : (user?.department || 'Masyarakat Umum')}
+              {user?.role === 'helpdesk' ? (helpdeskInstansi.trim() || 'Masyarakat Umum') : (user?.department || (user?.role?.toLowerCase() === 'masyarakat' ? 'Masyarakat Umum' : '-'))}
             </span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-slate-400">Judul Ringkas:</span>
-            <span className="font-bold text-slate-800 text-right truncate max-w-[200px]">{title || '-'}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-400">Lampiran:</span>
-            <span className="font-bold text-sky-700 text-right">{uploadedFile || 'Surat_Permohonan_Layanan.pdf'}</span>
-          </div>
+          {formData && Object.keys(formData).length > 0 ? (
+            <div className="pt-2 mt-2 border-t border-slate-200/50 flex justify-between">
+              <span className="text-slate-400">Total Field Kustom:</span>
+              <span className="font-bold text-sky-600 text-right">{Object.keys(formData).length} Field Terisi</span>
+            </div>
+          ) : (
+             <div className="pt-2 mt-2 border-t border-slate-200/50 text-center italic text-slate-400 text-[11px]">
+               Murni Menggunakan Form Kosong
+             </div>
+          )}
         </div>
       </ActionModal>
 

@@ -96,7 +96,7 @@ exports.getAdminServices = async (req, res) => {
 };
 
 exports.createService = async (req, res) => {
-  const { category_name, category_id, name, target_sla, verification_type, sop_link, is_active, form_schema } = req.body;
+  const { category_name, category_id, name, target_sla, verification_type, sop_link, status, form_schema, required_docs, default_team_id } = req.body;
   try {
     let finalCatId = category_id;
     if (!finalCatId && category_name) {
@@ -104,9 +104,9 @@ exports.createService = async (req, res) => {
       if (catRes.rows.length > 0) finalCatId = catRes.rows[0].id;
     }
     const result = await db.query(`
-      INSERT INTO services (category_id, service_name, target_sla, verification_type, sop_link, status, form_schema)
-      VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *
-    `, [finalCatId, name, target_sla, verification_type, sop_link, is_active ? 'Aktif' : 'Tidak Aktif', JSON.stringify(form_schema || [])]);
+      INSERT INTO services (category_id, service_name, target_sla, verification_type, sop_link, status, form_schema, required_docs, default_team_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *
+    `, [finalCatId, name, target_sla, verification_type, sop_link || null, status || 'Aktif', JSON.stringify(form_schema || []), required_docs || '', default_team_id || null]);
     res.status(201).json({ success: true, data: result.rows[0] });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error' });
@@ -115,7 +115,7 @@ exports.createService = async (req, res) => {
 
 exports.updateService = async (req, res) => {
   const { id } = req.params;
-  const { category_name, category_id, name, target_sla, verification_type, sop_link, is_active, form_schema } = req.body;
+  const { category_name, category_id, name, target_sla, verification_type, sop_link, status, form_schema, required_docs, default_team_id } = req.body;
   try {
     let finalCatId = category_id;
     if (!finalCatId && category_name) {
@@ -124,9 +124,9 @@ exports.updateService = async (req, res) => {
     }
     const result = await db.query(`
       UPDATE services 
-      SET category_id=$1, service_name=$2, target_sla=$3, verification_type=$4, sop_link=$5, status=$6, form_schema=$7
-      WHERE id = $8 RETURNING *
-    `, [finalCatId, name, target_sla, verification_type, sop_link, is_active ? 'Aktif' : 'Tidak Aktif', JSON.stringify(form_schema || []), id]);
+      SET category_id=$1, service_name=$2, target_sla=$3, verification_type=$4, sop_link=$5, status=$6, form_schema=$7, required_docs=$8, default_team_id=$9
+      WHERE id = $10 RETURNING *
+    `, [finalCatId, name, target_sla, verification_type, sop_link || null, status || 'Aktif', JSON.stringify(form_schema || []), required_docs || '', default_team_id || null, id]);
     res.json({ success: true, data: result.rows[0] });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error' });

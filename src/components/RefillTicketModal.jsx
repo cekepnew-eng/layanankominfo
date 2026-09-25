@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, FileText, Upload, AlertCircle, FileCheck, Clock, Eye } from 'lucide-react';
+import { X, FileText, Upload, AlertCircle, FileCheck, Clock, Eye, Download } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getCurrentLogTimeFormatted } from '../utils/dateUtils';
 import { SopModal } from './SopModal';
@@ -11,7 +11,7 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
 
   const subServiceName = ticket.requestType || ticket.service || '';
   const srv = (services || []).find(s => s.name === subServiceName);
-  const reqDocs = srv?.requiredDocs || ticket.requiredDocs || 'Surat Permohonan Resmi OPD, KAK / Dokumen Pendukung';
+  const reqDocs = srv?.requiredDocs || ticket.required_docs || ticket.requiredDocs || 'Surat Permohonan Resmi OPD, KAK / Dokumen Pendukung';
   const sopFile = srv?.sop || ticket.sop || 'sop-layanan.pdf';
   const slaText = srv?.sla || (ticket.slaDuration ? `${ticket.slaDuration} Hari` : '7 Hari');
 
@@ -170,7 +170,16 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
               </div>
               <div className="min-w-0">
                 <span className="text-xs font-black text-amber-850 uppercase tracking-wider block">Dokumen yang Harus Disiapkan Pemohon:</span>
-                <p className="text-sm font-bold text-slate-800 mt-0.5 leading-relaxed">{reqDocs}</p>
+                <div className="text-sm font-bold text-slate-800 mt-0.5 leading-relaxed">
+                  {reqDocs?.startsWith?.('data:') ? (
+                    <a href={reqDocs} download="Template_Persyaratan.pdf" className="inline-flex items-center gap-1.5 text-sky-600 hover:text-sky-700 bg-white border border-sky-200 px-3 py-1 rounded-lg">
+                      <Download className="w-4 h-4" />
+                      Unduh Template Dokumen
+                    </a>
+                  ) : (
+                    reqDocs
+                  )}
+                </div>
               </div>
             </div>
             <div className="flex items-center justify-between gap-3 pt-2.5 border-t border-sky-100 flex-wrap text-xs">
@@ -452,8 +461,8 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
           isOpen={showSopModal}
           onClose={() => setShowSopModal(false)}
           serviceName={subServiceName}
-          sopFileName={sopFile}
-          fileUrl="/sop_layanan.pdf"
+          sopFileName={sopFile?.startsWith?.('data:') ? 'SOP_Document.pdf' : sopFile}
+          fileUrl={sopFile}
         />
 
         <ActionModal

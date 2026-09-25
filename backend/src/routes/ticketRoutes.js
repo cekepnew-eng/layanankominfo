@@ -10,8 +10,8 @@ router.post('/my/tickets/:id/feedback', authenticateToken, authorizeRole(['USER'
 
 // HELPDESK
 router.get('/helpdesk/tickets', authenticateToken, authorizeRole(['HELPDESK', 'ADMIN']), ticketController.getHelpdeskTickets);
-router.patch('/helpdesk/tickets/:id/verify', authenticateToken, authorizeRole(['HELPDESK']), ticketController.verifyTicket);
-router.patch('/helpdesk/tickets/:id/assign', authenticateToken, authorizeRole(['HELPDESK']), ticketController.assignTicket);
+router.patch('/helpdesk/tickets/:id/verify', authenticateToken, authorizeRole(['HELPDESK', 'ADMIN']), ticketController.verifyTicket);
+router.patch('/helpdesk/tickets/:id/assign', authenticateToken, authorizeRole(['HELPDESK', 'ADMIN']), ticketController.assignTicket);
 
 // EMPLOYEE
 router.get('/employee/tickets', authenticateToken, authorizeRole(['PEGAWAI', 'ADMIN']), ticketController.getEmployeeTickets);
@@ -22,5 +22,6 @@ router.get('/admin/tickets', authenticateToken, authorizeRole(['ADMIN']), ticket
 
 // GENERAL
 router.get('/tickets/:id/history', authenticateToken, ticketController.getHistory);
+router.patch('/tickets/:id/reject', authenticateToken, authorizeRole(['HELPDESK', 'PEGAWAI', 'ADMIN']), ticketController.rejectTicket);
 
 module.exports = router;

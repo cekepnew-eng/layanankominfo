@@ -97,3 +97,52 @@ exports.deleteUser = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+exports.reset2FA = async (req, res) => {
+  const { id } = req.params;
+  try {
+    await db.pool.query(
+      `UPDATE users 
+       SET is_two_factor_enabled = false, 
+           two_factor_secret = null, 
+           two_factor_reset_at = CURRENT_TIMESTAMP 
+       WHERE id = $1`,
+      [id]
+    );
+    res.json({ success: true, message: '2FA berhasil direset. User harus scan QR ulang saat login.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const bcrypt = require('bcryptjs');
+
+exports.createUserManual = async (req, res) => {
+  const { email, password, full_name, phone_number, department, roleName } = req.body;
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const userRes = await client.query(
+      `INSERT INTO users (email, password_hash, full_name, phone_number, department, is_active)
+       VALUES ($1, $2, $3, $4, $5, true) RETURNING id`,
+      [email, hashedPassword, full_name, phone_number, department]
+    );
+    const userId = userRes.rows[0].id;
+
+    if (roleName) {
+      const roleRes = await client.query('SELECT id FROM roles WHERE name = $1', [roleName]);
+      if (roleRes.rows.length > 0) {
+        await client.query('INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)', [userId, roleRes.rows[0].id]);
+      }
+    }
+
+    await client.query('COMMIT');
+    res.json({ success: true, message: 'User created successfully', userId });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ success: false, message: error.message });
+  } finally {
+    client.release();
+  }
+};

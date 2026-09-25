@@ -61,6 +61,14 @@ export const api = {
     const res = await fetch(`${BASE_URL}/admin/users`, { headers: getHeaders() });
     return handleResponse(res);
   },
+  createUserManual: async (payload) => {
+    const res = await fetch(`${BASE_URL}/admin/users/manual`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload)
+    });
+    return handleResponse(res);
+  },
   updateUserRole: async (userId, payload) => {
     const res = await fetch(`${BASE_URL}/admin/users/${userId}/role`, {
       method: 'PUT',
@@ -76,25 +84,32 @@ export const api = {
     });
     return handleResponse(res);
   },
+  reset2FA: async (userId) => {
+    const res = await fetch(`${BASE_URL}/admin/users/${userId}/reset2fa`, {
+      method: 'POST',
+      headers: getHeaders()
+    });
+    return handleResponse(res);
+  },
 
   // AUTH
   getCaptcha: async () => {
     const res = await fetch(`${BASE_URL}/auth/captcha`);
     return handleResponse(res);
   },
-  login: async (email, password, captchaToken, captchaAnswer) => {
+  login: async (email, password, captchaToken, captchaAnswer, trustedDeviceToken = null) => {
     const res = await fetch(`${BASE_URL}/auth/login`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ email, password, captchaToken, captchaAnswer })
+      body: JSON.stringify({ email, password, captchaToken, captchaAnswer, trustedDeviceToken })
     });
     return handleResponse(res);
   },
-  login2FA: async (tempToken, otp) => {
+  login2FA: async (tempToken, otp, trustDevice = false) => {
     const res = await fetch(`${BASE_URL}/auth/login-2fa`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ tempToken, otp })
+      body: JSON.stringify({ tempToken, otp, trustDevice })
     });
     return handleResponse(res);
   },
@@ -267,6 +282,14 @@ export const api = {
     const res = await fetch(`${BASE_URL}/tickets/${ticketId}/history`, { headers: getHeaders() });
     return handleResponse(res);
   },
+  rejectTicket: async (ticketId, payload) => {
+    const res = await fetch(`${BASE_URL}/tickets/${ticketId}/reject`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify(payload)
+    });
+    return handleResponse(res);
+  },
   getNotifications: async () => {
     const res = await fetch(`${BASE_URL}/notifications`, { headers: getHeaders() });
     return handleResponse(res);
@@ -277,6 +300,10 @@ export const api = {
   },
   readNotification: async (id) => {
     const res = await fetch(`${BASE_URL}/notifications/${id}/read`, { method: 'PATCH', headers: getHeaders() });
+    return handleResponse(res);
+  },
+  getHistory: async (id) => {
+    const res = await fetch(`${BASE_URL}/tickets/${id}/history`, { headers: getHeaders() });
     return handleResponse(res);
   }
 };

@@ -1,12 +1,17 @@
 import React from 'react';
 import { X, FileText, Download, ExternalLink, Clock, ShieldCheck, CheckCircle2, AlertTriangle, FileCheck, Building, Tag } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { parseFileValue } from '../utils/fileUtils';
 
 export const TicketDetailModal = ({ isOpen, onClose, ticket }) => {
   const { user } = useAuth();
   if (!isOpen || !ticket) return null;
 
-  const docUrl = ticket.fileUrl || '/dokumen_permohonan.pdf';
+  const formData = ticket.form_data || {};
+  const actualDocUrl = ticket.fileUrl || formData['Berkas_Persyaratan'] || formData['_uploadedFile'];
+  const fileName = (ticket.files && ticket.files.length > 0) ? ticket.files[0] : formData['Nama_File_Persyaratan'] || formData['_uploadedFileName'];
+  const hasUploadedDoc = (!!actualDocUrl && actualDocUrl !== '/dokumen_permohonan.pdf') || (!!fileName && fileName.trim() !== '');
+  const docUrl = actualDocUrl || '/dokumen_permohonan.pdf';
   const bastUrl = ticket.bastFileUrl || '/bast_selesai.pdf';
   const sopUrl = '/sop_layanan.pdf';
 
@@ -89,7 +94,7 @@ export const TicketDetailModal = ({ isOpen, onClose, ticket }) => {
                 <span className="text-xs font-bold text-slate-400 block">Unit Kerja / Instansi:</span>
                 <p className="font-extrabold text-slate-800 mt-0.5 flex items-center gap-1.5">
                   <Building className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  <span>{ticket.opd}</span>
+                  <span>{ticket.opd || '-'}</span>
                 </p>
               </div>
               <div>
@@ -109,27 +114,66 @@ export const TicketDetailModal = ({ isOpen, onClose, ticket }) => {
           <div className="space-y-3">
             <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider">Detail Isi Formulir</h4>
             <div className="space-y-3 bg-white p-4 border border-slate-200 rounded-2xl text-sm">
-              <div>
-                <span className="text-xs font-bold text-slate-400 block">Judul Ringkas Permohonan:</span>
-                <p className="font-black text-slate-900 text-base mt-0.5 leading-snug">{ticket.title}</p>
-              </div>
-              <div>
-                <span className="text-xs font-bold text-slate-400 block">Deskripsi Lengkap Kebutuhan:</span>
-                <p className="font-medium text-slate-700 mt-1 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-                  {ticket.desc || ticket.description || 'Tidak ada deskripsi rinci.'}
-                </p>
-              </div>
+              {(() => {
+                const hasFormData = ticket.form_data && Object.keys(ticket.form_data).filter(k => k !== 'Berkas_Persyaratan' && k !== 'Nama_File_Persyaratan' && k !== '_uploadedFile' && k !== '_uploadedFileName' && !k.endsWith('_name')).length > 0;
+                
+                const showBuiltInTitle = !hasFormData && !(ticket.title === `Pengajuan Layanan ${ticket.service}` || ticket.title === `Permohonan ${ticket.service}` || ticket.title === `Permohonan ${ticket.requestType}`);
+                
+                const showBuiltInDesc = !hasFormData && !(ticket.desc === `Detail pengerjaan untuk sub-layanan ${ticket.service}` || ticket.description === `Detail pengerjaan untuk sub-layanan ${ticket.service}` || ticket.desc === `Detail pengerjaan untuk sub-layanan ${ticket.requestType}` || ticket.description === `Detail pengerjaan untuk sub-layanan ${ticket.requestType}` || ticket.description === 'Tidak ada deskripsi (menggunakan form kustom)' || ticket.desc === 'Tidak ada deskripsi (menggunakan form kustom)' || (!ticket.desc && !ticket.description));
 
-              {ticket.form_data && Object.keys(ticket.form_data).length > 0 && (
-                <div className="pt-2 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  {Object.entries(ticket.form_data).map(([key, val], idx) => (
-                    <div key={idx} className={`p-2.5 bg-slate-50 rounded-xl border border-slate-100 ${val && val.toString().length > 50 ? 'sm:col-span-2' : ''}`}>
-                      <span className="font-bold text-slate-400 block">{key}:</span>
-                      <span className="font-extrabold text-slate-800 break-words">{val?.toString() || '-'}</span>
-                    </div>
-                  ))}
+                return (
+                  <>
+                    {showBuiltInTitle && (
+                      <div>
+                        <span className="text-xs font-bold text-slate-400 block">Judul Ringkas Permohonan:</span>
+                        <p className="font-black text-slate-900 text-base mt-0.5 leading-snug">{ticket.title}</p>
+                      </div>
+                    )}
+                    {showBuiltInDesc && (
+                      <div>
+                        <span className="text-xs font-bold text-slate-400 block">Deskripsi Lengkap Kebutuhan:</span>
+                        <p className="font-medium text-slate-700 mt-1 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                          {ticket.desc || ticket.description}
+                        </p>
+                      </div>
+                    )}
+
+                    {hasFormData && (
+                      <div className={`${showBuiltInTitle || showBuiltInDesc ? 'pt-2 border-t border-slate-100 ' : ''}grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs`}>
+                        {Object.entries(ticket.form_data)
+                    .filter(([key]) => key !== 'Berkas_Persyaratan' && key !== 'Nama_File_Persyaratan' && key !== '_uploadedFile' && key !== '_uploadedFileName' && !key.endsWith('_name'))
+                    .map(([key, val], idx) => {
+                      const isFile = typeof val === 'string' && val.startsWith('data:');
+                      const fileName = isFile ? ticket.form_data[`${key}_name`] || 'Dokumen_Lampiran' : null;
+                      return (
+                        <div key={idx} className={`p-2.5 bg-slate-50 rounded-xl border border-slate-100 ${!isFile && val && val.toString().length > 50 ? 'sm:col-span-2' : ''}`}>
+                          <span className="font-bold text-slate-400 block">{key}:</span>
+                          {isFile ? (
+                            <a
+                              href={val}
+                              download={fileName}
+                              className="inline-flex items-center gap-1.5 mt-1 text-sky-600 hover:text-sky-700 font-bold bg-white px-3 py-1.5 rounded-lg border border-sky-100 shadow-sm text-xs"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              Unduh {fileName}
+                            </a>
+                          ) : (
+                            <span className="font-extrabold text-slate-800 break-words">{val?.toString() || '-'}</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  {Object.entries(ticket.form_data).filter(([key]) => key !== 'Berkas_Persyaratan' && key !== 'Nama_File_Persyaratan' && key !== '_uploadedFile' && key !== '_uploadedFileName' && !key.endsWith('_name')).length === 0 && (
+                     <div className="sm:col-span-2 text-center py-3 text-slate-500 font-medium italic bg-slate-50 border border-slate-100 border-dashed rounded-xl">Tidak ada detail form kustom.</div>
+                  )}
                 </div>
               )}
+              {(!ticket.form_data || Object.keys(ticket.form_data).length === 0) && !showBuiltInTitle && !showBuiltInDesc && (
+                 <div className="text-center py-3 text-slate-500 font-medium italic bg-slate-50 border border-slate-100 border-dashed rounded-xl">Tidak ada detail form.</div>
+              )}
+            </>
+          );
+        })()}
             </div>
           </div>
 
@@ -151,48 +195,67 @@ export const TicketDetailModal = ({ isOpen, onClose, ticket }) => {
                 <FileCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                 <div>
                   <strong className="text-slate-800 font-extrabold">Ketentuan Dokumen Syarat: </strong>
-                  <span>{ticket.requiredDocs || 'Surat Permohonan Resmi OPD, KAK / Dokumen Pendukung'}</span>
+                  <div className="mt-1">
+                    {(() => {
+                      const reqDocsRaw = ticket.required_docs || ticket.requiredDocs;
+                      if (!reqDocsRaw) return <span>Surat Permohonan Resmi OPD, KAK / Dokumen Pendukung</span>;
+                      const parsed = parseFileValue(reqDocsRaw);
+                      if (parsed.data.startsWith('data:')) {
+                        return (
+                          <a href={parsed.data} download={parsed.name || "Template_Persyaratan.pdf"} className="inline-flex items-center gap-1.5 text-sky-600 hover:text-sky-700 bg-sky-50 px-2 py-1 rounded-md border border-sky-100 font-bold">
+                            Unduh Template {parsed.name || 'Dokumen'}
+                          </a>
+                        );
+                      }
+                      return <span>{parsed.name}</span>;
+                    })()}
+                  </div>
                 </div>
               </div>
 
-              <div className="p-3.5 bg-sky-50/50 border border-sky-100 rounded-xl flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-8 h-8 rounded-lg bg-red-100 text-red-600 flex items-center justify-center shrink-0">
-                    <FileText className="w-4 h-4" />
+              {hasUploadedDoc && (
+                <div className="p-3.5 bg-sky-50/50 border border-sky-100 rounded-xl flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-lg bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+                      <FileText className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-bold text-slate-800 text-xs truncate">
+                        {fileName || 'Dokumen_Persyaratan_Layanan.pdf'}
+                      </p>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Dokumen Resmi PDF Pemohon</span>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <p className="font-bold text-slate-800 text-xs truncate">
-                      {ticket.files && ticket.files.length > 0 ? ticket.files[0] : 'Dokumen_Persyaratan_Layanan.pdf'}
-                    </p>
-                    <span className="text-[10px] text-slate-400 font-semibold block">Dokumen Resmi PDF Pemohon</span>
-                  </div>
+                  <a
+                    href={docUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs shrink-0"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Buka Berkas PDF</span>
+                  </a>
                 </div>
-                <a
-                  href={docUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs shrink-0"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Buka Berkas PDF</span>
-                </a>
-              </div>
+              )}
 
               {ticket.sop && (
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <FileCheck className="w-4 h-4 text-sky-600 shrink-0" />
-                    <span className="font-bold text-slate-700">SOP Pelayanan: {ticket.sop}</span>
+                    <span className="font-bold text-slate-700">SOP Pelayanan: {parseFileValue(ticket.sop).name || 'SOP.pdf'}</span>
                   </div>
-                  <a
-                    href={sopUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sky-600 hover:text-sky-700 font-bold hover:underline shrink-0 flex items-center gap-1 text-[11px]"
-                  >
-                    <span>Unduh SOP</span>
-                    <Download className="w-3 h-3" />
-                  </a>
+                  {parseFileValue(ticket.sop).data?.startsWith('data:') && (
+                    <a
+                      href={parseFileValue(ticket.sop).data}
+                      download={parseFileValue(ticket.sop).name || "SOP_Layanan.pdf"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sky-600 hover:text-sky-700 font-bold hover:underline shrink-0 flex items-center gap-1 text-[11px]"
+                    >
+                      <span>Unduh SOP</span>
+                      <Download className="w-3 h-3" />
+                    </a>
+                  )}
                 </div>
               )}
 

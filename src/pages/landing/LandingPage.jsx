@@ -54,7 +54,7 @@ export const LandingPage = () => {
     : '4.85';
   
   const categoriesList = [
-    { name: 'Pengelolaan Aplikasi Informatika', services: ['Pengembangan & Pengelolaan Aplikasi', 'Rekomendasi & Evaluasi Aplikasi', 'Uji Kesesuaian Sistem (UKS)', 'Keamanan Aplikasi / VAPT'] },
+    { name: 'Aplikasi Informatika', services: ['Pengembangan & Pengelolaan Aplikasi', 'Rekomendasi & Evaluasi Aplikasi', 'Uji Kesesuaian Sistem (UKS)', 'Keamanan Aplikasi / VAPT'] },
     { name: 'Pengelolaan Sumber Daya & Perangkat Informatika', services: ['Jaringan Intra Pemerintah', 'Server Perangkat Daerah', 'Infrastruktur TIK', 'Perangkat Jaringan & Komunikasi', 'Teleconference & Meeting', 'Video Conference / Zoom', 'CCTV & Video Monitoring', 'Wifi Publik'] },
     { name: 'Penerapan Persandian & Keamanan Informasi', services: ['Keamanan Informasi & Persandian', 'Security Operation Center (SOC)', 'CSIRT / Respons Insiden', 'Security Awareness'] },
     { name: 'Tata Kelola SPBE', services: ['Tata Kelola SPBE', 'Kebijakan SPBE', 'Arsitektur & Peta Rencana SPBE', 'Monev & Pelaporan SPBE', 'Integrasi & Interoperabilitas SPBE', 'Audit Teknologi Informasi'] },
@@ -160,7 +160,7 @@ export const LandingPage = () => {
                 name: s.name || s.service_name,
                 sla: s.target_sla || '7 Hari',
                 sop: s.sop_link || 'sop-default.pdf',
-                items: (s.requirements || []).map((req) => req.document_name || 'Dokumen persyaratan') || ['Dokumen persyaratan']
+                items: s.required_docs ? s.required_docs.split(',').map(d => d.trim()) : ['Surat Permohonan Resmi OPD, KAK / Dokumen Pendukung']
               }))
           };
         });
@@ -178,7 +178,7 @@ export const LandingPage = () => {
   const fallbackCategories = [
     {
       id: 'cat1',
-      title: 'Pengelolaan Aplikasi Informatika',
+      title: 'Aplikasi Informatika',
       desc: 'Layanan pengembangan, rekomendasi, evaluasi, kesesuaian, dan keamanan aplikasi perkantoran pemerintah.',
       icon: Cpu,
       color: 'text-blue-600 bg-blue-50 border-blue-100',

@@ -16,7 +16,9 @@ import {
   ChevronDown,
   ChevronRight,
   Star,
-  Home
+  Home,
+  Bell,
+  Clock
 } from 'lucide-react';
 
 class ErrorBoundary extends React.Component {
@@ -54,6 +56,57 @@ export const DashboardLayout = () => {
   const location = useLocation();
   const [showRoleSelector, setShowRoleSelector] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  
+  React.useEffect(() => {
+    if (!user) return;
+    const fetchNotifications = async () => {
+      try {
+        let res;
+        const { api } = await import('../services/api');
+        if (user.role === 'ADMIN') res = await api.getAdminTickets();
+        else if (user.role === 'HELPDESK') res = await api.getHelpdeskTickets();
+        else if (user.role === 'PEGAWAI') res = await api.getEmployeeTickets();
+        else res = await api.getMyTickets();
+
+        if (res.data) {
+          const recentTickets = res.data.slice(0, 5);
+          const notifs = recentTickets.map(t => {
+             let msg = '';
+             const statusStr = t.status_name || t.status || '';
+             if (user.role === 'ADMIN' || user.role === 'HELPDESK') {
+                 if (statusStr === 'PENDING' || statusStr === 'Verifikasi') msg = `Tiket baru #${t.ticket_number || t.id} butuh verifikasi.`;
+                 else if (statusStr === 'IN_PROGRESS' || statusStr === 'Diproses') msg = `Tiket #${t.ticket_number || t.id} sedang diproses tim.`;
+                 else if (statusStr === 'COMPLETED' || statusStr === 'Selesai') msg = `Tiket #${t.ticket_number || t.id} telah selesai.`;
+                 else msg = `Pembaruan tiket #${t.ticket_number || t.id}: ${statusStr}`;
+             } else if (user.role === 'PEGAWAI') {
+                 msg = `Tugas #${t.ticket_number || t.id} saat ini: ${statusStr.replace(/_/g, ' ')}`;
+             } else {
+                 if (statusStr === 'WAITING_USER_CONFIRMATION') msg = `Tiket #${t.ticket_number || t.id} butuh SKM & Rating dari Anda!`;
+                 else msg = `Status pengajuan #${t.ticket_number || t.id} Anda: ${statusStr.replace(/_/g, ' ')}`;
+             }
+             return {
+                 id: t.id,
+                 title: `Status Update`,
+                 message: msg,
+                 time: t.created_at,
+                 isRead: false
+             };
+          });
+          setNotifications(notifs);
+          setUnreadCount(notifs.filter(n => !n.isRead).length);
+        }
+      } catch (e) {
+        console.error("Failed to fetch notifications:", e);
+      }
+    };
+    
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 15000); 
+    return () => clearInterval(interval);
+  }, [user]);
 
   const handleLogout = () => {
     setShowLogoutConfirm(true);
@@ -82,6 +135,7 @@ export const DashboardLayout = () => {
   const getMenuLinks = () => {
     const home = { path: '/dashboard', label: 'Ringkasan', icon: LayoutDashboard };
     const history = { path: '/dashboard/history', label: getHistoryLabel(), icon: FileText };
+    const ticketHistory = { path: '/dashboard/ticket-history', label: 'Riwayat Tiket', icon: CheckSquare };
     const profile = { path: '/dashboard/profile', label: 'Profil Pengguna', icon: User };
 
     const adminLinks = [
@@ -95,7 +149,7 @@ export const DashboardLayout = () => {
       { path: '/dashboard/user/create-ticket', label: 'Ajukan Layanan', icon: PlusCircle }
     ];
 
-    if (!user) return [home, history, profile];
+    if (!user) return [home, history, ticketHistory, profile];
 
     switch (user.role) {
       case 'ADMIN':
@@ -105,18 +159,19 @@ export const DashboardLayout = () => {
           adminLinks[1],
           adminLinks[2],
           history,
+          ticketHistory,
           adminLinks[3],
           profile
         ];
       case 'HELPDESK':
-        return [home, userLinks[0], history, profile];
+        return [home, userLinks[0], history, ticketHistory, profile];
       case 'PEGAWAI':
-        return [home, history, profile];
+        return [home, history, ticketHistory, profile];
       case 'USER':
       case 'MASYARAKAT':
-        return [home, ...userLinks, history, profile];
+        return [home, ...userLinks, history, ticketHistory, profile];
       default:
-        return [home, history, profile];
+        return [home, history, ticketHistory, profile];
     }
   };
 
@@ -135,7 +190,8 @@ export const DashboardLayout = () => {
       tasks: 'Tugas Pengerjaan',
       'create-ticket': 'Ajukan Layanan',
       profile: 'Profil Pengguna',
-      history: getHistoryLabel()
+      history: getHistoryLabel(),
+      'ticket-history': 'Riwayat Tiket'
     };
 
     return mapping[pageName] || pageName;
@@ -175,9 +231,9 @@ export const DashboardLayout = () => {
   const profileSubtitle = user ? `${getProfileRoleLabel()} • ${getProfileDeptLabel()}` : '';
 
   return (
-    <div className="h-screen w-screen bg-slate-50 flex font-sans overflow-hidden">
-      <aside className="w-64 h-full bg-white border-r border-slate-200 flex flex-col z-20 shrink-0">
-        <div className="p-6 border-b border-slate-100 flex items-center gap-3">
+    <div className="h-screen w-screen theme-premium-bg flex font-sans overflow-hidden">
+      <aside className="w-64 h-full glass-sidebar flex flex-col z-20 shrink-0">
+        <div className="p-6 border-b border-slate-100/50 flex items-center gap-3">
           <img src="/logo-bogor.png" alt="Logo Bogor" className="h-9 w-auto" />
           <div className="text-left">
             <h1 className="font-extrabold text-base text-slate-900 tracking-tight leading-none">DISKOMINFO</h1>
@@ -268,7 +324,7 @@ export const DashboardLayout = () => {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
-        <header className="h-20 shrink-0 bg-white border-b border-slate-200 flex items-center justify-between px-8 shadow-sm">
+        <header className="h-20 shrink-0 glass-panel border-b-0 flex items-center justify-between px-8 z-10 sticky top-0">
           <div className="flex items-center gap-2">
             <Link to="/" className="text-xs text-slate-400 font-bold uppercase tracking-widest hover:text-sky-600 transition-colors">Portal</Link>
             <span className="text-slate-300 text-base">/</span>
@@ -276,14 +332,61 @@ export const DashboardLayout = () => {
           </div>
 
           <div className="flex items-center gap-4">
-              {/* Simulasi Role removed as real auth is implemented */}
+            
+            {/* NOTIFICATIONS */}
+            <div className="relative">
+              <button 
+                onClick={() => {
+                  setShowNotifications(!showNotifications);
+                  setUnreadCount(0);
+                }}
+                className="relative p-2.5 glass-card border border-white/50 hover:border-sky-300 rounded-xl text-slate-500 hover:text-sky-600 transition-all shadow-xs"
+              >
+                <Bell className="w-5 h-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-rose-500 border-2 border-white rounded-full animate-pulse"></span>
+                )}
+              </button>
+
+              {showNotifications && (
+                <div className="absolute right-0 mt-3 w-80 glass-panel rounded-3xl shadow-xl border border-white/60 overflow-hidden z-50 animate-in slide-in-from-top-2 duration-200">
+                  <div className="px-5 py-4 border-b border-white/40 flex justify-between items-center bg-white/40">
+                    <h3 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider">Notifikasi Real-time</h3>
+                    <span className="text-xs font-bold bg-sky-100 text-sky-700 px-2 py-0.5 rounded-lg">{notifications.length} Baru</span>
+                  </div>
+                  <div className="max-h-80 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <div className="p-6 text-center text-slate-500 text-sm font-semibold">Tidak ada notifikasi saat ini.</div>
+                    ) : (
+                      <div className="divide-y divide-white/40">
+                        {notifications.map((n, i) => (
+                          <div key={i} className="p-4 hover:bg-white/60 transition-colors cursor-pointer group">
+                            <h4 className="text-sm font-black text-slate-800 group-hover:text-sky-700">{n.title}</h4>
+                            <p className="text-xs font-semibold text-slate-600 mt-1 leading-relaxed">{n.message}</p>
+                            <div className="flex items-center gap-1.5 mt-2 text-[10px] font-bold text-slate-400">
+                              <Clock className="w-3 h-3" />
+                              <span>{new Date(n.time).toLocaleString('id-ID')}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-3 bg-white/40 border-t border-white/40 text-center">
+                    <Link to="/dashboard/history" onClick={() => setShowNotifications(false)} className="text-xs font-bold text-sky-600 hover:text-sky-700 hover:underline">
+                      Lihat Semua Tiket
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </div>
 
             <Link 
               to="/dashboard/profile"
-              className="flex items-center gap-3 bg-slate-50 hover:bg-sky-50/80 border border-slate-200 hover:border-sky-300 px-3.5 py-2 rounded-2xl transition-all shadow-xs hover:shadow-sm cursor-pointer group shrink-0"
+              className="flex items-center gap-3 glass-card hover:bg-white/80 border border-white/50 hover:border-sky-300 px-3.5 py-2 rounded-2xl transition-all shadow-xs hover:shadow-sm cursor-pointer group shrink-0"
               title="Lihat & Kelola Profil Pengguna"
             >
-              <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 group-hover:border-sky-300 flex items-center justify-center text-sky-600 shadow-2xs shrink-0 group-hover:scale-105 transition-all">
+              <div className="w-10 h-10 rounded-xl bg-white/80 border border-white group-hover:border-sky-300 flex items-center justify-center text-sky-600 shadow-2xs shrink-0 group-hover:scale-105 transition-all">
                 <User className="w-5 h-5 text-sky-600" />
               </div>
               <div className="text-left hidden sm:block max-w-[160px] lg:max-w-[200px]">

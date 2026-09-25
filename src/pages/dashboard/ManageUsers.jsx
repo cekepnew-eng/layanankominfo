@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Edit2, Trash2, X, Users, Building, Mail, Search, Lock } from 'lucide-react';
+import { Edit2, Trash2, X, Users, Building, Mail, Search, Lock, KeyRound } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
 import { ActionModal } from '../../components/ActionModal';
@@ -38,6 +38,11 @@ export const ManageUsers = () => {
   const [editRoleVal, setEditRoleVal] = useState('user');
   const [editRolesVal, setEditRolesVal] = useState([]);
   const [editTeamAssignments, setEditTeamAssignments] = useState({});
+
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newUserData, setNewUserData] = useState({
+    full_name: '', email: '', password: '', department: '', roleName: 'USER'
+  });
 
   const [modalConfig, setModalConfig] = useState({
     isOpen: false,
@@ -103,7 +108,7 @@ export const ManageUsers = () => {
   };
 
   useEffect(() => {
-    if (editingUser) {
+    if (editingUser || showAddModal) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
@@ -111,7 +116,28 @@ export const ManageUsers = () => {
     return () => {
       document.body.style.overflow = '';
     };
-  }, [editingUser]);
+  }, [editingUser, showAddModal]);
+
+  const handleAddUserManual = async (e) => {
+    e.preventDefault();
+    try {
+      await api.createUserManual(newUserData);
+      setShowAddModal(false);
+      setNewUserData({ full_name: '', email: '', password: '', department: '', roleName: 'USER' });
+      await fetchUsers();
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: 'Pengguna Berhasil Ditambahkan',
+        message: 'Pengguna baru telah berhasil ditambahkan.',
+        confirmText: 'Selesai',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
+    } catch (err) {
+      alert('Gagal menambahkan pengguna: ' + err.message);
+    }
+  };
 
   const handleSaveEdit = async () => {
     const assignedTeamIds = Object.keys(editTeamAssignments).filter(id => editTeamAssignments[id]);
@@ -213,6 +239,35 @@ export const ManageUsers = () => {
     }
   };
 
+  const handlePromptReset2FA = (u) => {
+    setModalConfig({
+      isOpen: true,
+      type: 'warning',
+      title: 'Reset Autentikasi 2FA',
+      message: `Apakah Anda yakin ingin mereset 2FA untuk akun "${u.name}"? Pengguna akan diminta memindai QR Code ulang saat login berikutnya.`,
+      confirmText: 'Ya, Reset 2FA',
+      cancelText: 'Batal',
+      onConfirm: () => executeReset2FA(u.id)
+    });
+  };
+
+  const executeReset2FA = async (id) => {
+    try {
+      await api.reset2FA(id);
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: '2FA Berhasil Direset',
+        message: 'Autentikasi 2 Langkah untuk pengguna ini telah berhasil direset.',
+        confirmText: 'Selesai',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
+    } catch (err) {
+      alert('Gagal mereset 2FA: ' + err.message);
+    }
+  };
+
   const tabs = [
     { id: 'semua', label: 'Semua', count: users.length },
     { id: 'admin', label: 'Admin', count: users.filter(u => u.roles?.some(r => r.toLowerCase() === 'admin')).length },
@@ -242,6 +297,12 @@ export const ManageUsers = () => {
           <h2 className="text-3xl font-black text-slate-900 tracking-tight">Manajemen Pengguna</h2>
           <p className="text-slate-500 text-base leading-relaxed">Kelola hak akses role pengguna secara dinamis dan kelola instansi dinas terkait.</p>
         </div>
+        <button 
+          onClick={() => setShowAddModal(true)}
+          className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-sky-500/20 cursor-pointer flex items-center gap-2"
+        >
+          <span>+ Tambah User Manual</span>
+        </button>
       </div>
 
       <div className="flex gap-2 border-b border-slate-200 overflow-x-auto pb-px">
@@ -277,7 +338,7 @@ export const ManageUsers = () => {
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Cari nama, email, atau unit kerja..."
-          className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 transition-all shadow-sm"
+          className="w-full pl-11 pr-4 py-3 glass-card rounded-2xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 transition-all shadow-sm"
         />
         {searchQuery && (
           <button
@@ -289,7 +350,7 @@ export const ManageUsers = () => {
         )}
       </div>
 
-      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
+      <div className="glass-card rounded-3xl border border-white/60 shadow-sm overflow-hidden">
         {filteredUsers.length === 0 ? (
           <div className="p-16 text-center text-slate-400 space-y-3">
             <Users className="w-10 h-10 mx-auto text-slate-300" />
@@ -331,19 +392,28 @@ export const ManageUsers = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      {u.department || (u.roles?.some(r => r.toLowerCase() === 'masyarakat') ? 'Masyarakat Umum' : 'Dinas Komunikasi dan Informatika')}
+                      {u.department || (u.roles?.some(r => r.toLowerCase() === 'masyarakat') ? 'Masyarakat Umum' : '-')}
                     </td>
                     <td className="px-6 py-4 text-center">
                       <div className="flex items-center justify-center gap-2">
                         <button 
                           onClick={() => handleStartEdit(u)}
                           className="p-1.5 text-slate-400 hover:text-sky-600 rounded-lg hover:bg-sky-50 transition-all"
+                          title="Edit Pengguna"
                         >
                           <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => handlePromptReset2FA(u)}
+                          className="p-1.5 text-slate-400 hover:text-amber-600 rounded-lg hover:bg-amber-50 transition-all"
+                          title="Reset 2FA"
+                        >
+                          <KeyRound className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => handlePromptDeleteUser(u)}
                           className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-all cursor-pointer"
+                          title="Hapus Pengguna"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -503,6 +573,52 @@ export const ManageUsers = () => {
                 Simpan Peran
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showAddModal && (
+        <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 overflow-hidden">
+          <div className="bg-white max-w-lg w-full rounded-3xl p-6 sm:p-7 border border-slate-100 shadow-2xl space-y-5 text-left animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <h3 className="font-black text-slate-900 text-xl tracking-tight">Tambah Pengguna Manual</h3>
+              <button onClick={() => setShowAddModal(false)} className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleAddUserManual} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nama Lengkap</label>
+                <input required type="text" value={newUserData.full_name} onChange={e => setNewUserData({...newUserData, full_name: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-sky-500 text-sm font-semibold" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email / NIK</label>
+                <input required type="text" value={newUserData.email} onChange={e => setNewUserData({...newUserData, email: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-sky-500 text-sm font-semibold" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Password</label>
+                <input required type="password" value={newUserData.password} onChange={e => setNewUserData({...newUserData, password: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-sky-500 text-sm font-semibold" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">OPD / Instansi</label>
+                <input required type="text" value={newUserData.department} onChange={e => setNewUserData({...newUserData, department: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-sky-500 text-sm font-semibold" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Role</label>
+                <select value={newUserData.roleName} onChange={e => setNewUserData({...newUserData, roleName: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-sky-500 text-sm font-semibold">
+                  <option value="USER">User (OPD)</option>
+                  <option value="PEGAWAI">Pegawai (Teknisi)</option>
+                  <option value="HELPDESK">Helpdesk</option>
+                  <option value="ADMIN">Admin</option>
+                </select>
+              </div>
+              
+              <div className="flex gap-3 pt-3 border-t border-slate-100">
+                <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 py-3 px-5 border border-slate-200 hover:bg-slate-50 rounded-xl text-sm sm:text-base font-bold text-slate-700 transition-all cursor-pointer">Batal</button>
+                <button type="submit" className="flex-1 py-3 px-5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md shadow-sky-500/20 cursor-pointer">Tambah User</button>
+              </div>
+            </form>
           </div>
         </div>
       )}

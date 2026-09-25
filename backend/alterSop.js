@@ -1,0 +1,1 @@
+const { Client } = require('pg'); const client = new Client({ connectionString: 'postgresql://postgres:helpdeskyareu@localhost:5432/helpdesk-kominfo?schema=public' }); client.connect().then(async () => { await client.query('ALTER TABLE services ALTER COLUMN sop_link TYPE TEXT'); console.log('ALTERED SOP'); }).catch(e=>console.log(e)).finally(()=>client.end());

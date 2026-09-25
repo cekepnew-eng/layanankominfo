@@ -97,7 +97,7 @@ exports.getCaptcha = (req, res) => {
 };
 
 exports.login = async (req, res) => {
-  const { email, password, captchaToken, captchaAnswer } = req.body;
+  const { email, password, captchaToken, captchaAnswer, trustedDeviceToken } = req.body;
   try {
     // Validate Captcha
     if (!captchaToken || !captchaAnswer) {
@@ -199,11 +199,46 @@ exports.login = async (req, res) => {
       }
     }
 
-    if (!isMatch || !user) {
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Anda belum punya akun silahkan daftar terlebih dahulu' });
+    }
+
+    if (!isMatch) {
+      return res.status(401).json({ success: false, message: 'Email atau password salah.' });
     }
 
     if (user.is_two_factor_enabled) {
+      // Check trusted device token
+      let isTrustedDevice = false;
+      if (trustedDeviceToken) {
+        try {
+          const trustedDecoded = jwt.verify(trustedDeviceToken, JWT_SECRET);
+          if (trustedDecoded.id === user.id && trustedDecoded.purpose === 'trusted_device') {
+            const resetAt = user.two_factor_reset_at ? new Date(user.two_factor_reset_at).getTime() / 1000 : 0;
+            if (trustedDecoded.iat > resetAt) {
+              isTrustedDevice = true;
+            }
+          }
+        } catch (err) {}
+      }
+
+      if (isTrustedDevice) {
+        const primaryRole = getPrimaryRole(user.roles);
+        const token = jwt.sign(
+          { id: user.id, email: user.email, role: primaryRole, roles: user.roles, name: user.full_name, department: user.department },
+          JWT_SECRET,
+          { expiresIn: '24h' }
+        );
+        return res.json({
+          success: true,
+          token,
+          user: {
+            id: user.id, email: user.email, name: user.full_name, role: primaryRole,
+            roles: user.roles, department: user.department, teams: await getUserTeams(user.id)
+          }
+        });
+      }
+
       const tempToken = jwt.sign(
         { id: user.id, email: user.email, purpose: '2fa' },
         JWT_SECRET,
@@ -393,7 +428,7 @@ exports.verifySetup2FA = async (req, res) => {
 };
 
 exports.login2FA = async (req, res) => {
-  const { tempToken, otp } = req.body;
+  const { tempToken, otp, trustDevice } = req.body;
   
   if (!tempToken || typeof tempToken !== 'string') {
     return res.status(401).json({ success: false, message: 'Temporary token is required' });
@@ -467,9 +502,19 @@ exports.login2FA = async (req, res) => {
       { expiresIn: '24h' }
     );
 
+    let trustedDeviceToken = null;
+    if (trustDevice) {
+      trustedDeviceToken = jwt.sign(
+        { id: user.id, purpose: 'trusted_device' },
+        JWT_SECRET,
+        { expiresIn: '30d' }
+      );
+    }
+
     res.json({
       success: true,
       token,
+      trustedDeviceToken,
       user: {
         id: user.id,
         email: user.email,

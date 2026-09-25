@@ -1,0 +1,1 @@
+const { Client } = require('pg'); const client = new Client({ connectionString: 'postgresql://postgres:helpdeskyareu@localhost:5432/helpdesk-kominfo?schema=public' }); client.connect().then(async () => { await client.query('ALTER TABLE services ADD COLUMN required_docs TEXT DEFAULT \'\''); console.log('ALTERED'); }).catch(e=>console.log(e)).finally(()=>client.end());

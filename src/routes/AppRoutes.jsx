@@ -12,14 +12,12 @@ import { ManageRatings } from '../pages/dashboard/ManageRatings';
 import { TaskList } from '../pages/dashboard/TaskList';
 import { CreateTicket } from '../pages/dashboard/CreateTicket';
 import { MyTickets } from '../pages/dashboard/MyTickets';
-import { TicketHistory } from '../pages/dashboard/TicketHistory';
+import { TicketHistory } from '../pages/dashboard/ManageTickets';
 import { Profile } from '../pages/dashboard/Profile';
 import { ProtectedRoute } from './ProtectedRoute';
 import { useAuth } from '../context/AuthContext';
 
-const HistoryWrapper = () => {
-  return <TicketHistory />;
-};
+// HistoryWrapper removed as we use TicketHistory for both modes
 
 export const AppRoutes = () => {
   return (
@@ -83,7 +81,16 @@ export const AppRoutes = () => {
           path="history" 
           element={
             <ProtectedRoute allowedRoles={['ADMIN', 'HELPDESK', 'PEGAWAI', 'USER', 'MASYARAKAT']}>
-              <HistoryWrapper />
+              <TicketHistory mode="active" />
+            </ProtectedRoute>
+          } 
+        />
+
+        <Route 
+          path="ticket-history" 
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN', 'HELPDESK', 'PEGAWAI', 'USER', 'MASYARAKAT']}>
+              <TicketHistory mode="history" />
             </ProtectedRoute>
           } 
         />

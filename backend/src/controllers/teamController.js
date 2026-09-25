@@ -52,12 +52,18 @@ exports.createTeam = async (req, res) => {
       return null;
     }));
 
-      if (validMemberIds.length > 0) {
-        await client.query('DELETE FROM team_members WHERE team_id = $1', [teamId]);
-        for (const userId of validMemberIds) {
-          await client.query(
+    const validMemberIds = memberIds.filter(Boolean);
+    if (validMemberIds.length > 0) {
+      await client.query('DELETE FROM team_members WHERE team_id = $1', [teamId]);
+      for (const userId of validMemberIds) {
+        await client.query(
           'INSERT INTO team_members (team_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
           [teamId, userId]
+        );
+        // Grant PEGAWAI role
+        await client.query(
+          "INSERT INTO user_roles (user_id, role_id) SELECT $1, id FROM roles WHERE name = 'PEGAWAI' ON CONFLICT DO NOTHING",
+          [userId]
         );
       }
     }
@@ -100,6 +106,11 @@ exports.updateTeam = async (req, res) => {
       await client.query(
         'INSERT INTO team_members (team_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
         [id, userId]
+      );
+      // Grant PEGAWAI role
+      await client.query(
+        "INSERT INTO user_roles (user_id, role_id) SELECT $1, id FROM roles WHERE name = 'PEGAWAI' ON CONFLICT DO NOTHING",
+        [userId]
       );
     }
 

@@ -5,15 +5,15 @@ import { TicketDetailModal } from '../../components/TicketDetailModal';
 import { SkmModal } from '../../components/SkmModal';
 import { api } from '../../services/api';
 import { ActionModal } from '../../components/ActionModal';
-import { 
-  FileText, 
-  Search, 
-  ChevronRight, 
-  Star, 
-  AlertCircle, 
-  Clock, 
-  CheckCircle2, 
-  XCircle, 
+import {
+  FileText,
+  Search,
+  ChevronRight,
+  Star,
+  AlertCircle,
+  Clock,
+  CheckCircle2,
+  XCircle,
   Eye,
   Upload,
   Check,
@@ -37,26 +37,26 @@ const calculateTargetDate = (dateStr, serviceName) => {
     'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
   ];
-  
+
   const parts = dateStr.split(' ');
   if (parts.length < 3) return dateStr;
   const day = parseInt(parts[0], 10);
   const monthName = parts[1];
   const year = parseInt(parts[2], 10);
-  
+
   const monthIdx = months[monthName];
   if (monthIdx === undefined) return dateStr;
-  
+
   const date = new Date(year, monthIdx, day);
-  
+
   const slaDays = getServiceSlaDays(serviceName);
-  
+
   date.setDate(date.getDate() + slaDays);
-  
+
   const targetDay = date.getDate();
   const targetMonth = monthsIndo[date.getMonth()];
   const targetYear = date.getFullYear();
-  
+
   return `${targetDay} ${targetMonth} ${targetYear}`;
 };
 
@@ -72,7 +72,7 @@ const getTargetShortDate = (targetDateStr) => {
   return `${day} ${monthShort}`;
 };
 
-export const TicketHistory = () => {
+export const TicketHistory = ({ mode = 'active' }) => {
   const { user } = useAuth();
   const [tickets, setTickets] = useState([]);
   const [teams, setTeams] = useState([]);
@@ -91,29 +91,30 @@ export const TicketHistory = () => {
       } else if (user.role === 'ADMIN') {
         res = await api.getAdminTickets();
       }
-      
+
       if (res && res.data) {
         // Map backend names to frontend expected names
-        const mapped = res.data.map(t => ({
-          ...t,
-          ticket_number: t.ticket_number,
-          id: t.ticket_number || t.id,
-          uuid: t.id,
-          status: t.status_name === 'PENDING' ? 'Verifikasi' 
-                : t.status_name === 'VERIFIED' ? 'Menunggu Validasi'
+        const mapped = res.data
+          .map(t => ({
+            ...t,
+            ticket_number: t.ticket_number,
+            id: t.ticket_number || t.id,
+            uuid: t.id,
+            status: t.status_name === 'PENDING' ? 'Verifikasi'
+              : t.status_name === 'VERIFIED' ? 'Menunggu Validasi'
                 : t.status_name === 'ASSIGNED' ? 'Diproses'
-                : t.status_name === 'IN_PROGRESS' ? 'Diproses'
-                : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Selesai'
-                : t.status_name === 'COMPLETED' ? 'Selesai'
-                : t.status_name,
-          title: `Pengajuan Layanan ${t.service_name}`,
-          service: t.service_name,
-          opd: t.pemohon || 'OPD',
-          date: new Date(t.created_at).toLocaleDateString('id-ID'),
-          requestType: 'Baru',
-          slaDuration: 7,
-          remainingDays: 7
-        }));
+                  : t.status_name === 'IN_PROGRESS' ? 'Diproses'
+                    : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Selesai'
+                      : t.status_name === 'COMPLETED' ? 'Selesai & Dinilai'
+                        : t.status_name,
+            title: `Pengajuan Layanan ${t.service_name}`,
+            service: t.service_name,
+            opd: (t.opd && t.opd !== 'OPD') ? t.opd : 'Dinas Komunikasi dan Informatika',
+            date: new Date(t.created_at).toLocaleDateString('id-ID'),
+            requestType: 'Baru',
+            slaDuration: 7,
+            remainingDays: 7
+          }));
         setTickets(mapped);
       }
     } catch (e) {
@@ -151,11 +152,11 @@ export const TicketHistory = () => {
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [ratings, setRatings] = useState([]);
 
-  const [rateOverall, setRateOverall] = useState(5);
   const [rateSpeed, setRateSpeed] = useState(5);
   const [rateResult, setRateResult] = useState(5);
   const [rateComm, setRateComm] = useState(5);
   const [rateQuality, setRateQuality] = useState(5);
+  const rateOverall = Math.round((rateSpeed + rateResult + rateComm + rateQuality) / 4);
   const [rateComment, setRateComment] = useState('');
 
   const [tempProgress, setTempProgress] = useState(0);
@@ -197,31 +198,40 @@ export const TicketHistory = () => {
       setTempProgress(selectedTicket.progress || 0);
       setProgressNote('');
       setTempRemainingDays(selectedTicket.remainingDays !== undefined ? selectedTicket.remainingDays : 3);
-      setIsFinished(selectedTicket.status === 'Selesai');
+      setIsFinished(selectedTicket.status.includes('Selesai'));
       setFileName('');
       setShowInlineRating(false);
     }
   }, [selectedTicket?.id]);
 
-  const handleSelectTicket = (t) => {
-    setSelectedTicket(t);
+  const handleSelectTicket = async (t) => {
+    let ticketWithLogs = { ...t };
+    try {
+      const res = await api.getHistory(t.uuid || t.id);
+      if (res.success) {
+        // Reverse so newest is first, if backend sends ASC
+        ticketWithLogs.logs = res.data.reverse().map(log => ({
+          date: log.created_at,
+          text: log.log_description
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to fetch history', err);
+    }
+    setSelectedTicket(ticketWithLogs);
     document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const executeUpdateProgress = async (ticketId) => {
-    const autoLogText = isFinished
-      ? (progressNote.trim() || (fileName ? 'Pekerjaan teknis selesai dikerjakan 100% oleh Pegawai dan berkas BAST telah diunggah.' : 'Pekerjaan teknis selesai dikerjakan 100% oleh Pegawai.'))
-      : (progressNote.trim() || 'Pekerjaan teknis sedang diproses dan dikerjakan oleh Pegawai Tim Pelaksana.');
-
     try {
-      await api.updateProgress(ticketId, { progress: isFinished ? 100 : tempProgress });
+      await api.updateProgress(ticketId, { progress: isFinished ? 100 : tempProgress, note: progressNote.trim() });
       loadTickets(); // Refresh from DB
       setProgressNote('');
       setModalConfig({
         isOpen: true,
         type: 'success',
         title: isFinished ? 'Tugas Berhasil Diselesaikan' : 'Progres Berhasil Diperbarui',
-        message: isFinished 
+        message: isFinished
           ? (fileName ? 'Pekerjaan teknis telah selesai 100% dan berkas BAST telah diunggah. Pemohon dapat mengisi survei SKM.' : 'Pekerjaan teknis telah selesai 100%! Pemohon dapat mengisi survei SKM.')
           : 'Catatan progres pekerjaan berhasil disimpan ke dalam log riwayat tiket.',
         confirmText: 'Selesai & Tutup',
@@ -276,7 +286,7 @@ export const TicketHistory = () => {
         setRatings([newRating, ...ratings]);
       }
 
-      setRateOverall(5);
+
       setRateSpeed(5);
       setRateResult(5);
       setRateComm(5);
@@ -300,7 +310,7 @@ export const TicketHistory = () => {
     try {
       const teamObj = teams.find(t => t.name === selectedTeam);
       const team_id = teamObj ? teamObj.id : null;
-      
+
       await api.verifyTicket(ticketUuid);
       await api.assignTicket(ticketUuid, { team_id, user_id: null });
       loadTickets(); // Refresh from DB
@@ -393,12 +403,15 @@ export const TicketHistory = () => {
   };
 
   const getRoleTabs = () => {
+    if (mode === 'history') {
+      return [
+        { id: 'semua', label: 'Semua Tiket Selesai' }
+      ];
+    }
     return [
       { id: 'semua', label: 'Semua' },
-      { id: 'proses', label: 'Dalam Proses' },
-      { id: 'selesai', label: 'Belum Dinilai / SKM' },
-      { id: 'dirating', label: 'Selesai & Dinilai' },
-      { id: 'pending', label: 'Pending' }
+      { id: 'pending', label: 'Menunggu Verifikasi' },
+      { id: 'proses', label: 'Sedang Diproses' }
     ];
   };
 
@@ -410,7 +423,7 @@ export const TicketHistory = () => {
     if (newTabs.length > 0) {
       setActiveTab(newTabs[0].id);
     }
-  }, [user?.role]);
+  }, [user?.role, mode]);
 
   const getUserTeams = (u) => {
     if (!u) return [];
@@ -452,34 +465,29 @@ export const TicketHistory = () => {
     return 'Tim Support & Helpdesk Utama';
   };
 
+  const getBaseTickets = () => {
+    if (!tickets) return [];
+    if (mode === 'history') {
+      return tickets.filter(t => t.status.includes('Selesai') || t.status === 'Menunggu Konfirmasi User');
+    }
+    return tickets.filter(t => !t.status.includes('Selesai') && t.status !== 'Menunggu Konfirmasi User');
+  };
+
   const getTabCount = (tabId) => {
     if (!user) return 0;
-    let base = tickets || [];
-    
-    if (tabId === 'proses') return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status === 'Diproses').length;
-    if (tabId === 'selesai') return base.filter(t => t.status === 'Selesai' && !t.rating).length;
-    if (tabId === 'dirating') return base.filter(t => t.status === 'Selesai' && t.rating).length;
-    if (tabId === 'pending') return base.filter(t => t.status === 'Pending').length;
+    let base = getBaseTickets();
+    if (tabId === 'pending') return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi').length;
+    if (tabId === 'proses') return base.filter(t => t.status === 'Diproses').length;
+    if (tabId === 'selesai') return base.filter(t => t.status.includes('Selesai') || t.status === 'Menunggu Konfirmasi User').length;
     return base.length;
   };
 
   const getFilteredTickets = () => {
     if (!user) return [];
-    
-    let base = tickets || [];
-
-    if (activeTab === 'proses') {
-      return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status === 'Diproses');
-    }
-    if (activeTab === 'selesai') {
-      return base.filter(t => t.status === 'Selesai' && !t.rating);
-    }
-    if (activeTab === 'dirating') {
-      return base.filter(t => t.status === 'Selesai' && t.rating);
-    }
-    if (activeTab === 'pending') {
-      return base.filter(t => t.status === 'Pending');
-    }
+    let base = getBaseTickets();
+    if (activeTab === 'pending') return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi');
+    if (activeTab === 'proses') return base.filter(t => t.status === 'Diproses');
+    if (activeTab === 'selesai') return base.filter(t => t.status.includes('Selesai') || t.status === 'Menunggu Konfirmasi User');
     return base;
   };
 
@@ -501,16 +509,13 @@ export const TicketHistory = () => {
     <div className="space-y-8 font-sans text-left">
       <div>
         <h2 className="text-3xl font-black text-slate-900 tracking-tight">
-          {(user?.role === 'USER' || user?.role === 'MASYARAKAT') ? 'Tiket Saya' :
-           user?.role === 'HELPDESK' ? 'Kelola Tiket SPBE' :
-           user?.role === 'PEGAWAI' ? 'Tiket Pekerjaan TIK' :
-           'Daftar Tiket SPBE'}
+          {mode === 'history' ? 'Riwayat Tiket Selesai' :
+            (user?.role === 'USER' || user?.role === 'MASYARAKAT') ? 'Kelola Pengajuan Tiket' :
+              'Kelola Tiket SPBE'}
         </h2>
         <p className="text-slate-500 text-base leading-relaxed mt-1.5">
-          {(user?.role === 'USER' || user?.role === 'MASYARAKAT') && 'Pantau seluruh pengajuan tiket instansi Anda, hasil penyelesaian, dan penilaian ulasan yang telah dikirimkan.'}
-          {user?.role === 'HELPDESK' && 'Daftar riwayat validasi tiket, baik yang disetujui untuk diteruskan ke tim pelaksana maupun yang ditolak.'}
-          {user?.role === 'PEGAWAI' && 'Daftar riwayat tugas pengerjaan teknis yang didelegasikan ke tim Anda beserta evaluasi rating dari OPD.'}
-          {user?.role === 'ADMIN' && 'Daftar seluruh riwayat pengajuan tiket layanan SPBE dari seluruh OPD di Kota Bogor.'}
+          {mode === 'history' ? 'Daftar riwayat seluruh tiket layanan SPBE yang telah selesai dikerjakan dan dinilai.' :
+            'Pantau dan kelola tiket pengajuan layanan SPBE yang saat ini sedang berjalan.'}
         </p>
       </div>
 
@@ -525,16 +530,14 @@ export const TicketHistory = () => {
                 setActiveTab(tab.id);
                 setSelectedTicket(null);
               }}
-              className={`px-5 py-3 border-b-2 font-bold text-sm transition-all whitespace-nowrap -mb-px flex items-center gap-2 ${
-                isActive 
-                  ? 'border-sky-600 text-sky-600 bg-sky-50/50 rounded-t-lg' 
+              className={`px-5 py-3 border-b-2 font-bold text-sm transition-all whitespace-nowrap -mb-px flex items-center gap-2 ${isActive
+                  ? 'border-sky-600 text-sky-600 bg-sky-50/50 rounded-t-lg'
                   : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50/50'
-              }`}
+                }`}
             >
               <span>{tab.label}</span>
-              <span className={`px-2 py-0.5 rounded-full text-xs font-black transition-all ${
-                isActive ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-500'
-              }`}>
+              <span className={`px-2 py-0.5 rounded-full text-xs font-black transition-all ${isActive ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-500'
+                }`}>
                 {count}
               </span>
             </button>
@@ -545,7 +548,7 @@ export const TicketHistory = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         <div className="lg:col-span-7 space-y-4">
           {filteredTickets.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-500">
+            <div className="glass-card rounded-3xl border border-white/60 p-12 text-center text-slate-500 shadow-sm">
               <AlertCircle className="w-10 h-10 text-slate-300 mx-auto mb-3" />
               <p className="font-bold text-base">Tidak ada tiket di kategori ini.</p>
             </div>
@@ -557,11 +560,10 @@ export const TicketHistory = () => {
                   <div
                     key={t.id}
                     onClick={() => handleSelectTicket(t)}
-                    className={`p-6 rounded-2xl border transition-all flex flex-col md:flex-row justify-between items-start md:items-center gap-4 cursor-pointer relative ${
-                      isSelected 
-                        ? 'border-sky-500 bg-sky-50/20 ring-1 ring-sky-500/30' 
-                        : 'border-slate-200 bg-white hover:bg-slate-50/50 hover:border-slate-300'
-                    }`}
+                    className={`p-6 rounded-3xl border transition-all flex flex-col md:flex-row justify-between items-start md:items-center gap-4 cursor-pointer relative shadow-sm ${isSelected
+                        ? 'border-sky-400 bg-sky-50/70 ring-2 ring-sky-300/30'
+                        : 'border-white/60 glass-card hover:bg-white/80 hover:border-white'
+                      }`}
                   >
                     <div className="space-y-2 flex-1">
                       <div className="flex items-center gap-2">
@@ -595,20 +597,19 @@ export const TicketHistory = () => {
                           <span className="text-amber-600 font-semibold">Tertangguh (Menunggu Revisi)</span>
                         ) : (
                           <span className={(t.slaRemainingDays !== undefined ? t.slaRemainingDays : t.remainingDays) < 0 ? 'text-rose-600 font-extrabold' : 'text-emerald-600 font-extrabold'}>
-                            {(t.slaRemainingDays !== undefined ? t.slaRemainingDays : t.remainingDays) < 0 
-                              ? `Terlewat ${Math.abs(t.slaRemainingDays !== undefined ? t.slaRemainingDays : t.remainingDays)} Hari` 
+                            {(t.slaRemainingDays !== undefined ? t.slaRemainingDays : t.remainingDays) < 0
+                              ? `Terlewat ${Math.abs(t.slaRemainingDays !== undefined ? t.slaRemainingDays : t.remainingDays)} Hari`
                               : `Sisa ${t.slaRemainingDays !== undefined ? t.slaRemainingDays : t.remainingDays} Hari`}
                           </span>
                         )}
                       </div>
                     </div>
                     <div className="flex md:flex-col items-center md:items-end gap-3 self-stretch md:self-auto justify-between shrink-0">
-                      <span className={`px-2.5 py-1 rounded text-xs font-extrabold uppercase tracking-wider ${
-                        t.status === 'Selesai' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                        t.status === 'Pending' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
-                        t.status === 'Diproses' ? 'bg-sky-50 text-sky-700 border border-sky-100' :
-                        'bg-slate-100 text-slate-600 border border-slate-200'
-                      }`}>
+                      <span className={`px-2.5 py-1 rounded text-xs font-extrabold uppercase tracking-wider ${t.status.includes('Selesai') ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                          t.status === 'Pending' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
+                            t.status === 'Diproses' ? 'bg-sky-50 text-sky-700 border border-sky-100' :
+                              'bg-slate-100 text-slate-600 border border-slate-200'
+                        }`}>
                         {t.status}
                       </span>
                       <button className="flex items-center gap-1.5 px-4 py-2 border border-slate-200 rounded-lg text-sm font-bold text-slate-650 hover:bg-slate-50 transition-all justify-center self-stretch md:self-auto">
@@ -625,16 +626,15 @@ export const TicketHistory = () => {
 
         <div className="lg:col-span-5">
           {selectedTicket ? (
-            <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-6 sticky top-24 shadow-sm">
+            <div className="glass-card rounded-3xl border border-white/60 p-6 space-y-6 sticky top-24 shadow-sm">
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
                   <span className="text-xs font-bold text-sky-655 uppercase tracking-widest bg-sky-50 px-2 py-0.5 rounded inline-block">{selectedTicket.id}</span>
-                  <span className={`px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${
-                    selectedTicket.status === 'Selesai' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                    selectedTicket.status === 'Pending' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
-                    selectedTicket.status === 'Diproses' ? 'bg-sky-50 text-sky-700 border border-sky-100' :
-                    'bg-slate-100 text-slate-600'
-                  }`}>
+                  <span className={`px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${selectedTicket.status.includes('Selesai') ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                      selectedTicket.status === 'Pending' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
+                        selectedTicket.status === 'Diproses' ? 'bg-sky-50 text-sky-700 border border-sky-100' :
+                          'bg-slate-100 text-slate-600'
+                    }`}>
                     {selectedTicket.status}
                   </span>
                 </div>
@@ -660,13 +660,13 @@ export const TicketHistory = () => {
                 <div>
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Status SLA</span>
                   <p className={`text-sm font-black mt-0.5 ${(selectedTicket.status === 'Diproses' && selectedTicket.slaRemainingDays < 0) ? 'text-rose-600' : 'text-slate-700'}`}>
-                    {selectedTicket.status === 'Verifikasi' 
-                      ? 'Belum Berjalan (Menunggu Verifikasi)' 
+                    {selectedTicket.status === 'Verifikasi'
+                      ? 'Belum Berjalan (Menunggu Verifikasi)'
                       : selectedTicket.status === 'Pending'
-                      ? 'Tertangguh (Menunggu Revisi)'
-                      : (selectedTicket.slaRemainingDays !== undefined ? selectedTicket.slaRemainingDays : selectedTicket.remainingDays) < 0 
-                      ? `Terlewat ${Math.abs(selectedTicket.slaRemainingDays !== undefined ? selectedTicket.slaRemainingDays : selectedTicket.remainingDays)} Hari` 
-                      : `${selectedTicket.slaRemainingDays !== undefined ? selectedTicket.slaRemainingDays : selectedTicket.remainingDays} Hari Tersisa`}
+                        ? 'Tertangguh (Menunggu Revisi)'
+                        : (selectedTicket.slaRemainingDays !== undefined ? selectedTicket.slaRemainingDays : selectedTicket.remainingDays) < 0
+                          ? `Terlewat ${Math.abs(selectedTicket.slaRemainingDays !== undefined ? selectedTicket.slaRemainingDays : selectedTicket.remainingDays)} Hari`
+                          : `${selectedTicket.slaRemainingDays !== undefined ? selectedTicket.slaRemainingDays : selectedTicket.remainingDays} Hari Tersisa`}
                   </p>
                 </div>
               </div>
@@ -717,103 +717,103 @@ export const TicketHistory = () => {
 
 
 
-              {((user?.role === 'HELPDESK' && (selectedTicket.status === 'Verifikasi' || selectedTicket.status === 'Pending')) || 
+              {((user?.role === 'HELPDESK' && (selectedTicket.status === 'Verifikasi' || selectedTicket.status === 'Pending')) ||
                 (user?.role === 'ADMIN' && selectedTicket.status === 'Verifikasi')) && (
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4 text-left">
-                  <div className="flex justify-between items-center">
-                    <h4 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider">
-                      {selectedTicket.status === 'Pending' ? 'Tindakan Validasi Tiket Pending' : (user?.role === 'ADMIN' ? 'Tindakan Penugasan Tim' : 'Tindakan Validasi Helpdesk')}
-                    </h4>
-                    {selectedTicket.status === 'Pending' && (
-                      <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-black uppercase tracking-wider">
-                        Status: Pending
-                      </span>
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4 text-left">
+                    <div className="flex justify-between items-center">
+                      <h4 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider">
+                        {selectedTicket.status === 'Pending' ? 'Tindakan Validasi Tiket Pending' : (user?.role === 'ADMIN' ? 'Tindakan Penugasan Tim' : 'Tindakan Validasi Helpdesk')}
+                      </h4>
+                      {selectedTicket.status === 'Pending' && (
+                        <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-black uppercase tracking-wider">
+                          Status: Pending
+                        </span>
+                      )}
+                    </div>
+
+                    {selectedTicket.status === 'Pending' && selectedTicket.logs && selectedTicket.logs.length > 0 && (
+                      <div className="p-3 bg-amber-50/80 border border-amber-200/80 rounded-xl text-xs space-y-1">
+                        <span className="font-bold text-amber-900 block uppercase tracking-wider">Catatan Riwayat Terakhir:</span>
+                        <p className="text-slate-700 italic">
+                          "{selectedTicket.logs[0]?.text}"
+                        </p>
+                      </div>
+                    )}
+
+                    {selectedTicket.revisionNote && (
+                      <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-1">
+                        <span className="font-extrabold text-amber-900 block uppercase tracking-wider">Catatan Perbaikan dari Pemohon:</span>
+                        <p className="text-slate-800 font-medium italic">
+                          "{selectedTicket.revisionNote}"
+                        </p>
+                      </div>
+                    )}
+
+                    {!showRejectForm ? (
+                      <div className="space-y-4">
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Tugaskan ke Tim Pelaksana</label>
+                          <select
+                            value={selectedTeam}
+                            onChange={(e) => setSelectedTeam(e.target.value)}
+                            className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/25"
+                          >
+                            {teams && teams.map(t => (
+                              <option key={t.id} value={t.name}>{t.name}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="flex gap-3">
+                          <button
+                            onClick={() => handleApprove(selectedTicket.uuid)}
+                            className="flex-1 px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm font-bold transition-all cursor-pointer"
+                          >
+                            {selectedTicket.status === 'Pending' ? 'Setujui & Lanjutkan Tiket' : 'Process'}
+                          </button>
+                          {user?.role === 'HELPDESK' && (
+                            <button
+                              onClick={() => setShowRejectForm(true)}
+                              className="px-4 py-2.5 border border-amber-200 hover:bg-amber-50 hover:border-amber-300 text-amber-600 rounded-xl text-sm font-bold transition-all cursor-pointer"
+                            >
+                              {selectedTicket.status === 'Pending' ? 'Perbarui Alasan Pending' : 'Pending'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Alasan Penangguhan / Pending</label>
+                          <textarea
+                            value={rejectReason}
+                            onChange={(e) => setRejectReason(e.target.value)}
+                            placeholder="Tuliskan alasan penangguhan..."
+                            className="w-full h-24 px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-550/20 focus:border-amber-500 resize-none"
+                          />
+                        </div>
+
+                        <div className="flex gap-3">
+                          <button
+                            onClick={() => handleReject(selectedTicket.uuid)}
+                            className="flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-bold transition-all"
+                          >
+                            Tangguhkan Tiket
+                          </button>
+                          <button
+                            onClick={() => {
+                              setShowRejectForm(false);
+                              setRejectReason('');
+                            }}
+                            className="px-4 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-650 rounded-xl text-sm font-bold transition-all"
+                          >
+                            Batal
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
-
-                  {selectedTicket.status === 'Pending' && selectedTicket.logs && selectedTicket.logs.length > 0 && (
-                    <div className="p-3 bg-amber-50/80 border border-amber-200/80 rounded-xl text-xs space-y-1">
-                      <span className="font-bold text-amber-900 block uppercase tracking-wider">Catatan Riwayat Terakhir:</span>
-                      <p className="text-slate-700 italic">
-                        "{selectedTicket.logs[0]?.text}"
-                      </p>
-                    </div>
-                  )}
-
-                  {selectedTicket.revisionNote && (
-                    <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-1">
-                      <span className="font-extrabold text-amber-900 block uppercase tracking-wider">Catatan Perbaikan dari Pemohon:</span>
-                      <p className="text-slate-800 font-medium italic">
-                        "{selectedTicket.revisionNote}"
-                      </p>
-                    </div>
-                  )}
-                  
-                  {!showRejectForm ? (
-                    <div className="space-y-4">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Tugaskan ke Tim Pelaksana</label>
-                        <select 
-                          value={selectedTeam} 
-                          onChange={(e) => setSelectedTeam(e.target.value)}
-                          className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/25"
-                        >
-                          {teams && teams.map(t => (
-                            <option key={t.id} value={t.name}>{t.name}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="flex gap-3">
-                        <button 
-                          onClick={() => handleApprove(selectedTicket.uuid)}
-                          className="flex-1 px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm font-bold transition-all cursor-pointer"
-                        >
-                          {selectedTicket.status === 'Pending' ? 'Setujui & Lanjutkan Tiket' : 'Setujui & Tugaskan'}
-                        </button>
-                        {user?.role === 'HELPDESK' && (
-                          <button 
-                            onClick={() => setShowRejectForm(true)}
-                            className="px-4 py-2.5 border border-amber-200 hover:bg-amber-50 hover:border-amber-300 text-amber-600 rounded-xl text-sm font-bold transition-all cursor-pointer"
-                          >
-                            {selectedTicket.status === 'Pending' ? 'Perbarui Alasan Pending' : 'Pending'}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Alasan Penangguhan / Pending</label>
-                        <textarea 
-                          value={rejectReason}
-                          onChange={(e) => setRejectReason(e.target.value)}
-                          placeholder="Tuliskan alasan penangguhan..."
-                          className="w-full h-24 px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-550/20 focus:border-amber-500 resize-none"
-                        />
-                      </div>
-
-                      <div className="flex gap-3">
-                        <button 
-                          onClick={() => handleReject(selectedTicket.uuid)}
-                          className="flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-bold transition-all"
-                        >
-                          Tangguhkan Tiket
-                        </button>
-                        <button 
-                          onClick={() => {
-                            setShowRejectForm(false);
-                            setRejectReason('');
-                          }}
-                          className="px-4 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-650 rounded-xl text-sm font-bold transition-all"
-                        >
-                          Batal
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+                )}
 
               {user?.role === 'PEGAWAI' && selectedTicket.status === 'Pending' && (
                 <div className="bg-rose-50/50 border border-rose-200 rounded-2xl p-5 space-y-4 text-left animate-in fade-in duration-200">
@@ -822,7 +822,7 @@ export const TicketHistory = () => {
                     <div className="text-sm">
                       <p className="font-extrabold text-rose-900">Pekerjaan Ditangguhkan / Disanggah</p>
                       <p className="mt-1 text-slate-650 leading-relaxed font-semibold">
-                        Catatan penangguhan: 
+                        Catatan penangguhan:
                         <span className="italic text-slate-800 block mt-1 p-2.5 bg-white rounded-xl border border-rose-100/60 font-medium">
                           "{selectedTicket.logs?.[0]?.text || 'Tidak ada catatan'}"
                         </span>
@@ -877,7 +877,7 @@ export const TicketHistory = () => {
               {user?.role === 'PEGAWAI' && selectedTicket.status === 'Diproses' && (
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4 text-left">
                   <h4 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider">Perbarui Status Pekerjaan</h4>
-                  
+
                   <div className="flex items-center gap-3 p-3 bg-white border border-slate-200/60 rounded-xl">
                     <input
                       type="checkbox"
@@ -896,7 +896,7 @@ export const TicketHistory = () => {
 
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Catatan Tambahan (Opsional - Terisi Otomatis)</label>
-                    <textarea 
+                    <textarea
                       value={progressNote}
                       onChange={(e) => setProgressNote(e.target.value)}
                       placeholder="Opsional: sistem otomatis mencatat log progres pengerjaan..."
@@ -964,7 +964,7 @@ export const TicketHistory = () => {
                     </div>
                   )}
 
-                  <button 
+                  <button
                     onClick={() => handleUpdateProgress(selectedTicket.uuid)}
                     className="w-full px-4 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white rounded-xl text-sm font-bold transition-all shadow-sm shadow-sky-500/10"
                   >
@@ -979,11 +979,11 @@ export const TicketHistory = () => {
                     <Star className="w-5 h-5 fill-indigo-100 text-indigo-650" />
                     <h4 className="font-extrabold text-sm uppercase tracking-wider">Berikan Penilaian & Ulasan</h4>
                   </div>
-                  
+
                   <p className="text-sm text-slate-500 leading-relaxed">Pekerjaan fisik telah selesai 100%. Silakan berikan konfirmasi dan ulasan rating untuk kualitas pelayanan kami.</p>
-                  
+
                   {!showInlineRating ? (
-                    <button 
+                    <button
                       onClick={() => setShowSkmModal(true)}
                       className="w-full px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-indigo-500/20 cursor-pointer"
                     >
@@ -992,98 +992,98 @@ export const TicketHistory = () => {
                   ) : (
                     <>
                       <div className="flex justify-between items-center bg-white border border-indigo-100 rounded-xl p-4 shadow-sm">
-                    <div className="space-y-0.5 text-left">
-                      <span className="text-slate-700 font-extrabold text-xs uppercase tracking-wider block">Kualitas Pelayanan (Overall)</span>
-                      <span className="text-[10px] text-slate-400 font-semibold block">Penilaian umum kinerja pelayanan SPBE</span>
-                    </div>
-                    <div className="flex gap-1">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <button 
-                          key={star} 
-                          onClick={() => setRateOverall(star)}
-                          className="focus:outline-none transition-all hover:scale-110"
-                        >
-                          <Star className={`w-5 h-5 ${star <= rateOverall ? 'fill-amber-500 text-amber-500' : 'text-slate-200'}`} />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                        <div className="space-y-0.5 text-left">
+                          <span className="text-slate-700 font-extrabold text-xs uppercase tracking-wider block">Kualitas Pelayanan (Overall)</span>
+                          <span className="text-[10px] text-slate-400 font-semibold block">Penilaian umum kinerja pelayanan SPBE</span>
+                        </div>
+                        <div className="flex gap-1">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <button
+                              key={star}
+                              type="button"
+                              className="focus:outline-none transition-all cursor-default"
+                            >
+                              <Star className={`w-5 h-5 ${star <= rateOverall ? 'fill-amber-500 text-amber-500' : 'text-slate-200'}`} />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
 
-                  <div className="space-y-3 bg-white border border-indigo-50 rounded-xl p-4 shadow-sm">
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-600 font-bold text-xs uppercase tracking-wider">Kecepatan Layanan</span>
-                      <div className="flex gap-1">
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <button 
-                            key={star} 
-                            onClick={() => setRateSpeed(star)}
-                            className="focus:outline-none transition-all hover:scale-110"
-                          >
-                            <Star className={`w-5 h-5 ${star <= rateSpeed ? 'fill-amber-500 text-amber-500' : 'text-slate-205'}`} />
-                          </button>
-                        ))}
+                      <div className="space-y-3 bg-white border border-indigo-50 rounded-xl p-4 shadow-sm">
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-600 font-bold text-xs uppercase tracking-wider">Kecepatan Layanan</span>
+                          <div className="flex gap-1">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <button
+                                key={star}
+                                onClick={() => setRateSpeed(star)}
+                                className="focus:outline-none transition-all hover:scale-110"
+                              >
+                                <Star className={`w-5 h-5 ${star <= rateSpeed ? 'fill-amber-500 text-amber-500' : 'text-slate-205'}`} />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-600 font-bold text-xs uppercase tracking-wider">Kesesuaian Hasil</span>
+                          <div className="flex gap-1">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <button
+                                key={star}
+                                onClick={() => setRateResult(star)}
+                                className="focus:outline-none transition-all hover:scale-110"
+                              >
+                                <Star className={`w-5 h-5 ${star <= rateResult ? 'fill-amber-500 text-amber-500' : 'text-slate-205'}`} />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-600 font-bold text-xs uppercase tracking-wider">Komunikasi Petugas</span>
+                          <div className="flex gap-1">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <button
+                                key={star}
+                                onClick={() => setRateComm(star)}
+                                className="focus:outline-none transition-all hover:scale-110"
+                              >
+                                <Star className={`w-5 h-5 ${star <= rateComm ? 'fill-amber-500 text-amber-500' : 'text-slate-205'}`} />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-600 font-bold text-xs uppercase tracking-wider">Kualitas Teknis</span>
+                          <div className="flex gap-1">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <button
+                                key={star}
+                                onClick={() => setRateQuality(star)}
+                                className="focus:outline-none transition-all hover:scale-110"
+                              >
+                                <Star className={`w-5 h-5 ${star <= rateQuality ? 'fill-amber-500 text-amber-500' : 'text-slate-205'}`} />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-600 font-bold text-xs uppercase tracking-wider">Kesesuaian Hasil</span>
-                      <div className="flex gap-1">
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <button 
-                            key={star} 
-                            onClick={() => setRateResult(star)}
-                            className="focus:outline-none transition-all hover:scale-110"
-                          >
-                            <Star className={`w-5 h-5 ${star <= rateResult ? 'fill-amber-500 text-amber-500' : 'text-slate-205'}`} />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-600 font-bold text-xs uppercase tracking-wider">Komunikasi Petugas</span>
-                      <div className="flex gap-1">
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <button 
-                            key={star} 
-                            onClick={() => setRateComm(star)}
-                            className="focus:outline-none transition-all hover:scale-110"
-                          >
-                            <Star className={`w-5 h-5 ${star <= rateComm ? 'fill-amber-500 text-amber-500' : 'text-slate-205'}`} />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-600 font-bold text-xs uppercase tracking-wider">Kualitas Teknis</span>
-                      <div className="flex gap-1">
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <button 
-                            key={star} 
-                            onClick={() => setRateQuality(star)}
-                            className="focus:outline-none transition-all hover:scale-110"
-                          >
-                            <Star className={`w-5 h-5 ${star <= rateQuality ? 'fill-amber-500 text-amber-500' : 'text-slate-205'}`} />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Komentar / Masukan Tambahan</label>
-                    <textarea 
-                      value={rateComment}
-                      onChange={(e) => setRateComment(e.target.value)}
-                      placeholder="Tuliskan ulasan kinerja pelayanan Diskominfo..."
-                      className="w-full h-20 px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
-                    />
-                  </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Komentar / Masukan Tambahan</label>
+                        <textarea
+                          value={rateComment}
+                          onChange={(e) => setRateComment(e.target.value)}
+                          placeholder="Tuliskan ulasan kinerja pelayanan Diskominfo..."
+                          className="w-full h-20 px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
+                        />
+                      </div>
 
-                  <button 
-                    onClick={() => handleConfirmAndRate(selectedTicket.uuid)}
-                    className="w-full px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-indigo-500/20 cursor-pointer"
-                  >
-                    Konfirmasi Selesai & Kirim Ulasan
-                  </button>
+                      <button
+                        onClick={() => handleConfirmAndRate(selectedTicket.uuid)}
+                        className="w-full px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-indigo-500/20 cursor-pointer"
+                      >
+                        Konfirmasi Selesai & Kirim Ulasan
+                      </button>
                     </>
                   )}
                 </div>
@@ -1096,11 +1096,10 @@ export const TicketHistory = () => {
                     const isNewest = idx === 0;
                     return (
                       <div key={idx} className="relative text-left">
-                        <div className={`absolute -left-[25px] top-1.5 w-2.5 h-2.5 rounded-full border-2 border-white ${
-                          isNewest && selectedTicket.status !== 'Selesai'
+                        <div className={`absolute -left-[25px] top-1.5 w-2.5 h-2.5 rounded-full border-2 border-white ${isNewest && !selectedTicket.status.includes('Selesai')
                             ? 'bg-emerald-500 ring-4 ring-emerald-100 animate-pulse'
                             : 'bg-slate-300'
-                        }`}></div>
+                          }`}></div>
                         <span className="text-xs text-slate-400 font-bold block">{formatLogDateDisplay(log.date)}</span>
                         <p className={`text-base mt-0.5 leading-relaxed ${isNewest ? 'font-bold text-slate-800' : 'text-slate-500'}`}>{log.text}</p>
                       </div>
@@ -1118,10 +1117,10 @@ export const TicketHistory = () => {
         </div>
       </div>
 
-      <TicketDetailModal 
-        isOpen={showDetailModal} 
-        onClose={() => setShowDetailModal(false)} 
-        ticket={selectedTicket} 
+      <TicketDetailModal
+        isOpen={showDetailModal}
+        onClose={() => setShowDetailModal(false)}
+        ticket={selectedTicket}
       />
 
       <SkmModal

@@ -51,7 +51,7 @@ export const TaskList = () => {
   const getTicketTeam = (t) => {
     if (t.team) return t.team;
     const svc = t.service;
-    if (svc === 'Pengembangan & Pengelolaan Aplikasi' || svc === 'Rekomendasi & Evaluasi Aplikasi' || svc === 'Uji Kesesuaian Sistem (UKS)' || svc === 'Pengelolaan Aplikasi Informatika') {
+    if (svc === 'Pengembangan & Pengelolaan Aplikasi' || svc === 'Rekomendasi & Evaluasi Aplikasi' || svc === 'Uji Kesesuaian Sistem (UKS)' || svc === 'Aplikasi Informatika') {
       return 'Tim Aplikasi & Sistem Informasi';
     }
     if (svc === 'Jaringan Intra Pemerintah' || svc === 'Server Perangkat Daerah' || svc === 'Infrastruktur TIK' || svc === 'Wifi Publik' || svc === 'Domain & Subdomain Pemerintah Daerah' || svc === 'Pengelolaan Sumber Daya & Perangkat Informatika') {
