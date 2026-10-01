@@ -6,7 +6,7 @@ const BASE_URL = `${(configuredApiUrl || defaultApiOrigin).replace(/\/$/, '')}/a
 export const API_BASE_URL = BASE_URL;
 
 const getHeaders = () => {
-  const token = localStorage.getItem('spbe_token');
+  const token = sessionStorage.getItem('spbe_token');
   return {
     'Content-Type': 'application/json',
     ...(token ? { 'Authorization': `Bearer ${token}` } : {})
@@ -17,9 +17,11 @@ const handleResponse = async (res) => {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 401 || res.status === 403) {
-      localStorage.removeItem('spbe_token');
-      localStorage.removeItem('spbe_user');
-      window.location.href = '/auth/login';
+      if (!window.location.pathname.startsWith('/auth/login')) {
+        localStorage.removeItem('spbe_token');
+        localStorage.removeItem('spbe_user');
+        window.location.href = '/auth/login';
+      }
     }
     throw new Error(data.message || `HTTP Error ${res.status}`);
   }
@@ -232,6 +234,22 @@ export const api = {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(payload)
+    });
+    return handleResponse(res);
+  },
+  disputeTicket: async (ticketId, reason) => {
+    const res = await fetch(`${BASE_URL}/my/tickets/${ticketId}/dispute`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ reason })
+    });
+    return handleResponse(res);
+  },
+  updateTicketData: async (ticketId, form_data, logMessage, files, fileUrl) => {
+    const res = await fetch(`${BASE_URL}/my/tickets/${ticketId}`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify({ form_data, logMessage, files, fileUrl })
     });
     return handleResponse(res);
   },

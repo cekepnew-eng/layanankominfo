@@ -75,18 +75,34 @@ export const TaskList = () => {
     return 'Tim Support & Helpdesk Utama';
   };
 
-  const selectTask = (task) => {
-    setSelectedTask(task);
+  const selectTask = async (task) => {
+    let taskWithLogs = { ...task };
+    try {
+      const res = await api.getHistory(task.id);
+      if (res.success) {
+        taskWithLogs.logs = res.data;
+      }
+    } catch (e) {
+      console.error('Failed to load history', e);
+    }
+    setSelectedTask(taskWithLogs);
     setIsFinished(task.status === 'Selesai');
     setLogText('');
     setFileName(task.bastFile || '');
     setBastFileUrl(task.bastFileUrl || '/bast_selesai.pdf');
   };
 
+  const [bastFileBase64, setBastFileBase64] = useState('');
+
   const handleBastFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
       setFileName(file.name);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setBastFileBase64(reader.result);
+      };
+      reader.readAsDataURL(file);
       try {
         const url = URL.createObjectURL(file);
         setBastFileUrl(url);
@@ -96,66 +112,50 @@ export const TaskList = () => {
     }
   };
 
-  const executeUpdateProgress = () => {
+  const executeUpdateProgress = async () => {
     if (!selectedTask) return;
 
     const autoLogText = isFinished
-      ? (logText.trim() || (fileName ? 'Pekerjaan teknis selesai dikerjakan 100% oleh Pegawai dan berkas BAST telah diunggah.' : 'Pekerjaan teknis selesai dikerjakan 100% oleh Pegawai.'))
-      : (logText.trim() || 'Pekerjaan teknis sedang diproses dan dikerjakan oleh Pegawai Tim Pelaksana.');
+      ? (logText.trim() || (fileName ? 'Pekerjaan teknis telah selesai dilaksanakan. Berkas dokumen Berita Acara Serah Terima (BAST) telah siap untuk diunduh dan dikonfirmasi.' : 'Pekerjaan teknis telah selesai dilaksanakan.'))
+      : (logText.trim() || 'Proses pengerjaan teknis atas tiket layanan ini telah dimulai oleh tim pelaksana.');
 
-    const waitingLog = {
-      date: getCurrentLogTimeFormatted(1),
-      text: 'Menunggu konfirmasi penyelesaian dan pengisian Survei SKM oleh Pemohon.'
-    };
-    const stage4Log = {
-      date: getCurrentLogTimeFormatted(0),
-      text: autoLogText
-    };
+    try {
+      await api.updateProgress(selectedTask.id, {
+        progress: isFinished ? 100 : selectedTask.progress,
+        note: autoLogText,
+        ...(isFinished && fileName ? { bastFileName: fileName, bastFileBase64: bastFileBase64 } : {})
+      });
 
-    const newLogs = isFinished
-      ? [waitingLog, stage4Log]
-      : [{ date: getCurrentLogTimeFormatted(0), text: autoLogText }];
+      const res = await api.getEmployeeTickets();
+      const updatedTickets = res.data || [];
+      setTickets(updatedTickets);
 
-    const updated = tickets.map(t => {
-      if (t.id === selectedTask.id) {
-        return {
-          ...t,
-          progress: isFinished ? 100 : t.progress,
-          status: isFinished ? 'Selesai' : 'Diproses',
-          bastFile: isFinished ? (fileName || null) : t.bastFile,
-          bastFileUrl: isFinished ? (fileName ? (bastFileUrl || '/bast_selesai.pdf') : null) : t.bastFileUrl,
-          logs: [...newLogs, ...(t.logs || [])]
-        };
+      if (isFinished) {
+        setSelectedTask(null);
+        setModalConfig({
+          isOpen: true,
+          type: 'success',
+          title: 'Tugas Berhasil Diselesaikan',
+          message: 'Pekerjaan teknis telah selesai 100%! Tiket ditutup langsung dan siap untuk diulas serta diberi nilai survei SKM oleh pemohon.',
+          confirmText: 'Selesai & Tutup',
+          onConfirm: closeModal
+        });
+      } else {
+        const updatedSelected = updatedTickets.find(t => t.id === selectedTask.id);
+        setSelectedTask(updatedSelected);
+        setModalConfig({
+          isOpen: true,
+          type: 'success',
+          title: 'Aktivitas Berhasil Diperbarui',
+          message: 'Catatan log progres pengerjaan teknis berhasil disimpan.',
+          confirmText: 'Selesai & Tutup',
+          onConfirm: closeModal
+        });
       }
-      return t;
-    });
-
-    setTickets(updated);
-    
-    if (isFinished) {
-      setSelectedTask(null);
-      setModalConfig({
-        isOpen: true,
-        type: 'success',
-        title: 'Tugas Berhasil Diselesaikan',
-        message: 'Pekerjaan teknis telah selesai 100%! Tiket ditutup langsung dan siap untuk diulas serta diberi nilai survei SKM oleh pemohon.',
-        confirmText: 'Selesai & Tutup',
-        onConfirm: closeModal
-      });
-    } else {
-      const updatedSelected = updated.find(t => t.id === selectedTask.id);
-      setSelectedTask(updatedSelected);
-      setModalConfig({
-        isOpen: true,
-        type: 'success',
-        title: 'Aktivitas Berhasil Diperbarui',
-        message: 'Catatan log progres pengerjaan teknis berhasil disimpan.',
-        confirmText: 'Selesai & Tutup',
-        onConfirm: closeModal
-      });
+      setLogText('');
+    } catch (err) {
+      alert('Gagal memperbarui progres: ' + err.message);
     }
-    
-    setLogText('');
   };
 
   const handleUpdateProgress = (e) => {
@@ -184,31 +184,34 @@ export const TaskList = () => {
     setFileName('BAST_Pekerjaan_Selesai.pdf');
   };
 
-  const executeResumeTask = (ticketId) => {
-    const updated = tickets.map(t => {
-      if (t.id === ticketId) {
-        return {
-          ...t,
-          status: 'Diproses',
-          logs: [
-            { date: getCurrentLogTimeFormatted(0), text: 'Pegawai memulai kembali perbaikan pekerjaan teknis pasca sanggahan pemohon.' },
-            ...(t.logs || [])
-          ]
-        };
-      }
-      return t;
-    });
+  const executeResumeTask = async (ticketId) => {
+    try {
+      const ticket = tickets.find(t => t.id === ticketId);
+      if (!ticket) return;
 
-    setTickets(updated);
-    setSelectedTask(updated.find(t => t.id === ticketId));
-    setModalConfig({
-      isOpen: true,
-      type: 'success',
-      title: 'Pengerjaan Dilanjutkan',
-      message: 'Status pekerjaan telah diaktifkan kembali menjadi Diproses untuk perbaikan tindak lanjut.',
-      confirmText: 'Selesai & Tutup',
-      onConfirm: closeModal
-    });
+      await api.updateProgress(ticketId, {
+        progress: ticket.progress,
+        note: 'Pegawai memulai kembali perbaikan pekerjaan teknis pasca sanggahan pemohon.'
+      });
+
+      const res = await api.getEmployeeTickets();
+      const updatedTickets = res.data || [];
+      setTickets(updatedTickets);
+      
+      const updatedSelected = updatedTickets.find(t => t.id === ticketId);
+      setSelectedTask(updatedSelected);
+
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: 'Pengerjaan Dilanjutkan',
+        message: 'Status pekerjaan telah diaktifkan kembali menjadi Diproses untuk perbaikan tindak lanjut.',
+        confirmText: 'Selesai & Tutup',
+        onConfirm: closeModal
+      });
+    } catch (err) {
+      alert('Gagal melanjutkan tugas: ' + err.message);
+    }
   };
 
   const handleResumeTask = (ticketId) => {
@@ -374,7 +377,7 @@ export const TaskList = () => {
                     <div className="text-sm">
                       <p className="font-extrabold text-rose-900">Pekerjaan Ditangguhkan / Disanggah</p>
                       <p className="mt-1 text-slate-650 leading-relaxed font-semibold">
-                        Catatan penangguhan: <span className="italic text-slate-800 block mt-1 p-2 bg-white rounded-lg border border-rose-100/60 font-medium">"{selectedTask.logs?.[0]?.text || 'Tidak ada catatan'}"</span>
+                        Catatan penangguhan: <span className="italic text-slate-800 block mt-1 p-2 bg-white rounded-lg border border-rose-100/60 font-medium">"{selectedTask.logs?.[selectedTask.logs.length - 1]?.log_description || 'Tidak ada catatan'}"</span>
                       </p>
                     </div>
                   </div>
@@ -442,6 +445,7 @@ export const TaskList = () => {
                         <div className="flex items-center gap-2 shrink-0 ml-2">
                           <a
                             href={bastFileUrl || '/bast_selesai.pdf'}
+                            download={fileName || 'BAST.pdf'}
                             target="_blank"
                             rel="noreferrer"
                             className="text-xs font-bold text-sky-600 hover:underline px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-all"

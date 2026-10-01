@@ -1,0 +1,31 @@
+{
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcGFyYXR1cl9pZCI6MjI1NywiZXhwIjoxNzkwOTE2NjQ0LCJqYWJhdGFuX2lkIjoxNjY1MjIsImxldmVsX2lkIjoyMCwib3BkX2lkIjo0LCJ1c2VybmFtZSI6IjE5OTkwMjAzMjAyNTIxMTAzNyIsInVzZXJzX2lkIjozMDc3fQ.p7OFpY2N9AXV9qmlXXfQpSH9fwVNGqAwIfviKF6BoeU",
+    "user": {
+      "nama": "Rendi Triyawan",
+      "nik": "3201130302990004",
+      "nip": "199902032025211037",
+      "aparatur_id": 2257,
+      "nama_pd": "Sekretariat Daerah Kota Bogor",
+      "username": "199902032025211037",
+      "email": "renditriyawan@kotabogor.go.id",
+      "jabatan_id": 166522,
+      "nama_jabatan": "Operator Layanan Operasional Diskominfo",
+      "jabatan": "Operator Layanan Operasional Diskominfo",
+      "foto": "20220419082701.jpg",
+      "level": 20,
+      "level_id": 20,
+      "opd_id": 4,
+      "users_id": 3077,
+      "status": "Aktif",
+      "statusaparatur": "Aktif",
+      "atasan_id": 0,
+      "jabatan_atasan": "",
+      "nama_atasan": "",
+      "statuspassword": "inaktif",
+      "days_since_password_update": 743
+    }
+  },
+  "message": "Login berhasil",
+  "status": "success"
+}

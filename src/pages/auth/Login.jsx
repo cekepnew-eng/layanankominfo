@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { authService } from '../../services/authService';
 import { api } from '../../services/api';
+import { ActionModal } from '../../components/ActionModal';
 import { Monitor, ArrowLeft, Lock, Mail, ChevronRight, Check, ShieldCheck, QrCode, Copy } from 'lucide-react';
 
 export const Login = () => {
@@ -22,6 +23,17 @@ export const Login = () => {
   const [captchaData, setCaptchaData] = useState({ text: '', token: '' });
   const [captchaAnswer, setCaptchaAnswer] = useState('');
   const [trustDevice, setTrustDevice] = useState(false);
+  
+  const [modalConfig, setModalConfig] = useState({
+    isOpen: false,
+    type: 'warning',
+    title: '',
+    message: '',
+    confirmText: 'Tutup',
+    onConfirm: null
+  });
+
+  const closeModal = () => setModalConfig(prev => ({ ...prev, isOpen: false }));
 
   const loadCaptcha = async () => {
     try {
@@ -143,32 +155,7 @@ export const Login = () => {
     triggerLogin(email, password, captchaData.token, captchaAnswer);
   };
 
-  const handleGmailSubmit = (e) => {
-    if (e) e.preventDefault();
-    if (!identifier.trim() || !password) {
-      alert('Silakan masukkan email dan password terlebih dahulu!');
-      return;
-    }
-    if (!captchaAnswer.trim()) {
-      alert('Silakan isi Captcha terlebih dahulu!');
-      return;
-    }
-    const emailLower = normalizeLoginEmail(identifier);
-    triggerLogin(emailLower, password, captchaData.token, captchaAnswer);
-  };
 
-  const handleTndSubmit = (e) => {
-    if (e) e.preventDefault();
-    if (!identifier.trim() || !password) {
-      alert('Silakan masukkan Username/Email dan password terlebih dahulu!');
-      return;
-    }
-    if (!captchaAnswer.trim()) {
-      alert('Silakan isi Captcha terlebih dahulu!');
-      return;
-    }
-    triggerLogin(normalizeLoginEmail(identifier), password, captchaData.token, captchaAnswer);
-  };
 
   const handleQuickLogin = async (role) => {
     const quickEmails = {
@@ -213,16 +200,32 @@ export const Login = () => {
           if (userData.role) userData.role = String(userData.role).toUpperCase();
           if (userData.roles) userData.roles = userData.roles.map((role) => String(role).toUpperCase());
 
-          localStorage.setItem('spbe_token', result.token);
-          localStorage.setItem('spbe_user', JSON.stringify(userData));
+          sessionStorage.setItem('spbe_token', result.token);
+          sessionStorage.setItem('spbe_user', JSON.stringify(userData));
           setUser(userData);
           setShowOtpModal(false);
           navigate('/dashboard');
         } else {
           setOtpError(result.message || 'Kode autentikasi salah!');
+          setModalConfig({
+            isOpen: true,
+            type: 'warning',
+            title: 'Verifikasi Gagal',
+            message: result.message || 'Kode autentikasi yang Anda masukkan salah. Silakan periksa kembali aplikasi Google Authenticator Anda.',
+            confirmText: 'Coba Lagi',
+            onConfirm: closeModal
+          });
         }
       } catch (err) {
         setOtpError(err.message || 'Kesalahan server saat verifikasi setup.');
+        setModalConfig({
+          isOpen: true,
+          type: 'warning',
+          title: 'Terjadi Kesalahan',
+          message: err.message || 'Terjadi kesalahan pada server saat verifikasi perangkat 2FA.',
+          confirmText: 'Tutup',
+          onConfirm: closeModal
+        });
       }
     } else {
       // Normal Login
@@ -231,7 +234,22 @@ export const Login = () => {
         setShowOtpModal(false);
         navigate('/dashboard');
       } else {
-        setOtpError(result?.message || 'Kode autentikasi salah!');
+        const isExpired = result?.message?.toLowerCase().includes('expired');
+        if (isExpired) {
+          setShowOtpModal(false);
+        } else {
+          setOtpError(result?.message || 'Kode autentikasi salah!');
+        }
+        setModalConfig({
+          isOpen: true,
+          type: 'warning',
+          title: isExpired ? 'Sesi Kedaluwarsa' : 'Kode Autentikasi Salah',
+          message: isExpired 
+            ? 'Sesi login Anda sudah kedaluwarsa karena terlalu lama. Silakan login kembali.'
+            : (result?.message || 'Kode 2FA (OTP) yang Anda masukkan tidak valid atau sudah kedaluwarsa. Silakan periksa kode terbaru di aplikasi Authenticator Anda.'),
+          confirmText: isExpired ? 'Tutup & Login Ulang' : 'Coba Lagi',
+          onConfirm: closeModal
+        });
       }
     }
   };
@@ -284,9 +302,17 @@ export const Login = () => {
         <div className="mx-auto w-full max-w-sm space-y-6 text-left">
           <div className="space-y-3">
             <h2 className="text-4xl font-black text-slate-900 tracking-tight">Portal Masuk</h2>
-            <p className="text-slate-500 text-base leading-relaxed">
-              Masuk menggunakan akun e-mail Gmail (Masyarakat) atau Single Sign-On TND (OPD/Staf Pemerintah Kota Bogor).
-            </p>
+            <div className="space-y-2.5">
+              <p className="text-slate-600 text-base leading-relaxed">
+                Silakan masuk menggunakan <strong>Email</strong> (Masyarakat) atau <strong>SSO TND</strong> (ASN).
+              </p>
+              <div className="bg-blue-50/80 border border-blue-100 rounded-xl p-3 text-sm text-blue-800 shadow-sm flex items-start gap-2.5">
+                <span className="text-blue-500 mt-0.5">ℹ️</span>
+                <p>
+                  <strong>Khusus ASN/OPD:</strong> Tidak perlu mendaftar. Silakan langsung masuk menggunakan kredensial SSO TND Anda.
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="space-y-4">
@@ -359,20 +385,12 @@ export const Login = () => {
             <div className="space-y-2.5 pt-4">
               <button
                 type="button"
-                onClick={handleGmailSubmit}
-                className="w-full py-3.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 text-base font-extrabold text-white shadow-md shadow-sky-500/10 hover:shadow-lg hover:shadow-sky-500/15 transition-all flex items-center justify-center gap-2.5 cursor-pointer"
+                onClick={handleStandardLogin}
+                className="group relative w-full py-4 rounded-xl bg-gradient-to-r from-blue-600 to-sky-500 hover:from-blue-500 hover:to-sky-400 text-base font-black text-white shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 transition-all duration-300 transform hover:-translate-y-0.5 flex items-center justify-center gap-2 cursor-pointer overflow-hidden"
               >
-                <Mail className="w-5 h-5" />
-                <span>Masuk sebagai Masyarakat (Email/NIK)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleTndSubmit}
-                className="w-full py-3.5 px-4 rounded-xl border-2 border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-base font-extrabold text-slate-800 transition-all shadow-sm flex items-center justify-center gap-2.5 cursor-pointer"
-              >
-                <img src="/logo-bogor.png" alt="Logo TND" className="h-5 w-auto object-contain" />
-                <span>Masuk dengan SSO TND (OPD/Staf)</span>
+                <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out"></div>
+                <span className="relative z-10 tracking-[0.2em]">MASUK</span>
+                <ChevronRight className="relative z-10 w-5 h-5 group-hover:translate-x-1 transition-transform duration-300" />
               </button>
             </div>
           </div>
@@ -427,8 +445,8 @@ export const Login = () => {
 
           <div className="text-center pt-2">
             <p className="text-base text-slate-500">
-              Belum terdaftar?{' '}
-              <Link to="/auth/register" className="font-bold text-sky-600 hover:text-sky-500">
+              Belum terdaftar? (Khusus Masyarakat){' '}
+              <Link to="/auth/register" className="font-bold text-blue-600 hover:text-blue-500">
                 Daftar Baru
               </Link>
             </p>
@@ -566,6 +584,17 @@ export const Login = () => {
           </div>
         </div>
       )}
+
+      <ActionModal
+        isOpen={modalConfig.isOpen}
+        onClose={closeModal}
+        type={modalConfig.type}
+        title={modalConfig.title}
+        message={modalConfig.message}
+        confirmText={modalConfig.confirmText}
+        cancelText={modalConfig.cancelText}
+        onConfirm={modalConfig.onConfirm}
+      />
     </div>
   );
 };

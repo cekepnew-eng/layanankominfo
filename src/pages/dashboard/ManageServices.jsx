@@ -66,8 +66,23 @@ export const ManageServices = () => {
   const fetchServices = async () => {
     setLoading(true);
     try {
-      const [res, teamsRes] = await Promise.all([api.getAdminServices(), api.getTeams()]);
-      const mappedData = (res.data || []).map(s => ({
+      let servicesData = [];
+      let teamsData = [];
+      try {
+        const res = await api.getAdminServices();
+        servicesData = res.data || [];
+      } catch (err) {
+        console.error('Failed to fetch services:', err);
+        alert('Gagal mengambil data layanan: ' + err.message);
+      }
+      try {
+        const teamsRes = await api.getTeams();
+        teamsData = teamsRes.data || [];
+      } catch (err) {
+        console.error('Failed to fetch teams:', err);
+      }
+
+      const mappedData = servicesData.map(s => ({
         ...s,
         category: s.category_name || s.category,
         status: s.status || (s.is_active ? 'Aktif' : 'Tahap Pengembangan'),
@@ -78,7 +93,7 @@ export const ManageServices = () => {
         defaultTeamId: s.default_team_id
       }));
       setServices(mappedData);
-      setTeams(teamsRes.data || []);
+      setTeams(teamsData);
     } catch (err) {
       console.error(err);
     } finally {

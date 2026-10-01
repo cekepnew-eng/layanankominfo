@@ -13,6 +13,7 @@ import { TaskList } from '../pages/dashboard/TaskList';
 import { CreateTicket } from '../pages/dashboard/CreateTicket';
 import { MyTickets } from '../pages/dashboard/MyTickets';
 import { TicketHistory } from '../pages/dashboard/ManageTickets';
+import { TrackTicket } from '../pages/dashboard/TrackTicket';
 import { Profile } from '../pages/dashboard/Profile';
 import { ProtectedRoute } from './ProtectedRoute';
 import { useAuth } from '../context/AuthContext';
@@ -91,6 +92,14 @@ export const AppRoutes = () => {
           element={
             <ProtectedRoute allowedRoles={['ADMIN', 'HELPDESK', 'PEGAWAI', 'USER', 'MASYARAKAT']}>
               <TicketHistory mode="history" />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="track-ticket" 
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN', 'HELPDESK']}>
+              <TrackTicket />
             </ProtectedRoute>
           } 
         />

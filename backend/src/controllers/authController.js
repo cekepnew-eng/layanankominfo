@@ -132,13 +132,17 @@ exports.login = async (req, res) => {
       }
     }
 
-    // Hybrid SSO: Jika gagal login lokal, coba validasi lewat API TND
-    if (!isMatch) {
+    // Cek apakah akun ini butuh sinkronisasi data (jika namanya masih berupa NIP atau Unit Kerjanya 'TND User')
+    const needsSync = user && (user.full_name === user.email || user.department === 'TND User');
+
+    // Hybrid SSO: Jika gagal login lokal, ATAU butuh sinkronisasi profil, coba validasi lewat API TND
+    if (!isMatch || needsSync) {
       try {
-        // Ambil username murni (hilangkan @bogor.go.id jika ada)
-        const tndUsername = email.includes('@') ? email.split('@')[0] : email;
+        // Jangan potong inputan user. API TND bisa menerima NIP, Gmail, maupun @bogor
+        const tndUsername = email;
         
-        const tndResponse = await fetch('https://dev-tnd.kotabogor.go.id/api-baru/api/v1/login', {
+        const ssoUrl = process.env.SSO_API_URL || 'https://dev-tnd.kotabogor.go.id/api-baru/api/v1/login';
+        const tndResponse = await fetch(ssoUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username: tndUsername, password: password })
@@ -156,10 +160,14 @@ exports.login = async (req, res) => {
             const salt = await bcrypt.genSalt(10);
             const hash = await bcrypt.hash(password, salt); // Simpan hash agar bisa login lokal kelak
 
-            // Fallback nama dan department dari API atau input username
-            const fullName = tndData?.data?.name || tndData?.name || tndUsername;
-            const department = tndData?.data?.opd_name || tndData?.opd_name || 'TND User';
-            const phone = tndData?.data?.phone || tndData?.phone || '0000000000';
+            // LOG RESPONSE TND KE FILE AGAR KITA BISA LIHAT BENTUK ASLINYA
+            const fs = require('fs');
+            fs.writeFileSync('tnd_response.json', JSON.stringify(tndData, null, 2));
+
+            // Ambil data asli dari TND. Tambahkan banyak kemungkinan kunci (key) API TND
+            const fullName = tndData?.data?.user?.nama || tndData?.data?.nama_lengkap || tndData?.data?.nama || tndData?.data?.name || tndUsername;
+            const department = tndData?.data?.user?.nama_pd || tndData?.data?.unit_kerja || tndData?.data?.opd_name || 'Dinas Kota Bogor';
+            const phone = tndData?.data?.user?.email || tndData?.data?.no_hp || '0000000000';
 
             const client = await db.pool.connect();
             try {
@@ -183,10 +191,28 @@ exports.login = async (req, res) => {
               client.release();
             }
           } else {
-            // User sudah ada tapi password diupdate via TND
+            // User sudah ada, lakukan sinkronisasi data dari TND (Auto-Update)
             const salt = await bcrypt.genSalt(10);
             const hash = await bcrypt.hash(password, salt);
-            await db.query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [hash, user.id]);
+            
+            // LOG RESPONSE TND KE FILE AGAR KITA BISA LIHAT BENTUK ASLINYA
+            const fs = require('fs');
+            fs.writeFileSync('tnd_response.json', JSON.stringify(tndData, null, 2));
+
+            // Ambil data terbaru dari TND untuk memperbaiki jika sebelumnya NIP dijadikan nama
+            const fullName = tndData?.data?.user?.nama || tndData?.data?.nama_lengkap || tndData?.data?.nama || tndData?.data?.name || tndUsername;
+            const department = tndData?.data?.user?.nama_pd || tndData?.data?.unit_kerja || tndData?.data?.opd_name || 'Dinas Kota Bogor';
+            const phone = tndData?.data?.user?.email || tndData?.data?.no_hp || user.phone_number || '0000000000';
+
+            // Timpa nama/department lama dengan data asli
+            await db.query(
+              `UPDATE users SET password_hash = $1, full_name = $2, department = $3, phone_number = $4 WHERE id = $5`, 
+              [hash, fullName, department, phone, user.id]
+            );
+            
+            // Update state user di memori agar token memuat data terbaru
+            user.full_name = fullName;
+            user.department = department;
           }
           
           if (!user.roles) {

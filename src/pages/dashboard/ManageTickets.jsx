@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { getCurrentLogTimeFormatted, formatLogDateDisplay } from '../../utils/dateUtils';
 import { TicketDetailModal } from '../../components/TicketDetailModal';
 import { SkmModal } from '../../components/SkmModal';
+import { RefillTicketModal } from '../../components/RefillTicketModal';
 import { api } from '../../services/api';
 import { ActionModal } from '../../components/ActionModal';
 import {
@@ -102,18 +103,21 @@ export const TicketHistory = ({ mode = 'active' }) => {
             uuid: t.id,
             status: t.status_name === 'PENDING' ? 'Verifikasi'
               : t.status_name === 'VERIFIED' ? 'Menunggu Validasi'
+                : t.status_name === 'REJECTED' ? 'Pending'
                 : t.status_name === 'ASSIGNED' ? 'Diproses'
                   : t.status_name === 'IN_PROGRESS' ? 'Diproses'
                     : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Selesai'
                       : t.status_name === 'COMPLETED' ? 'Selesai & Dinilai'
-                        : t.status_name,
+                        : (t.status_name || ''),
             title: `Pengajuan Layanan ${t.service_name}`,
             service: t.service_name,
             opd: (t.opd && t.opd !== 'OPD') ? t.opd : 'Dinas Komunikasi dan Informatika',
             date: new Date(t.created_at).toLocaleDateString('id-ID'),
             requestType: 'Baru',
             slaDuration: 7,
-            remainingDays: 7
+            remainingDays: 7,
+            bastFile: t.bast_file_name,
+            bastFileUrl: t.bast_file_url
           }));
         setTickets(mapped);
       }
@@ -163,11 +167,40 @@ export const TicketHistory = ({ mode = 'active' }) => {
   const [progressNote, setProgressNote] = useState('');
   const [tempRemainingDays, setTempRemainingDays] = useState(3);
   const [isFinished, setIsFinished] = useState(false);
+  const [pegawaiAction, setPegawaiAction] = useState('pending');
   const [fileName, setFileName] = useState('');
   const [bastFileSize, setBastFileSize] = useState('');
   const [bastFileUrl, setBastFileUrl] = useState('/bast_selesai.pdf');
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showRefillModal, setShowRefillModal] = useState(false);
   const [showSkmModal, setShowSkmModal] = useState(false);
+  const [showDisputeForm, setShowDisputeForm] = useState(false);
+  const [disputeReason, setDisputeReason] = useState('');
+
+  const handleDisputeSubmit = async () => {
+    if (!disputeReason.trim()) return;
+    try {
+      await api.disputeTicket(selectedTicket.uuid || selectedTicket.id, disputeReason);
+      setShowDisputeForm(false);
+      setDisputeReason('');
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: 'Sanggahan Berhasil',
+        message: 'Tiket telah dikembalikan ke Tim Pelaksana untuk diperbaiki.',
+        confirmText: 'Tutup',
+        onConfirm: closeModal
+      });
+      loadTickets();
+      if (selectedTicket) {
+        api.getHistory(selectedTicket.uuid || selectedTicket.id).then(res => {
+          if (res && res.data) setHistory(res.data);
+        });
+      }
+    } catch (err) {
+      alert('Gagal mengirim sanggahan: ' + err.message);
+    }
+  };
   const [showInlineRating, setShowInlineRating] = useState(false);
   const bastInputRef = useRef(null);
 
@@ -183,11 +216,18 @@ export const TicketHistory = ({ mode = 'active' }) => {
 
   const closeModal = () => setModalConfig(prev => ({ ...prev, isOpen: false }));
 
+  const [bastFileBase64, setBastFileBase64] = useState('');
+
   const handleBastFileChange = (e) => {
     const file = e.target.files?.[0];
     if (file) {
       setFileName(file.name);
       setBastFileSize((file.size / 1024).toFixed(1) + ' KB');
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setBastFileBase64(reader.result);
+      };
+      reader.readAsDataURL(file);
       const url = URL.createObjectURL(file);
       setBastFileUrl(url);
     }
@@ -197,6 +237,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
     if (selectedTicket) {
       setTempProgress(selectedTicket.progress || 0);
       setProgressNote('');
+      setPegawaiAction('pending');
       setTempRemainingDays(selectedTicket.remainingDays !== undefined ? selectedTicket.remainingDays : 3);
       setIsFinished(selectedTicket.status.includes('Selesai'));
       setFileName('');
@@ -212,7 +253,8 @@ export const TicketHistory = ({ mode = 'active' }) => {
         // Reverse so newest is first, if backend sends ASC
         ticketWithLogs.logs = res.data.reverse().map(log => ({
           date: log.created_at,
-          text: log.log_description
+          text: log.log_description,
+          author: log.user_name || 'Sistem'
         }));
       }
     } catch (err) {
@@ -223,17 +265,27 @@ export const TicketHistory = ({ mode = 'active' }) => {
   };
 
   const executeUpdateProgress = async (ticketId) => {
+    if (pegawaiAction === 'reject' && !progressNote.trim()) {
+      alert('Catatan tambahan wajib diisi ketika mengembalikan tiket ke pemohon.');
+      return;
+    }
+
     try {
-      await api.updateProgress(ticketId, { progress: isFinished ? 100 : tempProgress, note: progressNote.trim() });
+      await api.updateProgress(ticketId, { 
+        progress: pegawaiAction === 'done' ? 100 : tempProgress, 
+        note: progressNote.trim(),
+        statusAction: pegawaiAction === 'reject' ? 'REJECT' : null,
+        ...(pegawaiAction === 'done' && fileName ? { bastFileName: fileName, bastFileBase64: bastFileBase64 } : {})
+      });
       loadTickets(); // Refresh from DB
       setProgressNote('');
       setModalConfig({
         isOpen: true,
         type: 'success',
-        title: isFinished ? 'Tugas Berhasil Diselesaikan' : 'Progres Berhasil Diperbarui',
-        message: isFinished
-          ? (fileName ? 'Pekerjaan teknis telah selesai 100% dan berkas BAST telah diunggah. Pemohon dapat mengisi survei SKM.' : 'Pekerjaan teknis telah selesai 100%! Pemohon dapat mengisi survei SKM.')
-          : 'Catatan progres pekerjaan berhasil disimpan ke dalam log riwayat tiket.',
+        title: pegawaiAction === 'done' ? 'Tugas Berhasil Diselesaikan' : (pegawaiAction === 'reject' ? 'Tiket Dikembalikan' : 'Progres Berhasil Diperbarui'),
+        message: pegawaiAction === 'done'
+          ? (fileName ? 'Pekerjaan teknis telah selesai 100% dan Dokumen Pendukung telah diunggah. Pemohon dapat mengisi survei SKM.' : 'Pekerjaan teknis telah selesai 100%! Pemohon dapat mengisi survei SKM.')
+          : (pegawaiAction === 'reject' ? 'Tiket berhasil dikembalikan ke pemohon untuk diperbaiki.' : 'Catatan progres pekerjaan berhasil disimpan ke dalam log riwayat tiket.'),
         confirmText: 'Selesai & Tutup',
         onConfirm: closeModal
       });
@@ -343,36 +395,25 @@ export const TicketHistory = ({ mode = 'active' }) => {
     });
   };
 
-  const executeReject = (ticketId) => {
+  const executeReject = async (ticketUuid) => {
     const reasonText = rejectReason.trim();
-    setTickets(prev => prev.map(t => {
-      if (t.uuid === ticketId) {
-        const stage2RejectLog = {
-          date: getCurrentLogTimeFormatted(0),
-          text: `Permohonan diverifikasi & ditangguhkan oleh Helpdesk. Alasan: ${reasonText}`
-        };
-        return {
-          ...t,
-          status: 'Pending',
-          logs: [
-            stage2RejectLog,
-            ...(t.logs || [])
-          ]
-        };
-      }
-      return t;
-    }));
-    setSelectedTicket(null);
-    setRejectReason('');
-    setShowRejectForm(false);
-    setModalConfig({
-      isOpen: true,
-      type: 'success',
-      title: 'Tiket Berhasil Ditangguhkan',
-      message: 'Status tiket berhasil diubah menjadi Pending dan catatan perbaikan telah diteruskan ke pemohon.',
-      confirmText: 'Selesai & Tutup',
-      onConfirm: closeModal
-    });
+    try {
+      await api.rejectTicket(ticketUuid, { note: reasonText });
+      loadTickets();
+      setSelectedTicket(null);
+      setRejectReason('');
+      setShowRejectForm(false);
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: 'Tiket Berhasil Ditangguhkan',
+        message: 'Status tiket berhasil diubah menjadi Pending dan catatan perbaikan telah diteruskan ke pemohon.',
+        confirmText: 'Selesai & Tutup',
+        onConfirm: closeModal
+      });
+    } catch (err) {
+      alert('Gagal menangguhkan tiket: ' + err.message);
+    }
   };
 
   const handleReject = (ticketId) => {
@@ -468,26 +509,34 @@ export const TicketHistory = ({ mode = 'active' }) => {
   const getBaseTickets = () => {
     if (!tickets) return [];
     if (mode === 'history') {
-      return tickets.filter(t => t.status.includes('Selesai') || t.status === 'Menunggu Konfirmasi User');
+      return tickets.filter(t => {
+        const s = t.status || '';
+        const sn = t.status_name || '';
+        return s.includes('Selesai') || s === 'Menunggu Konfirmasi User' || sn === 'COMPLETED' || sn === 'WAITING_USER_CONFIRMATION';
+      });
     }
-    return tickets.filter(t => !t.status.includes('Selesai') && t.status !== 'Menunggu Konfirmasi User');
+    return tickets.filter(t => {
+      const s = t.status || '';
+      const sn = t.status_name || '';
+      return !s.includes('Selesai') && s !== 'Menunggu Konfirmasi User' && sn !== 'COMPLETED' && sn !== 'WAITING_USER_CONFIRMATION';
+    });
   };
 
   const getTabCount = (tabId) => {
     if (!user) return 0;
     let base = getBaseTickets();
-    if (tabId === 'pending') return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi').length;
-    if (tabId === 'proses') return base.filter(t => t.status === 'Diproses').length;
-    if (tabId === 'selesai') return base.filter(t => t.status.includes('Selesai') || t.status === 'Menunggu Konfirmasi User').length;
+    if (tabId === 'pending') return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status === 'Pending' || t.status_name === 'PENDING' || t.status_name === 'VERIFIED' || t.status_name === 'REJECTED').length;
+    if (tabId === 'proses') return base.filter(t => t.status === 'Diproses' || t.status_name === 'ASSIGNED' || t.status_name === 'IN_PROGRESS').length;
+    if (tabId === 'selesai') return base.filter(t => (t.status || '').includes('Selesai') || t.status === 'Menunggu Konfirmasi User' || t.status_name === 'COMPLETED' || t.status_name === 'WAITING_USER_CONFIRMATION').length;
     return base.length;
   };
 
   const getFilteredTickets = () => {
     if (!user) return [];
     let base = getBaseTickets();
-    if (activeTab === 'pending') return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi');
-    if (activeTab === 'proses') return base.filter(t => t.status === 'Diproses');
-    if (activeTab === 'selesai') return base.filter(t => t.status.includes('Selesai') || t.status === 'Menunggu Konfirmasi User');
+    if (activeTab === 'pending') return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status === 'Pending' || t.status_name === 'PENDING' || t.status_name === 'VERIFIED' || t.status_name === 'REJECTED');
+    if (activeTab === 'proses') return base.filter(t => t.status === 'Diproses' || t.status_name === 'ASSIGNED' || t.status_name === 'IN_PROGRESS');
+    if (activeTab === 'selesai') return base.filter(t => (t.status || '').includes('Selesai') || t.status === 'Menunggu Konfirmasi User' || t.status_name === 'COMPLETED' || t.status_name === 'WAITING_USER_CONFIRMATION');
     return base;
   };
 
@@ -571,19 +620,11 @@ export const TicketHistory = ({ mode = 'active' }) => {
                         <span className="text-sm text-slate-400 font-semibold">{t.date}</span>
                       </div>
                       <h3 className="font-extrabold text-base text-slate-800 leading-snug">{t.title}</h3>
-                      <p className="text-xs text-slate-450 font-bold uppercase tracking-wider">{t.opd}</p>
+                      <p className="text-xs text-slate-450 font-bold uppercase tracking-wider">{t.pemohon}</p>
                       <div className="flex flex-wrap gap-2 mt-2">
-                        <span className="text-xs bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded font-semibold">
-                          {t.service}
-                        </span>
                         <span className="text-xs bg-sky-50 text-sky-700 border border-sky-100 px-2 py-0.5 rounded font-semibold">
                           {t.requestType}
                         </span>
-                        {(t.team || getTicketTeam(t)) && (
-                          <span className="text-xs bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded font-semibold">
-                            {t.team || getTicketTeam(t)}
-                          </span>
-                        )}
                       </div>
                       {/* Progress bar removed dynamically */}
 
@@ -648,6 +689,17 @@ export const TicketHistory = ({ mode = 'active' }) => {
                   <FileText className="w-4 h-4 text-sky-600 group-hover:scale-110 transition-transform" />
                   <span>Lihat Formulir Pengajuan Tiket</span>
                 </button>
+
+                {selectedTicket.status === 'Pending' && (user?.role === 'USER' || user?.role === 'MASYARAKAT') && (
+                  <button
+                    type="button"
+                    onClick={() => setShowRefillModal(true)}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md group cursor-pointer mt-3"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span>Perbaiki & Ajukan Ulang Formulir</span>
+                  </button>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4 bg-slate-50 border border-slate-200/60 rounded-2xl p-4 text-left">
@@ -695,21 +747,24 @@ export const TicketHistory = ({ mode = 'active' }) => {
                 </div>
               )}
 
-              {selectedTicket.bastFile && (
+              {(selectedTicket.bastFile || selectedTicket.status.includes('Selesai') || selectedTicket.status === 'Menunggu Konfirmasi User') && (
                 <div className="space-y-2.5 text-left">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Lampiran Penyelesaian Pegawai (BAST)</span>
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Lampiran Penyelesaian Pegawai (Dokumen Pendukung)</span>
                   <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200 text-sm font-semibold">
                     <div className="flex items-center gap-2 text-slate-700">
                       <FileText className="w-4 h-4 text-emerald-600" />
-                      <span className="truncate max-w-[200px]" title={selectedTicket.bastFile}>{selectedTicket.bastFile}</span>
+                      <span className="truncate max-w-[200px]" title={selectedTicket.bastFile || `Dokumen_${selectedTicket.id}.pdf`}>
+                        {selectedTicket.bastFile || `Dokumen_${selectedTicket.id}.pdf`}
+                      </span>
                     </div>
                     <a
                       href={selectedTicket.bastFileUrl || '/bast_selesai.pdf'}
+                      download={selectedTicket.bastFile || `Dokumen_${selectedTicket.id}.pdf`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-xs font-bold text-sky-600 hover:underline px-2.5 py-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-all shrink-0"
                     >
-                      Unduh BAST (PDF)
+                      Unduh Dokumen (PDF)
                     </a>
                   </div>
                 </div>
@@ -717,12 +772,11 @@ export const TicketHistory = ({ mode = 'active' }) => {
 
 
 
-              {((user?.role === 'HELPDESK' && (selectedTicket.status === 'Verifikasi' || selectedTicket.status === 'Pending')) ||
-                (user?.role === 'ADMIN' && selectedTicket.status === 'Verifikasi')) && (
+              {(user?.role === 'HELPDESK' && (selectedTicket.status === 'Verifikasi' || selectedTicket.status === 'Pending' || selectedTicket.status === 'Menunggu Validasi' || selectedTicket.status_name === 'PENDING' || selectedTicket.status_name === 'VERIFIED' || selectedTicket.status_name === 'REJECTED')) && (
                   <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4 text-left">
                     <div className="flex justify-between items-center">
                       <h4 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider">
-                        {selectedTicket.status === 'Pending' ? 'Tindakan Validasi Tiket Pending' : (user?.role === 'ADMIN' ? 'Tindakan Penugasan Tim' : 'Tindakan Validasi Helpdesk')}
+                        {selectedTicket.status === 'Pending' ? 'Tindakan Validasi Tiket Pending' : 'Tindakan Validasi Helpdesk'}
                       </h4>
                       {selectedTicket.status === 'Pending' && (
                         <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-black uppercase tracking-wider">
@@ -815,7 +869,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
                   </div>
                 )}
 
-              {user?.role === 'PEGAWAI' && selectedTicket.status === 'Pending' && (
+              {user?.role === 'PEGAWAI' && (selectedTicket.status === 'Pending' || selectedTicket.status_name === 'REJECTED' || selectedTicket.status_name === 'ASSIGNED') && selectedTicket.status !== 'Diproses' && (
                 <div className="bg-rose-50/50 border border-rose-200 rounded-2xl p-5 space-y-4 text-left animate-in fade-in duration-200">
                   <div className="flex gap-2.5 text-rose-800">
                     <AlertTriangle className="w-5 h-5 shrink-0 text-rose-600 mt-0.5" />
@@ -831,7 +885,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
                       setModalConfig({
                         isOpen: true,
                         type: 'confirm',
@@ -839,31 +893,27 @@ export const TicketHistory = ({ mode = 'active' }) => {
                         message: 'Apakah Anda yakin ingin mengaktifkan kembali tiket ini ke status Diproses untuk menindaklanjuti perbaikan teknis?',
                         confirmText: 'Ya, Mulai Kerjakan',
                         cancelText: 'Batal',
-                        onConfirm: () => {
-                          const updated = tickets.map(t => {
-                            if (t.uuid === selectedTicket.uuid) {
-                              return {
-                                ...t,
-                                status: 'Diproses',
-                                logs: [
-                                  { date: getCurrentLogTimeFormatted(0), text: 'Pegawai memulai kembali perbaikan pekerjaan teknis pasca sanggahan pemohon.' },
-                                  ...(t.logs || [])
-                                ]
-                              };
-                            }
-                            return t;
-                          });
-                          setTickets(updated);
-                          setSelectedTicket(updated.find(t => t.uuid === selectedTicket.uuid));
-                          setModalConfig({
-                            isOpen: true,
-                            type: 'success',
-                            title: 'Tiket Berhasil Diaktifkan Kembali',
-                            message: 'Tiket telah kembali ke status Diproses. Anda dapat memperbarui progress dan menyelesaikan perbaikan layanan.',
-                            confirmText: 'Selesai & Tutup',
-                            cancelText: '',
-                            onConfirm: closeModal
-                          });
+                        onConfirm: async () => {
+                          try {
+                            closeModal();
+                            await api.updateProgress(selectedTicket.uuid, {
+                              progress: selectedTicket.progress || 0,
+                              note: 'Pegawai memulai kembali perbaikan pekerjaan teknis pasca sanggahan/revisi pemohon.'
+                            });
+                            await loadTickets();
+                            setSelectedTicket(null);
+                            setModalConfig({
+                              isOpen: true,
+                              type: 'success',
+                              title: 'Tiket Berhasil Diaktifkan Kembali',
+                              message: 'Tiket telah kembali ke status Diproses. Anda dapat memperbarui progress dan menyelesaikan perbaikan layanan.',
+                              confirmText: 'Selesai & Tutup',
+                              cancelText: '',
+                              onConfirm: closeModal
+                            });
+                          } catch (err) {
+                            alert('Gagal mengaktifkan tiket: ' + err.message);
+                          }
                         }
                       });
                     }}
@@ -874,33 +924,54 @@ export const TicketHistory = ({ mode = 'active' }) => {
                 </div>
               )}
 
-              {user?.role === 'PEGAWAI' && selectedTicket.status === 'Diproses' && (
+              {user?.role === 'PEGAWAI' && (selectedTicket.status === 'Diproses' || selectedTicket.status_name === 'IN_PROGRESS') && (
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4 text-left">
                   <h4 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider">Perbarui Status Pekerjaan</h4>
 
-                  <div className="flex items-center gap-3 p-3 bg-white border border-slate-200/60 rounded-xl">
-                    <input
-                      type="checkbox"
-                      id="isFinishedPegawai"
-                      checked={isFinished}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Aksi Pekerjaan</label>
+                    <select
+                      value={pegawaiAction}
                       onChange={(e) => {
-                        setIsFinished(e.target.checked);
+                        setPegawaiAction(e.target.value);
                         setFileName('');
+                        setIsFinished(e.target.value === 'done');
                       }}
-                      className="w-5 h-5 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
-                    />
-                    <label htmlFor="isFinishedPegawai" className="text-sm font-bold text-slate-700 cursor-pointer select-none">
-                      Tandai Pekerjaan Selesai (100%)
-                    </label>
+                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                    >
+                      <option value="approve">Approve</option>
+                      <option value="pending">Pending</option>
+                      <option value="done">Sudah Selesai</option>
+                      <option value="reject">Reject</option>
+                    </select>
                   </div>
 
+                  {pegawaiAction === 'pending' && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
+                        Persentase Progres (%)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="99"
+                        value={tempProgress}
+                        onChange={(e) => setTempProgress(Number(e.target.value))}
+                        className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                      />
+                    </div>
+                  )}
+
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Catatan Tambahan (Opsional - Terisi Otomatis)</label>
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
+                      {pegawaiAction === 'reject' ? 'Catatan Penolakan (Wajib Diisi)' : 'Catatan Tambahan (Opsional - Terisi Otomatis)'}
+                    </label>
                     <textarea
                       value={progressNote}
                       onChange={(e) => setProgressNote(e.target.value)}
-                      placeholder="Opsional: sistem otomatis mencatat log progres pengerjaan..."
-                      className="w-full h-24 px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 resize-none"
+                      required={pegawaiAction === 'reject'}
+                      placeholder={pegawaiAction === 'reject' ? 'Contoh: Dokumen lampiran kurang jelas, mohon perbaiki dan unggah ulang...' : 'Opsional: sistem otomatis mencatat log progres pengerjaan...'}
+                      className={`w-full h-24 px-4 py-3 bg-white border rounded-xl text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 resize-none ${pegawaiAction === 'reject' ? 'border-rose-200 focus:ring-rose-500/20 focus:border-rose-500' : 'border-slate-200 focus:ring-sky-500/20 focus:border-sky-500'}`}
                     />
                   </div>
 
@@ -909,7 +980,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
                       <div className="flex gap-2 text-sky-700">
                         <Upload className="w-4 h-4 shrink-0 mt-0.5" />
                         <div className="text-xs space-y-1">
-                          <p className="font-bold">Unggah Berkas BAST (Opsional)</p>
+                          <p className="font-bold">Unggah Dokumen Pendukung (Opsional)</p>
                           <p className="text-slate-600 leading-relaxed">Opsional: Unggah berkas Berita Acara Serah Terima jika ada.</p>
                         </div>
                       </div>
@@ -958,7 +1029,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
                           className="w-full py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
                         >
                           <Upload className="w-3.5 h-3.5 text-sky-600" />
-                          <span>Pilih Berkas BAST (.PDF) - Opsional</span>
+                          <span>Pilih Dokumen Pendukung (.PDF) - Opsional</span>
                         </button>
                       )}
                     </div>
@@ -983,12 +1054,48 @@ export const TicketHistory = ({ mode = 'active' }) => {
                   <p className="text-sm text-slate-500 leading-relaxed">Pekerjaan fisik telah selesai 100%. Silakan berikan konfirmasi dan ulasan rating untuk kualitas pelayanan kami.</p>
 
                   {!showInlineRating ? (
-                    <button
-                      onClick={() => setShowSkmModal(true)}
-                      className="w-full px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-indigo-500/20 cursor-pointer"
-                    >
-                      Isi SKM & Penilaian
-                    </button>
+                    !showDisputeForm ? (
+                      <div className="flex flex-col gap-2">
+                        <button
+                          onClick={() => setShowSkmModal(true)}
+                          className="w-full px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-indigo-500/20 cursor-pointer"
+                        >
+                          Terima & Isi SKM
+                        </button>
+                        <button
+                          onClick={() => setShowDisputeForm(true)}
+                          className="w-full px-4 py-2.5 bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 rounded-xl text-sm font-bold transition-all cursor-pointer"
+                        >
+                          Sanggah Hasil (Tidak Sesuai)
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-3 mt-2 border border-rose-100 bg-white p-4 rounded-xl shadow-sm">
+                        <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">Alasan Sanggah / Revisi</label>
+                        <textarea
+                          rows="3"
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-rose-500 font-semibold"
+                          placeholder="Jelaskan mengapa hasil belum sesuai..."
+                          value={disputeReason}
+                          onChange={(e) => setDisputeReason(e.target.value)}
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => { setShowDisputeForm(false); setDisputeReason(''); }}
+                            className="flex-1 px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-bold cursor-pointer"
+                          >
+                            Batal
+                          </button>
+                          <button
+                            onClick={handleDisputeSubmit}
+                            disabled={!disputeReason.trim()}
+                            className="flex-1 px-3 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-sm font-bold disabled:opacity-50 cursor-pointer"
+                          >
+                            Kirim Sanggahan
+                          </button>
+                        </div>
+                      </div>
+                    )
                   ) : (
                     <>
                       <div className="flex justify-between items-center bg-white border border-indigo-100 rounded-xl p-4 shadow-sm">
@@ -1100,7 +1207,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
                             ? 'bg-emerald-500 ring-4 ring-emerald-100 animate-pulse'
                             : 'bg-slate-300'
                           }`}></div>
-                        <span className="text-xs text-slate-400 font-bold block">{formatLogDateDisplay(log.date)}</span>
+                        <span className="text-xs text-slate-400 font-bold block">{formatLogDateDisplay(log.date)} - {log.author || 'Sistem'}</span>
                         <p className={`text-base mt-0.5 leading-relaxed ${isNewest ? 'font-bold text-slate-800' : 'text-slate-500'}`}>{log.text}</p>
                       </div>
                     );
@@ -1121,6 +1228,24 @@ export const TicketHistory = ({ mode = 'active' }) => {
         isOpen={showDetailModal}
         onClose={() => setShowDetailModal(false)}
         ticket={selectedTicket}
+      />
+
+      <RefillTicketModal
+        isOpen={showRefillModal}
+        onClose={() => setShowRefillModal(false)}
+        ticket={selectedTicket}
+        onSave={async (updatedTicket) => {
+          try {
+            const formDataPayload = updatedTicket.form_data || selectedTicket?.form_data || {};
+            const logMessage = updatedTicket.logs?.[0]?.text || 'Pemohon telah memperbarui dan melengkapi formulir dokumen pengajuan. Tiket dikirim kembali untuk diverifikasi ulang.';
+
+            await api.updateTicketData(updatedTicket.uuid || updatedTicket.id, formDataPayload, logMessage, updatedTicket.files, updatedTicket.fileUrl);
+            loadTickets();
+          } catch (err) {
+            console.error(err);
+            alert('Gagal mengirim perbaikan form.');
+          }
+        }}
       />
 
       <SkmModal

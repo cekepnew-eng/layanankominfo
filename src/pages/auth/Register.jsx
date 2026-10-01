@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
-import { Monitor, ArrowLeft, Lock, Mail, User, ShieldCheck, QrCode, Copy } from 'lucide-react';
+import { Monitor, ArrowLeft, Lock, Mail, User, ShieldCheck, QrCode, Copy, Eye, EyeOff } from 'lucide-react';
 
 export const Register = () => {
   const { login, register, setUser } = useAuth();
@@ -13,6 +13,24 @@ export const Register = () => {
   const [department, setDepartment] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  
+  const getPasswordStrength = (pass) => {
+    if (!pass) return null;
+    let score = 0;
+    if (pass.length > 5) score += 1;
+    if (pass.length >= 8) score += 1;
+    if (/[A-Z]/.test(pass)) score += 1;
+    if (/[0-9]/.test(pass)) score += 1;
+    if (/[^A-Za-z0-9]/.test(pass)) score += 1;
+    
+    if (score < 2) return { text: 'Lemah', color: 'text-rose-600 bg-rose-50 border-rose-200' };
+    if (score === 2 || score === 3) return { text: 'Sedang', color: 'text-amber-600 bg-amber-50 border-amber-200' };
+    return { text: 'Kuat', color: 'text-emerald-600 bg-emerald-50 border-emerald-200' };
+  };
+  
+  const strength = getPasswordStrength(password);
   
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [otpStep, setOtpStep] = useState(1);
@@ -53,29 +71,8 @@ export const Register = () => {
       return;
     }
     
-    // Login to get token for 2FA setup
-    const loginResult = await login(emailLower, password);
-    if (!loginResult.success || !loginResult.tempToken) {
-      alert('Gagal login otomatis setelah registrasi');
-      return;
-    }
-    setTempToken(loginResult.tempToken);
-
-    try {
-      const qrRes = await generate2FA(loginResult.tempToken);
-      if (qrRes.success) {
-        setQrData({ qrUrl: qrRes.qrCodeUrl, secretFormatted: qrRes.secret });
-        setOtpStep(1);
-        setOtpCode('');
-        setOtpError('');
-        setTargetRole('masyarakat');
-        setShowOtpModal(true);
-      } else {
-        alert(qrRes.message || 'Gagal generate QR Code');
-      }
-    } catch (e) {
-      alert('Gagal generate QR Code: ' + e.message);
-    }
+    alert('🎉 Anda sudah berhasil membuat akun. Silakan masuk (login) untuk melanjutkan.');
+    navigate('/auth/login');
   };
 
   const handleOtpVerify = async (e) => {
@@ -201,14 +198,33 @@ export const Register = () => {
                 </div>
                 <input
                   id="password"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Masukkan kata sandi"
-                  className="block w-full pl-11 pr-4 py-3 bg-transparent text-slate-800 text-base placeholder-slate-400 focus:outline-none"
+                  className="block w-full pl-11 pr-12 py-3 bg-transparent text-slate-800 text-base placeholder-slate-400 focus:outline-none"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-sky-600 focus:outline-none"
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
               </div>
+              {strength && (
+                <div className="flex items-center gap-2 mt-1">
+                  <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border ${strength.color}`}>
+                    {strength.text}
+                  </span>
+                  <div className="flex-1 flex gap-1 h-1.5">
+                    <div className={`flex-1 rounded-full ${strength.text === 'Lemah' ? 'bg-rose-500' : strength.text === 'Sedang' ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
+                    <div className={`flex-1 rounded-full ${strength.text === 'Lemah' ? 'bg-slate-200' : strength.text === 'Sedang' ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
+                    <div className={`flex-1 rounded-full ${strength.text === 'Kuat' ? 'bg-emerald-500' : 'bg-slate-200'}`}></div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -219,13 +235,20 @@ export const Register = () => {
                 </div>
                 <input
                   id="confirmPassword"
-                  type="password"
+                  type={showConfirmPassword ? "text" : "password"}
                   required
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Ulangi kata sandi Anda"
-                  className="block w-full pl-11 pr-4 py-3 bg-transparent text-slate-800 text-base placeholder-slate-400 focus:outline-none"
+                  className="block w-full pl-11 pr-12 py-3 bg-transparent text-slate-800 text-base placeholder-slate-400 focus:outline-none"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-sky-600 focus:outline-none"
+                >
+                  {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
               </div>
             </div>
 

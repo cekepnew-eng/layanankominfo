@@ -8,6 +8,34 @@ import { SkmModal } from '../../components/SkmModal';
 import { ActionModal } from '../../components/ActionModal';
 import { api } from '../../services/api';
 
+const LogItem = ({ log }) => {
+  const [expanded, setExpanded] = useState(false);
+  const dateStr = log.date || (log.created_at ? new Date(log.created_at).toLocaleString('id-ID') : '');
+  const author = log.user_name || 'Sistem';
+  const text = log.text || log.log_description || '';
+  
+  const words = text.split(' ');
+  const isLong = words.length > 20;
+  const displayText = expanded ? text : (isLong ? words.slice(0, 20).join(' ') + '...' : text);
+
+  return (
+    <div className="relative pl-4">
+      <div className="absolute w-3 h-3 bg-sky-500 rounded-full border-2 border-white -left-[23px] top-1.5 shadow-sm"></div>
+      <div className="bg-slate-50 border border-slate-100 p-3 rounded-xl shadow-sm">
+        <span className="block text-xs font-bold text-sky-600 mb-1">{dateStr} – {author}</span>
+        <p className="text-sm font-semibold text-slate-700">
+          {displayText}
+          {isLong && (
+            <button onClick={() => setExpanded(!expanded)} className="ml-2 text-sky-600 hover:underline text-xs font-bold">
+              {expanded ? 'Sembunyikan' : 'Baca Selengkapnya'}
+            </button>
+          )}
+        </p>
+      </div>
+    </div>
+  );
+};
+
 export const MyTickets = () => {
   const { user } = useAuth();
   const [tickets, setTickets] = useState([]);
@@ -74,10 +102,10 @@ export const MyTickets = () => {
   const [skmQ2, setSkmQ2] = useState('Sangat Baik');
   const [skmQ3, setSkmQ3] = useState('Sangat Baik');
 
-  const [ratingSpeed, setRatingSpeed] = useState(5);
-  const [ratingResult, setRatingResult] = useState(5);
-  const [ratingCommunication, setRatingCommunication] = useState(5);
-  const [ratingQuality, setRatingQuality] = useState(5);
+  const [ratingSpeed, setRatingSpeed] = useState(0);
+  const [ratingResult, setRatingResult] = useState(0);
+  const [ratingCommunication, setRatingCommunication] = useState(0);
+  const [ratingQuality, setRatingQuality] = useState(0);
   const [feedbackText, setFeedbackText] = useState('');
   const [showRatingModal, setShowRatingModal] = useState(false);
 
@@ -178,34 +206,24 @@ export const MyTickets = () => {
     });
   };
 
-  const executeDisputeTicket = (id, reason) => {
-    const updatedTickets = tickets.map(t => {
-      if (t.id === id) {
-        const cleanedLogs = (t.logs || []).filter(l => !l.text.includes('Menunggu konfirmasi'));
-        return {
-          ...t,
-          status: 'Pending',
-          logs: [
-            { date: getCurrentLogTimeFormatted(0), text: `Pemohon menyanggah hasil pekerjaan layanan. Alasan: ${reason.trim()}` },
-            ...cleanedLogs
-          ]
-        };
-      }
-      return t;
-    });
-    setTickets(updatedTickets);
-    setSelectedTicket(updatedTickets.find(t => t.id === id));
-    setShowDisputeForm(false);
-    setDisputeReason('');
-    setModalConfig({
-      isOpen: true,
-      type: 'success',
-      title: 'Sanggahan Berhasil Diajukan',
-      message: 'Sanggahan hasil pengerjaan berhasil dikirim. Tim teknis pelaksana akan meninjau catatan Anda dan menindaklanjuti perbaikan yang diperlukan.',
-      confirmText: 'Selesai & Tutup',
-      cancelText: '',
-      onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
-    });
+  const executeDisputeTicket = async (id, reason) => {
+    try {
+      await api.rejectTicket(id, { note: reason });
+      await fetchTickets();
+      setShowDisputeForm(false);
+      setDisputeReason('');
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: 'Sanggahan Berhasil Diajukan',
+        message: 'Sanggahan hasil pengerjaan berhasil dikirim. Tim teknis pelaksana akan meninjau catatan Anda dan menindaklanjuti perbaikan yang diperlukan.',
+        confirmText: 'Selesai & Tutup',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
+    } catch (err) {
+      alert('Gagal mengirim sanggahan: ' + err.message);
+    }
   };
 
   useEffect(() => {
@@ -215,6 +233,18 @@ export const MyTickets = () => {
   const handleSendSurvey = async (e) => {
     e.preventDefault();
     if (!selectedTicket) return;
+    if (ratingResult < 1) {
+      setModalConfig({
+        isOpen: true,
+        type: 'warning',
+        title: 'Rating Belum Diisi',
+        message: 'Mohon klik dan berikan bintang penilaian (1-5) terlebih dahulu sebelum mengirim ulasan.',
+        confirmText: 'Mengerti',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
+      return;
+    }
     try {
       await api.submitFeedback(selectedTicket.id, { rating: ratingResult, comment: feedbackText || 'Pelayanan memuaskan.' });
       
@@ -324,8 +354,8 @@ export const MyTickets = () => {
                     <div>
                       <div className="flex items-center gap-3 mb-1">
                         <span className="font-mono font-bold text-sm text-slate-500">{ticket.ticket_number}</span>
-                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${getStatusColor(ticket.status_name)}`}>
-                          {ticket.status_name.replace(/_/g, ' ')}
+                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${getStatusColor(ticket.status_name)} uppercase tracking-wider`}>
+                          {ticket.status}
                         </span>
                       </div>
                       <h4 className="text-lg font-bold text-slate-900 mb-1">{ticket.service_name}</h4>
@@ -367,7 +397,7 @@ export const MyTickets = () => {
 
       {selectedTicket && (
         <div className="mt-8 space-y-4">
-          {selectedTicket.status === 'Selesai' && selectedTicket.bastFile && (
+          {(selectedTicket.status === 'Selesai' || selectedTicket.status === 'Menunggu Konfirmasi') && selectedTicket.bastFile && (
             <div className="space-y-2.5 text-left">
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Lampiran Penyelesaian Pegawai</span>
               <div className="flex items-center justify-between glass-card p-3 rounded-2xl border border-white/60 text-sm font-semibold shadow-sm">
@@ -377,6 +407,7 @@ export const MyTickets = () => {
                 </div>
                 <a
                   href={selectedTicket.bastFileUrl || '/bast_selesai.pdf'}
+                  download={selectedTicket.bastFile || `BAST_${selectedTicket.id}.pdf`}
                   target="_blank"
                   rel="noreferrer"
                   className="text-xs font-bold text-emerald-600 hover:underline px-2.5 py-1 glass-card border border-white/60 rounded-xl hover:bg-white/80 transition-all shrink-0 shadow-sm"
@@ -389,7 +420,7 @@ export const MyTickets = () => {
 
           {selectedTicket.status === 'Pending' && (
             <div className="space-y-4">
-              {selectedTicket.logs?.some(l => l.text.toLowerCase().includes('menyanggah')) ? (
+              {selectedTicket.logs?.some(l => (l.text && l.text.toLowerCase().includes('menyanggah')) || (l.log_description && l.log_description.toLowerCase().includes('menyanggah'))) ? (
                 <div className="bg-rose-50/50 p-5 rounded-2xl border border-rose-200 space-y-3 text-left animate-in fade-in duration-200">
                   <div className="flex gap-2.5 text-rose-800">
                     <AlertTriangle className="w-5 h-5 shrink-0 text-rose-600 mt-0.5" />
@@ -399,7 +430,7 @@ export const MyTickets = () => {
                         Anda telah mengajukan sanggahan terhadap hasil pekerjaan. Tim teknis pelaksana sedang meninjau dan melakukan tindak lanjut perbaikan.
                       </p>
                       <div className="mt-2.5 p-3 glass-card rounded-2xl border border-rose-100/80 text-xs italic text-slate-700 shadow-sm">
-                        "{selectedTicket.logs.find(l => l.text.toLowerCase().includes('menyanggah'))?.text || selectedTicket.logs[0]?.text}"
+                        "{selectedTicket.logs.find(l => (l.text && l.text.toLowerCase().includes('menyanggah')) || (l.log_description && l.log_description.toLowerCase().includes('menyanggah')))?.log_description || selectedTicket.logs[selectedTicket.logs.length - 1]?.log_description}"
                       </div>
                     </div>
                   </div>
@@ -417,7 +448,7 @@ export const MyTickets = () => {
                         <div className="mt-2.5 p-3 glass-card rounded-2xl border border-white/60 text-xs shadow-sm">
                           <span className="font-bold text-slate-500 uppercase tracking-wider block mb-1">Catatan dari Helpdesk:</span>
                           <p className="text-slate-700 italic font-medium">
-                            "{selectedTicket.logs.find(l => l.text.toLowerCase().includes('helpdesk') || l.text.toLowerCase().includes('ditangguhkan') || l.text.toLowerCase().includes('alasan:'))?.text || selectedTicket.logs[0]?.text}"
+                            "{selectedTicket.logs.find(l => (l.log_description && (l.log_description.toLowerCase().includes('helpdesk') || l.log_description.toLowerCase().includes('ditangguhkan') || l.log_description.toLowerCase().includes('alasan:'))))?.log_description || selectedTicket.logs[selectedTicket.logs.length - 1]?.log_description}"
                           </p>
                         </div>
                       )}
@@ -510,13 +541,7 @@ export const MyTickets = () => {
               </h4>
               <div className="space-y-4 pl-2 border-l-2 border-slate-100 ml-2 mt-2">
                 {selectedTicket.logs.map((log, i) => (
-                  <div key={i} className="relative pl-4">
-                    <div className="absolute w-3 h-3 bg-sky-500 rounded-full border-2 border-white -left-[23px] top-1.5 shadow-sm"></div>
-                    <div className="bg-slate-50 border border-slate-100 p-3 rounded-xl shadow-sm">
-                      <span className="block text-xs font-bold text-sky-600 mb-1">{log.date || new Date(log.created_at).toLocaleString('id-ID')}</span>
-                      <p className="text-sm font-semibold text-slate-700">{log.text || log.log_description}</p>
-                    </div>
-                  </div>
+                  <LogItem key={i} log={log} />
                 ))}
               </div>
             </div>
@@ -563,10 +588,17 @@ export const MyTickets = () => {
         isOpen={showRefillModal}
         onClose={() => setShowRefillModal(false)}
         ticket={selectedTicket}
-        onSave={(updatedTicket) => {
-          const updatedList = tickets.map(t => t.id === updatedTicket.id ? updatedTicket : t);
-          setTickets(updatedList);
-          setSelectedTicket(updatedTicket);
+        onSave={async (updatedTicket) => {
+          try {
+            const formDataPayload = updatedTicket.form_data || selectedTicket?.form_data || {};
+            const logMessage = updatedTicket.logs?.[0]?.text || 'Pemohon telah memperbarui dan melengkapi formulir dokumen pengajuan. Tiket dikirim kembali untuk diverifikasi ulang.';
+
+            await api.updateTicketData(updatedTicket.uuid || updatedTicket.id, formDataPayload, logMessage, updatedTicket.files, updatedTicket.fileUrl);
+            await fetchTickets();
+          } catch (err) {
+            console.error(err);
+            alert('Gagal mengirim perbaikan form.');
+          }
         }}
       />
 

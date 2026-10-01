@@ -64,7 +64,10 @@ export const ManageTeams = () => {
     onConfirm: null
   });
 
-  const pegawaiList = users ? users.filter(u => ['PEGAWAI', 'ADMIN', 'HELPDESK'].includes(u.role)) : [];
+  const pegawaiList = users ? users.filter(u => {
+    const roleArr = u.roles || [u.role];
+    return roleArr.some(r => ['PEGAWAI', 'ADMIN', 'HELPDESK'].includes(r));
+  }) : [];
 
   const handleAddTeam = async (e) => {
     e.preventDefault();

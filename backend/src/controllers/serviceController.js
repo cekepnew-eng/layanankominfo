@@ -82,7 +82,12 @@ exports.getAdminServices = async (req, res) => {
       ORDER BY s.id ASC
     `);
     
-    const reqsRes = await db.query('SELECT * FROM service_requirements');
+    let reqsRes = { rows: [] };
+    try {
+      reqsRes = await db.query('SELECT * FROM service_requirements');
+    } catch (e) {
+      console.warn('service_requirements table might be missing', e.message);
+    }
     
     const services = servicesRes.rows.map(s => {
       s.requirements = reqsRes.rows.filter(r => r.service_id === s.id);
@@ -91,7 +96,8 @@ exports.getAdminServices = async (req, res) => {
 
     res.json({ success: true, data: services });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error' });
+    console.error('getAdminServices error:', err);
+    res.status(500).json({ success: false, message: err.message || 'Server error' });
   }
 };
 

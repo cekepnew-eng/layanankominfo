@@ -305,7 +305,7 @@ export const Overview = () => {
           <div>
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Butuh Validasi</p>
             <p className="text-2xl font-black text-slate-800 mt-0.5">
-              {(tickets || []).filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi').length} <span className="text-sm text-slate-500">Tiket</span>
+              {(tickets || []).filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status_name === 'PENDING' || t.status_name === 'VERIFIED').length} <span className="text-sm text-slate-500">Tiket</span>
             </p>
           </div>
         </div>
@@ -317,7 +317,7 @@ export const Overview = () => {
           <div>
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Sedang Diproses</p>
             <p className="text-2xl font-black text-slate-800 mt-0.5">
-              {(tickets || []).filter(t => t.status === 'Diproses').length} <span className="text-sm text-slate-500">Tiket</span>
+              {(tickets || []).filter(t => t.status === 'Diproses' || t.status_name === 'ASSIGNED' || t.status_name === 'IN_PROGRESS').length} <span className="text-sm text-slate-500">Tiket</span>
             </p>
           </div>
         </div>
@@ -329,7 +329,7 @@ export const Overview = () => {
           <div>
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Telah Selesai</p>
             <p className="text-2xl font-black text-slate-800 mt-0.5">
-              {(tickets || []).filter(t => t.status === 'Selesai').length} <span className="text-sm text-slate-500">Tiket</span>
+              {(tickets || []).filter(t => t.status === 'Selesai' || t.status_name === 'COMPLETED' || t.status_name === 'WAITING_USER_CONFIRMATION').length} <span className="text-sm text-slate-500">Tiket</span>
             </p>
           </div>
         </div>
@@ -394,7 +394,7 @@ export const Overview = () => {
   const renderPegawaiDashboard = () => {
     const myTeamNames = user?.teams && user.teams.length > 0 ? user.teams : ['Belum ada tim kerja'];
     const pegawaiTickets = (tickets || []);
-    const activeTasks = pegawaiTickets.filter(t => t.status_name === 'IN_PROGRESS' || t.status === 'Diproses');
+    const activeTasks = pegawaiTickets.filter(t => t.status_name === 'IN_PROGRESS' || t.status_name === 'ASSIGNED' || t.status === 'Diproses');
     const priorityTask = activeTasks.length > 0 ? activeTasks[0] : null;
 
     const myTeams = myTeamNames.map((name, idx) => ({
@@ -490,7 +490,7 @@ export const Overview = () => {
             <div>
               <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Butuh Ulasan User</p>
               <p className="text-2xl font-black text-slate-800 mt-0.5">
-                {pegawaiTickets.filter(t => t.status === 'Menunggu Konfirmasi User').length} <span className="text-sm text-slate-500">Tugas</span>
+                {pegawaiTickets.filter(t => t.status === 'Menunggu Konfirmasi User' || t.status_name === 'WAITING_USER_CONFIRMATION').length} <span className="text-sm text-slate-500">Tugas</span>
               </p>
             </div>
           </div>
@@ -502,7 +502,7 @@ export const Overview = () => {
             <div>
               <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Selesai Pengerjaan</p>
               <p className="text-2xl font-black text-slate-800 mt-0.5">
-                {pegawaiTickets.filter(t => t.status === 'Selesai').length} <span className="text-sm text-slate-500">Tugas</span>
+                {pegawaiTickets.filter(t => t.status === 'Selesai' || t.status_name === 'COMPLETED').length} <span className="text-sm text-slate-500">Tugas</span>
               </p>
             </div>
           </div>
@@ -539,12 +539,12 @@ export const Overview = () => {
 
   const userTickets = tickets || [];
   const userTotalCount = userTickets.length;
-  const userInProgressCount = userTickets.filter(t => t.status === 'Diproses' || t.status === 'Verifikasi' || t.status === 'Pending').length;
-  const userConfirmCount = userTickets.filter(t => t.status === 'Selesai' && !t.rating).length;
-  const userFinishedCount = userTickets.filter(t => t.status === 'Selesai' && t.rating).length;
+  const userInProgressCount = userTickets.filter(t => t.status === 'Diproses' || t.status === 'Verifikasi' || t.status === 'Pending' || t.status_name === 'PENDING' || t.status_name === 'VERIFIED' || t.status_name === 'ASSIGNED' || t.status_name === 'IN_PROGRESS').length;
+  const userConfirmCount = userTickets.filter(t => (t.status === 'Selesai' && !t.rating) || (t.status_name === 'WAITING_USER_CONFIRMATION')).length;
+  const userFinishedCount = userTickets.filter(t => (t.status === 'Selesai' && t.rating) || (t.status_name === 'COMPLETED')).length;
 
-  const userConfirmTicket = userTickets.find(t => t.status === 'Selesai' && !t.rating);
-  const userInProgressTicket = userTickets.find(t => t.status === 'Diproses' || t.status === 'Verifikasi' || t.status === 'Pending');
+  const userConfirmTicket = userTickets.find(t => (t.status === 'Selesai' && !t.rating) || t.status_name === 'WAITING_USER_CONFIRMATION');
+  const userInProgressTicket = userTickets.find(t => t.status === 'Diproses' || t.status === 'Verifikasi' || t.status === 'Pending' || t.status_name === 'PENDING' || t.status_name === 'ASSIGNED' || t.status_name === 'IN_PROGRESS');
 
   const renderUserDashboard = () => (
     <div className="space-y-8 text-left animate-in fade-in duration-200">

@@ -1,11 +1,16 @@
 import React from 'react';
 import { X, FileCheck, ExternalLink, Download, ShieldCheck } from 'lucide-react';
+import { parseFileValue } from '../utils/fileUtils';
 
 export const SopModal = ({ isOpen, onClose, serviceName, sopFileName, fileUrl }) => {
   if (!isOpen) return null;
 
-  const resolvedUrl = fileUrl || '/sop_layanan.pdf';
-  const resolvedFileName = sopFileName || 'sop_layanan.pdf';
+  const DUMMY_PDF_BASE64 = 'data:application/pdf;base64,JVBERi0xLjcKCjEgMCBvYmogICUgZW50cnkgcG9pbnQKPDwKICAvVHlwZSAvQ2F0YWxvZwogIC9QYWdlcyAyIDAgUgo+PgplbmRvYmoKCjIgMCBvYmoKPDwKICAvVHlwZSAvUGFnZXMKICAvTWVkaWFCb3ggWyAwIDAgNTAwIDIwMCBdCiAgL0NvdW50IDEKICAvS2lkcyBbIDMgMCBSIF0KPj4KZW5kb2JqCgozIDAgb2JqCjw8CiAgL1R5cGUgL1BhZ2UKICAvUGFyZW50IDIgMCBSCiAgL1Jlc291cmNlcyA8PAogICAgL0ZvbnQgPDwKICAgICAgL0YxIDQgMCBSCj4+Cj4+CiAgL0NvbnRlbnRzIDUgMCBSCj4+CmVuZG9iagoKNCAwIG9iago8PAogIC9UeXBlIC9Gb250CiAgL1N1YnR5cGUgL1R5cGUxCiAgL0Jhc2VGb250IC9IZWx2ZXRpY2EKPj4KZW5kb2JqCgo1IDAgb2JqCjw8IC9MZW5ndGggNTEgPj4Kc3RyZWFtCkJUCiAgL0YxIDE4IFRmCiAgMTAgMTAwIFRkCiAgKERva3VtZW4gU09QIEJlbHVtIERpdW5nZ2FoIE9sZWggQWRtaW4pIFRqCkVUCmVuZHN0cmVhbQplbmRvYmoKCnhyZWYKMCA2CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAxMCAwMDAwMCBuIAowMDAwMDAwMDY3IDAwMDAwIG4gCjAwMDAwMDAxNTAgMDAwMDAgbiAKMDAwMDAwMDI3OSAwMDAwMCBuIAowMDAwMDAwMzU5IDAwMDAwIG4gCnRyYWlsZXIKPDwKICAvU2l6ZSA2CiAgL1Jvb3QgMSAwIFIKPj4Kc3RhcnR4cmVmCjQ2MQolJUVPRgo=';
+  
+  const parsed = parseFileValue(fileUrl);
+  const isDummy = !parsed.data || !parsed.data.startsWith('data:');
+  const resolvedUrl = isDummy ? DUMMY_PDF_BASE64 : parsed.data;
+  const resolvedFileName = sopFileName || parsed.name || (isDummy ? 'Belum_Ada_SOP.pdf' : 'sop_layanan.pdf');
 
   React.useEffect(() => {
     if (isOpen) {

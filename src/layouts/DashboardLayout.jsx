@@ -18,6 +18,7 @@ import {
   Star,
   Home,
   Bell,
+  Search,
   Clock
 } from 'lucide-react';
 
@@ -75,24 +76,29 @@ export const DashboardLayout = () => {
           const recentTickets = res.data.slice(0, 5);
           const notifs = recentTickets.map(t => {
              let msg = '';
+             let type = 'info';
              const statusStr = t.status_name || t.status || '';
+             const ticketNum = t.ticket_number || t.id;
              if (user.role === 'ADMIN' || user.role === 'HELPDESK') {
-                 if (statusStr === 'PENDING' || statusStr === 'Verifikasi') msg = `Tiket baru #${t.ticket_number || t.id} butuh verifikasi.`;
-                 else if (statusStr === 'IN_PROGRESS' || statusStr === 'Diproses') msg = `Tiket #${t.ticket_number || t.id} sedang diproses tim.`;
-                 else if (statusStr === 'COMPLETED' || statusStr === 'Selesai') msg = `Tiket #${t.ticket_number || t.id} telah selesai.`;
-                 else msg = `Pembaruan tiket #${t.ticket_number || t.id}: ${statusStr}`;
+                 if (statusStr === 'PENDING' || statusStr === 'Verifikasi') { msg = `Tiket baru #${ticketNum} butuh verifikasi.`; type = 'warning'; }
+                 else if (statusStr === 'IN_PROGRESS' || statusStr === 'Diproses') { msg = `Tiket #${ticketNum} sedang diproses tim.`; type = 'processing'; }
+                 else if (statusStr === 'COMPLETED' || statusStr === 'Selesai') { msg = `Tiket #${ticketNum} telah selesai dikerjakan.`; type = 'success'; }
+                 else { msg = `Pembaruan status tiket #${ticketNum}: ${statusStr}`; type = 'info'; }
              } else if (user.role === 'PEGAWAI') {
-                 msg = `Tugas #${t.ticket_number || t.id} saat ini: ${statusStr.replace(/_/g, ' ')}`;
+                 msg = `Tugas #${ticketNum} saat ini: ${statusStr.replace(/_/g, ' ')}`;
+                 type = 'processing';
              } else {
-                 if (statusStr === 'WAITING_USER_CONFIRMATION') msg = `Tiket #${t.ticket_number || t.id} butuh SKM & Rating dari Anda!`;
-                 else msg = `Status pengajuan #${t.ticket_number || t.id} Anda: ${statusStr.replace(/_/g, ' ')}`;
+                 if (statusStr === 'WAITING_USER_CONFIRMATION') { msg = `Tiket #${ticketNum} butuh ulasan SKM dari Anda!`; type = 'warning'; }
+                 else if (statusStr === 'COMPLETED' || statusStr === 'Selesai') { msg = `Pengajuan #${ticketNum} telah selesai!`; type = 'success'; }
+                 else { msg = `Status pengajuan #${ticketNum} Anda: ${statusStr.replace(/_/g, ' ')}`; type = 'info'; }
              }
              return {
                  id: t.id,
-                 title: `Status Update`,
+                 title: `Update Tiket #${ticketNum}`,
                  message: msg,
                  time: t.created_at,
-                 isRead: false
+                 isRead: false,
+                 type
              };
           });
           setNotifications(notifs);
@@ -136,6 +142,7 @@ export const DashboardLayout = () => {
     const home = { path: '/dashboard', label: 'Ringkasan', icon: LayoutDashboard };
     const history = { path: '/dashboard/history', label: getHistoryLabel(), icon: FileText };
     const ticketHistory = { path: '/dashboard/ticket-history', label: 'Riwayat Tiket', icon: CheckSquare };
+    const trackTicket = { path: '/dashboard/track-ticket', label: 'Lacak Tiket', icon: Search };
     const profile = { path: '/dashboard/profile', label: 'Profil Pengguna', icon: User };
 
     const adminLinks = [
@@ -160,11 +167,12 @@ export const DashboardLayout = () => {
           adminLinks[2],
           history,
           ticketHistory,
+          trackTicket,
           adminLinks[3],
           profile
         ];
       case 'HELPDESK':
-        return [home, userLinks[0], history, ticketHistory, profile];
+        return [home, userLinks[0], history, ticketHistory, trackTicket, profile];
       case 'PEGAWAI':
         return [home, history, ticketHistory, profile];
       case 'USER':
@@ -251,7 +259,7 @@ export const DashboardLayout = () => {
                 setUser({ ...user, role: selectedRole });
                 navigate('/dashboard');
               }}
-              className="w-full px-2.5 py-1.5 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+              className="w-full px-2.5 py-1.5 border border-sky-300 bg-sky-50 text-sky-700 rounded-xl text-xs font-bold focus:outline-none focus:ring-1 focus:ring-sky-500 transition-colors"
             >
               {user.roles.map((r) => {
                 const labels = {
@@ -261,7 +269,7 @@ export const DashboardLayout = () => {
                   USER: 'Dasbor OPD',
                   MASYARAKAT: 'Dasbor Masyarakat'
                 };
-                return <option key={r} value={r}>{labels[r] || r}</option>;
+                return <option key={r} value={r} className="bg-white text-slate-800 font-semibold">{labels[r] || r}</option>;
               })}
             </select>
           </div>
@@ -301,11 +309,11 @@ export const DashboardLayout = () => {
                 to={link.path}
                 className={`flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-all ${
                   isActive 
-                    ? 'bg-sky-50 text-sky-700 shadow-sm' 
+                    ? 'bg-sky-600 text-white shadow-md shadow-sky-500/30 translate-x-1 border border-sky-500' 
                     : 'text-slate-550 hover:bg-slate-50 hover:text-slate-800'
                 }`}
               >
-                <Icon className={`w-5 h-5 ${isActive ? 'text-sky-600' : 'text-slate-400'}`} />
+                <Icon className={`w-5 h-5 transition-colors ${isActive ? 'text-white' : 'text-slate-400'}`} />
                 <span>{link.label}</span>
               </Link>
             );
@@ -349,32 +357,58 @@ export const DashboardLayout = () => {
               </button>
 
               {showNotifications && (
-                <div className="absolute right-0 mt-3 w-80 glass-panel rounded-3xl shadow-xl border border-white/60 overflow-hidden z-50 animate-in slide-in-from-top-2 duration-200">
-                  <div className="px-5 py-4 border-b border-white/40 flex justify-between items-center bg-white/40">
-                    <h3 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider">Notifikasi Real-time</h3>
-                    <span className="text-xs font-bold bg-sky-100 text-sky-700 px-2 py-0.5 rounded-lg">{notifications.length} Baru</span>
-                  </div>
-                  <div className="max-h-80 overflow-y-auto">
-                    {notifications.length === 0 ? (
-                      <div className="p-6 text-center text-slate-500 text-sm font-semibold">Tidak ada notifikasi saat ini.</div>
-                    ) : (
-                      <div className="divide-y divide-white/40">
-                        {notifications.map((n, i) => (
-                          <div key={i} className="p-4 hover:bg-white/60 transition-colors cursor-pointer group">
-                            <h4 className="text-sm font-black text-slate-800 group-hover:text-sky-700">{n.title}</h4>
-                            <p className="text-xs font-semibold text-slate-600 mt-1 leading-relaxed">{n.message}</p>
-                            <div className="flex items-center gap-1.5 mt-2 text-[10px] font-bold text-slate-400">
-                              <Clock className="w-3 h-3" />
-                              <span>{new Date(n.time).toLocaleString('id-ID')}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                <div className="absolute right-0 mt-3 w-96 glass-panel rounded-3xl shadow-2xl border border-white/60 overflow-hidden z-50 animate-in slide-in-from-top-2 duration-200">
+                  <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-white/70 backdrop-blur-md">
+                    <h3 className="font-black text-slate-800 text-sm uppercase tracking-wider flex items-center gap-2">
+                      <Bell className="w-4 h-4 text-sky-600" />
+                      Notifikasi
+                    </h3>
+                    {notifications.length > 0 && (
+                       <span className="text-xs font-bold bg-sky-100 text-sky-700 px-2 py-0.5 rounded-lg">{notifications.length} Baru</span>
                     )}
                   </div>
-                  <div className="p-3 bg-white/40 border-t border-white/40 text-center">
-                    <Link to="/dashboard/history" onClick={() => setShowNotifications(false)} className="text-xs font-bold text-sky-600 hover:text-sky-700 hover:underline">
-                      Lihat Semua Tiket
+                  <div className="max-h-[26rem] overflow-y-auto p-2 space-y-1 bg-white/40">
+                    {notifications.length === 0 ? (
+                      <div className="p-8 flex flex-col items-center justify-center text-center">
+                        <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mb-3 border border-slate-100 shadow-sm">
+                           <Bell className="w-5 h-5 text-slate-300" />
+                        </div>
+                        <p className="text-slate-500 text-sm font-bold">Belum ada notifikasi.</p>
+                        <p className="text-slate-400 text-xs font-medium mt-1">Anda sudah melihat semuanya.</p>
+                      </div>
+                    ) : (
+                      notifications.map((n, i) => (
+                        <div key={i} className="p-3.5 rounded-2xl hover:bg-white/80 transition-all cursor-pointer group flex items-start gap-3 border border-transparent hover:border-slate-100 shadow-xs hover:shadow-md">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border shadow-xs transition-colors ${
+                             n.type === 'warning' ? 'bg-amber-50 border-amber-100 text-amber-600 group-hover:bg-amber-100' :
+                             n.type === 'success' ? 'bg-emerald-50 border-emerald-100 text-emerald-600 group-hover:bg-emerald-100' :
+                             n.type === 'processing' ? 'bg-sky-50 border-sky-100 text-sky-600 group-hover:bg-sky-100' :
+                             'bg-slate-50 border-slate-200 text-slate-600 group-hover:bg-slate-100'
+                          }`}>
+                             {n.type === 'warning' ? <ShieldCheck className="w-5 h-5" /> :
+                              n.type === 'success' ? <CheckSquare className="w-5 h-5" /> :
+                              n.type === 'processing' ? <Briefcase className="w-5 h-5" /> :
+                              <FileText className="w-5 h-5" />}
+                          </div>
+                          <div className="flex-1 min-w-0 pt-0.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <h4 className={`text-sm font-black truncate ${n.isRead ? 'text-slate-500' : 'text-slate-800'}`}>{n.title}</h4>
+                              {!n.isRead && <span className="w-2 h-2 rounded-full bg-sky-500 shrink-0 shadow-sm"></span>}
+                            </div>
+                            <p className="text-xs font-semibold text-slate-600 mt-1 leading-relaxed line-clamp-2">{n.message}</p>
+                            <div className="flex items-center gap-1.5 mt-2 text-[10px] font-bold text-slate-400">
+                              <Clock className="w-3 h-3" />
+                              <span>{new Date(n.time).toLocaleString('id-ID', { hour: '2-digit', minute:'2-digit', day: 'numeric', month: 'short' })}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="p-3 bg-slate-50/80 backdrop-blur-md border-t border-slate-100 text-center rounded-b-3xl">
+                    <Link to="/dashboard/history" onClick={() => setShowNotifications(false)} className="text-xs font-bold text-sky-600 hover:text-sky-700 hover:underline flex items-center justify-center gap-1">
+                      Lihat Semua Riwayat
+                      <ChevronRight className="w-3.5 h-3.5" />
                     </Link>
                   </div>
                 </div>

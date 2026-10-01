@@ -104,8 +104,11 @@ export const CreateTicket = () => {
               fields.forEach(f => {
                 if (f.type === 'group') {
                   extractKeys(f.subFields || []);
-                } else if (f.type !== 'file') {
+                } else {
                   validKeys.push(f.name || f.label);
+                  if (f.type === 'file') {
+                    validKeys.push((f.name || f.label) + '_name');
+                  }
                 }
               });
             };
@@ -143,14 +146,44 @@ export const CreateTicket = () => {
     }
   }, [selectedSubService, services]);
 
-  // Draft Feature: Save draft when formData changes
+  // Draft Feature: Save draft when formData, title, or description changes
   useEffect(() => {
-    if (selectedSubService && Object.keys(formData).length > 0) {
-      localStorage.setItem(`ticket_draft_${selectedSubService}`, JSON.stringify({
-        formData
-      }));
+    if (selectedSubService) {
+      const hasFormContent = Object.values(formData).some(val => val !== '' && val !== null && val !== undefined);
+      const hasBasicContent = title.trim() !== '' || description.trim() !== '';
+      
+      if (hasFormContent || hasBasicContent) {
+        try {
+          localStorage.setItem(`ticket_draft_${selectedSubService}`, JSON.stringify({
+            formData,
+            title,
+            description
+          }));
+        } catch (e) {
+          // Fallback: If localStorage quota is exceeded (usually due to large base64 file strings), 
+          // strip the base64 data and save the rest of the text inputs.
+          console.warn('Draft save failed (likely quota exceeded). Retrying without large file data...', e);
+          const strippedFormData = { ...formData };
+          Object.keys(strippedFormData).forEach(k => {
+             if (typeof strippedFormData[k] === 'string' && strippedFormData[k].startsWith('data:')) {
+                delete strippedFormData[k]; // Remove the large base64 string
+             }
+          });
+          try {
+             localStorage.setItem(`ticket_draft_${selectedSubService}`, JSON.stringify({
+               formData: strippedFormData,
+               title,
+               description
+             }));
+          } catch (e2) {
+             console.error('Final draft save failed:', e2);
+          }
+        }
+      } else {
+        localStorage.removeItem(`ticket_draft_${selectedSubService}`);
+      }
     }
-  }, [formData, selectedSubService]);
+  }, [formData, title, description, selectedSubService]);
 
   const activeTicket = (user?.role === 'USER' || user?.role === 'MASYARAKAT' || user?.role === 'masyarakat') 
     ? tickets.find(t => t.status_name !== 'COMPLETED' && t.status_name !== 'REJECTED')
@@ -767,10 +800,10 @@ export const CreateTicket = () => {
               {user?.role === 'helpdesk' ? (helpdeskInstansi.trim() || 'Masyarakat Umum') : (user?.department || (user?.role?.toLowerCase() === 'masyarakat' ? 'Masyarakat Umum' : '-'))}
             </span>
           </div>
-          {formData && Object.keys(formData).length > 0 ? (
+          {formData && Object.keys(formData).filter(k => !k.endsWith('_name')).length > 0 ? (
             <div className="pt-2 mt-2 border-t border-slate-200/50 flex justify-between">
               <span className="text-slate-400">Total Field Kustom:</span>
-              <span className="font-bold text-sky-600 text-right">{Object.keys(formData).length} Field Terisi</span>
+              <span className="font-bold text-sky-600 text-right">{Object.keys(formData).filter(k => !k.endsWith('_name')).length} Field Terisi</span>
             </div>
           ) : (
              <div className="pt-2 mt-2 border-t border-slate-200/50 text-center italic text-slate-400 text-[11px]">

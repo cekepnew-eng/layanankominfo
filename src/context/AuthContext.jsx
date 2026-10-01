@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+﻿import React, { createContext, useContext, useState, useEffect } from 'react';
 import { api } from '../services/api';
 
 const AuthContext = createContext();
@@ -9,7 +9,7 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('spbe_user');
+    const saved = sessionStorage.getItem('spbe_user');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -26,14 +26,14 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     if (user) {
-      localStorage.setItem('spbe_user', JSON.stringify(user));
+      sessionStorage.setItem('spbe_user', JSON.stringify(user));
       const role = user.role?.toUpperCase();
       if (role === 'ADMIN' || role === 'HELPDESK') {
         fetchTeams();
       }
     } else {
-      localStorage.removeItem('spbe_user');
-      localStorage.removeItem('spbe_token');
+      sessionStorage.removeItem('spbe_user');
+      sessionStorage.removeItem('spbe_token');
     }
   }, [user]);
 
@@ -57,9 +57,9 @@ export const AuthProvider = ({ children }) => {
         return response;
       }
       if (response.success) {
-        const token = response.token || localStorage.getItem('spbe_token');
+        const token = response.token || sessionStorage.getItem('spbe_token');
         if (token) {
-          localStorage.setItem('spbe_token', token);
+          sessionStorage.setItem('spbe_token', token);
         }
         const userData = response.user || { id: null, email: '', name: '', role: 'USER', roles: ['USER'] };
         if (userData && userData.role) {
@@ -69,7 +69,7 @@ export const AuthProvider = ({ children }) => {
           userData.roles = userData.roles.map((role) => String(role).toUpperCase());
         }
         setUser(userData);
-        localStorage.setItem('spbe_user', JSON.stringify(userData));
+        sessionStorage.setItem('spbe_user', JSON.stringify(userData));
         return { success: true, token, user: userData };
       }
     } catch (err) {
@@ -81,7 +81,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await api.login2FA(tempToken, otp, trustDevice);
       if (response.success) {
-        localStorage.setItem('spbe_token', response.token);
+        sessionStorage.setItem('spbe_token', response.token);
         if (response.trustedDeviceToken) {
           localStorage.setItem('spbe_trusted_device', response.trustedDeviceToken);
         }
@@ -108,16 +108,35 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('spbe_user');
-    localStorage.removeItem('spbe_token');
+    sessionStorage.removeItem('spbe_user');
+    sessionStorage.removeItem('spbe_token');
     window.location.href = '/auth/login';
   };
+
+  const [services, setServices] = useState([]);
+
+  useEffect(() => {
+    const fetchServices = async () => {
+      try {
+        const svcRes = await api.getPublicServices();
+        const mappedServices = (svcRes.data || []).map(s => ({
+          ...s,
+          requiredDocs: s.required_docs || s.requiredDocs,
+          sop: s.sop_link || s.sop
+        }));
+        setServices(mappedServices);
+      } catch (err) {
+        console.error('Failed to fetch services in AuthContext', err);
+      }
+    };
+    fetchServices();
+  }, []);
 
   return (
     <AuthContext.Provider value={{ 
       user, setUser, login, login2FA, register, logout,
       tickets: [], setTickets: () => {},
-      services: [], setServices: () => {},
+      services, setServices,
       users: [], setUsers: () => {},
       teams, setTeams, fetchTeams,
       ratings: [], setRatings: () => {}

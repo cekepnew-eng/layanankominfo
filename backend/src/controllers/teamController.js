@@ -8,7 +8,7 @@ exports.getAllTeams = async (req, res) => {
       SELECT tm.team_id, u.id as user_id, u.full_name
       FROM team_members tm
       JOIN users u ON u.id = tm.user_id
-      ORDER BY u.full_name ASC
+      ORDER BY tm.user_id ASC
     `);
 
     const teams = result.rows.map(team => {
@@ -43,7 +43,13 @@ exports.createTeam = async (req, res) => {
     );
     const teamId = result.rows[0].id;
 
-    const memberIds = await Promise.all((members || []).map(async (member) => {
+    let finalMembers = [...(members || [])];
+    if (leader) {
+      finalMembers = finalMembers.filter(m => m !== leader);
+      finalMembers.unshift(leader);
+    }
+
+    const memberIds = await Promise.all(finalMembers.map(async (member) => {
       if (typeof member === 'object' && member?.id) return member.id;
       if (typeof member === 'string') {
         const match = await client.query('SELECT id FROM users WHERE full_name = $1', [member]);
@@ -92,7 +98,13 @@ exports.updateTeam = async (req, res) => {
 
     await client.query('DELETE FROM team_members WHERE team_id = $1', [id]);
 
-    const memberIds = await Promise.all((members || []).map(async (member) => {
+    let finalMembers = [...(members || [])];
+    if (leader) {
+      finalMembers = finalMembers.filter(m => m !== leader);
+      finalMembers.unshift(leader);
+    }
+
+    const memberIds = await Promise.all(finalMembers.map(async (member) => {
       if (typeof member === 'object' && member?.id) return member.id;
       if (typeof member === 'string') {
         const match = await client.query('SELECT id FROM users WHERE full_name = $1', [member]);

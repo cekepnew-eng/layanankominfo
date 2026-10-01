@@ -9,56 +9,22 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
   const { services } = useAuth();
   if (!isOpen || !ticket) return null;
 
-  const subServiceName = ticket.requestType || ticket.service || '';
+  const subServiceName = (ticket.requestType && ticket.requestType !== 'Baru') ? ticket.requestType : (ticket.service || '');
   const srv = (services || []).find(s => s.name === subServiceName);
   const reqDocs = srv?.requiredDocs || ticket.required_docs || ticket.requiredDocs || 'Surat Permohonan Resmi OPD, KAK / Dokumen Pendukung';
   const sopFile = srv?.sop || ticket.sop || 'sop-layanan.pdf';
   const slaText = srv?.sla || (ticket.slaDuration ? `${ticket.slaDuration} Hari` : '7 Hari');
 
-  const [title, setTitle] = useState(ticket.title || '');
-  const [description, setDescription] = useState(ticket.desc || ticket.description || '');
-  const [appName, setAppName] = useState(ticket.appName || '');
-  const [targetUsers, setTargetUsers] = useState(ticket.targetUsers || '');
-  const [callbackUrl, setCallbackUrl] = useState(ticket.callbackUrl || '');
-  const [targetIp, setTargetIp] = useState(ticket.targetIp || '');
-  const [revisionNote, setRevisionNote] = useState('');
-  
-  const [fileName, setFileName] = useState('');
-  const [fileSize, setFileSize] = useState('');
-  const [fileUrl, setFileUrl] = useState(ticket.fileUrl || '/dokumen_permohonan.pdf');
+  const [formData, setFormData] = useState(ticket?.form_data || {});
   const [showSopModal, setShowSopModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const fileInputRef = useRef(null);
 
   useEffect(() => {
     if (ticket) {
-      setTitle(ticket.title || '');
-      setDescription(ticket.desc || ticket.description || '');
-      setAppName(ticket.appName || '');
-      setTargetUsers(ticket.targetUsers || '');
-      setCallbackUrl(ticket.callbackUrl || '');
-      setTargetIp(ticket.targetIp || '');
-      setRevisionNote('');
-      setFileName('');
-      setFileSize('');
-      setFileUrl(ticket.fileUrl || '/dokumen_permohonan.pdf');
+      setFormData(ticket.form_data || {});
     }
   }, [ticket]);
-
-  const handleFileChange = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setFileName(file.name);
-      setFileSize((file.size / 1024).toFixed(1) + ' KB');
-      try {
-        const url = URL.createObjectURL(file);
-        setFileUrl(url);
-      } catch (err) {
-        setFileUrl('/dokumen_permohonan.pdf');
-      }
-    }
-  };
 
   const handlePreSubmit = (e) => {
     e.preventDefault();
@@ -68,25 +34,16 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
   const handleConfirmSubmit = () => {
     setShowConfirmModal(false);
 
-    const note = revisionNote.trim();
-    const logMessage = `Pemohon telah mengisi ulang formulir permohonan dan mengajukan kembali ke Helpdesk.${note ? ` Catatan Perbaikan: ${note}` : ''}${fileName ? ` (Lampiran: ${fileName})` : ''}`;
-
-    const newFiles = fileName 
-      ? [fileName]
-      : (ticket.files && ticket.files.length > 0 ? [ticket.files[0]] : ['Dokumen_Persyaratan_Layanan.pdf']);
+    const logMessage = `Pemohon telah memperbaiki dan mengajukan ulang formulir permohonan ke Helpdesk.`;
 
     const updatedTicket = {
       ...ticket,
-      title: title.trim(),
-      desc: description.trim(),
-      description: description.trim(),
-      appName: appName.trim(),
-      targetUsers: targetUsers.trim(),
-      callbackUrl: callbackUrl.trim(),
-      targetIp: targetIp.trim(),
-      files: newFiles,
-      fileUrl: fileUrl,
-      revisionNote: note || ticket.revisionNote || '',
+      title: formData['Judul Permohonan'] || formData['Nama Fitur'] || ticket.title,
+      desc: formData['Deskripsi Kebutuhan'] || formData['Deskripsi'] || ticket.desc || ticket.description,
+      form_data: formData,
+      files: ticket.files || [],
+      fileUrl: ticket.fileUrl || '',
+      revisionNote: ticket.revisionNote || '',
       status: 'Verifikasi',
       logs: [
         {
@@ -212,233 +169,117 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
             </div>
           </div>
 
-          {subServiceName === 'Pembuatan Aplikasi Baru (Web/Mobile)' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="col-span-2">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Nama Aplikasi yang Diajukan</label>
-                <input
-                  type="text"
-                  required
-                  value={appName}
-                  onChange={(e) => setAppName(e.target.value)}
-                  placeholder="Contoh: Aplikasi Sistem Pengawasan Lalu Lintas (Si-Walan)"
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold text-slate-800"
-                />
-              </div>
-              <div className="col-span-1">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Target Pengguna Utama</label>
-                <input
-                  type="text"
-                  required
-                  value={targetUsers}
-                  onChange={(e) => setTargetUsers(e.target.value)}
-                  placeholder="Contoh: Staf Dinas, Warga Umum"
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold text-slate-800"
-                />
-              </div>
-              <div className="col-span-1">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Estimasi Waktu SLA</label>
-                <div className="px-4 py-2.5 border border-slate-200 bg-slate-50 rounded-xl text-base font-bold text-slate-700 flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-sky-600" />
-                  <span>SLA Standar: {ticket.slaDuration || 7} Hari</span>
+          {(() => {
+            let schema = srv?.form_schema || [];
+            
+            if (typeof schema === 'string') {
+              try { schema = JSON.parse(schema); } catch (e) { schema = []; }
+            }
+            if (!Array.isArray(schema)) schema = [];
+
+            if (schema.length === 0) {
+              return (
+                <div className="p-6 bg-slate-50 border border-slate-200 border-dashed rounded-2xl text-center text-slate-500 font-medium text-sm">
+                  Tidak ada detail form kustom yang dikonfigurasi.
                 </div>
-              </div>
-            </div>
-          ) : subServiceName === 'Integrasi Single Sign-On (SSO) TND' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="col-span-1">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Nama Platform Aplikasi</label>
-                <input
-                  type="text"
-                  required
-                  value={appName}
-                  onChange={(e) => setAppName(e.target.value)}
-                  placeholder="Contoh: E-Kinerja Dinas"
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold text-slate-800"
-                />
-              </div>
-              <div className="col-span-1">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Callback URL Integrasi</label>
-                <input
-                  type="text"
-                  required
-                  value={callbackUrl}
-                  onChange={(e) => setCallbackUrl(e.target.value)}
-                  placeholder="Contoh: https://ekinerja.bogor.go.id/sso/callback"
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold text-slate-800"
-                />
-              </div>
-            </div>
-          ) : subServiceName === 'Uji Celah Keamanan (Vulnerability Assessment)' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="col-span-1">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Domain / Nama Aplikasi Uji</label>
-                <input
-                  type="text"
-                  required
-                  value={appName}
-                  onChange={(e) => setAppName(e.target.value)}
-                  placeholder="Contoh: https://esir.bogor.go.id"
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold text-slate-800"
-                />
-              </div>
-              <div className="col-span-1">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Alamat IP Server</label>
-                <input
-                  type="text"
-                  required
-                  value={targetIp}
-                  onChange={(e) => setTargetIp(e.target.value)}
-                  placeholder="Contoh: 103.14.22.45"
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold text-slate-800"
-                />
-              </div>
-            </div>
-          ) : null}
+              );
+            }
 
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Judul Ringkas Permohonan
-            </label>
-            <input
-              type="text"
-              required
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Contoh: Pengajuan integrasi SSO akun dinas untuk aplikasi SIMPATIK"
-              className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold text-slate-800"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Deskripsi Kebutuhan Detail
-            </label>
-            <textarea
-              required
-              rows={4}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Jelaskan kebutuhan teknis layanan secara detail..."
-              className="w-full px-4 py-3 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold text-slate-800 resize-none leading-relaxed"
-            />
-          </div>
-
-          <div className="space-y-3">
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Unggah Dokumen Persyaratan (.PDF)
-            </label>
-            <input
-              type="file"
-              ref={fileInputRef}
-              accept=".pdf,application/pdf"
-              onChange={handleFileChange}
-              className="hidden"
-            />
-            <div 
-              onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-slate-200 hover:border-sky-500 rounded-2xl p-6 text-center space-y-3 bg-slate-50/50 hover:bg-slate-50 transition-all cursor-pointer group"
-            >
-              <Upload className="w-8 h-8 text-slate-400 group-hover:text-sky-600 transition-colors mx-auto" />
-              <div>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    fileInputRef.current?.click();
-                  }}
-                  className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-bold shadow-xs transition-all cursor-pointer"
-                >
-                  Pilih Dokumen PDF
-                </button>
-                <p className="text-xs text-slate-400 mt-2">Maksimal ukuran file 10MB. Format dokumen resmi PDF.</p>
-              </div>
-              {fileName ? (
-                <div 
-                  onClick={(e) => e.stopPropagation()}
-                  className="flex items-center justify-between p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800"
-                >
-                  <div className="flex items-center gap-2 truncate">
-                    <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span className="truncate">{fileName} ({fileSize || 'Valid PDF'})</span>
+            const renderField = (field) => {
+              if (field.type === 'group') {
+                return (
+                  <div key={field.id || field.name} className="border border-slate-200 bg-slate-50/70 p-4 rounded-xl space-y-4 shadow-sm">
+                    <label className="block text-sm font-black text-slate-800 uppercase tracking-wider border-b border-slate-200 pb-2">{field.label}</label>
+                    <div className="pl-3 border-l-2 border-sky-300 space-y-4 pt-1">
+                      {(field.subFields || []).map(sub => renderField(sub))}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <a
-                      href={fileUrl || '/dokumen_permohonan.pdf'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-2.5 py-1 bg-white border border-emerald-300 text-emerald-700 rounded-lg hover:bg-emerald-100 transition-all"
-                    >
-                      Buka PDF
-                    </a>
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="text-slate-500 hover:text-slate-700 underline text-[11px] cursor-pointer"
-                    >
-                      Ganti
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFileName('');
-                        setFileSize('');
-                        setFileUrl(ticket.fileUrl || '/dokumen_permohonan.pdf');
-                        if (fileInputRef.current) fileInputRef.current.value = '';
-                      }}
-                      className="text-rose-500 hover:text-rose-700 underline text-[11px] cursor-pointer"
-                    >
-                      Batal Ganti
-                    </button>
+                );
+              }
+
+              const fieldKey = field.label || field.name;
+
+              if (field.type === 'file') {
+                return (
+                  <div key={field.id || fieldKey} className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      {field.label} {field.required !== false && <span className="text-red-500">*</span>}
+                    </label>
+                    <div className="border-2 border-dashed border-slate-200 hover:border-sky-500 rounded-2xl p-4 text-center bg-slate-50 transition-all">
+                      <input
+                        type="file"
+                        accept=".pdf,image/*"
+                        required={field.required !== false && !formData[fieldKey]}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                             const reader = new FileReader();
+                             reader.onload = (ev) => {
+                               setFormData({...formData, [fieldKey]: ev.target.result, [`${fieldKey}_name`]: file.name});
+                             };
+                             reader.readAsDataURL(file);
+                          }
+                        }}
+                        className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100 cursor-pointer"
+                      />
+                      {formData[`${fieldKey}_name`] && (
+                        <p className="mt-3 text-xs font-bold text-emerald-600 bg-emerald-50 py-1.5 px-3 rounded-lg inline-block border border-emerald-100">
+                          ✓ File terpilih: {formData[`${fieldKey}_name`]}
+                        </p>
+                      )}
+                    </div>
                   </div>
+                );
+              }
+
+              return (
+                <div key={field.id || fieldKey} className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    {field.label} {field.required !== false && <span className="text-red-500">*</span>}
+                  </label>
+                  {field.type === 'select' ? (
+                    <select
+                      required={field.required !== false}
+                      value={formData[fieldKey] || ''}
+                      onChange={(e) => setFormData({...formData, [fieldKey]: e.target.value})}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-semibold bg-white transition-all"
+                    >
+                      <option value="">-- Pilih --</option>
+                      {(field.options || []).map((opt, i) => (
+                        <option key={i} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  ) : field.type === 'textarea' ? (
+                    <textarea
+                      required={field.required !== false}
+                      rows={4}
+                      value={formData[fieldKey] || ''}
+                      onChange={(e) => setFormData({...formData, [fieldKey]: e.target.value})}
+                      placeholder={field.placeholder || ''}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-semibold transition-all"
+                    />
+                  ) : (
+                    <input
+                      type={field.type || 'text'}
+                      required={field.required !== false}
+                      value={formData[fieldKey] || ''}
+                      onChange={(e) => setFormData({...formData, [fieldKey]: e.target.value})}
+                      placeholder={field.placeholder || ''}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-semibold transition-all"
+                    />
+                  )}
                 </div>
-              ) : (
-                <div 
-                  onClick={(e) => e.stopPropagation()}
-                  className="flex items-center justify-between p-3 bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-700"
-                >
-                  <div className="flex items-center gap-2 truncate">
-                    <FileText className="w-4 h-4 text-slate-500 shrink-0" />
-                    <span className="truncate">Dokumen sebelumnya: {ticket.files?.[0] || 'Dokumen_Persyaratan_Layanan.pdf'}</span>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <a
-                      href={fileUrl || '/dokumen_permohonan.pdf'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-2.5 py-1 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-200 transition-all"
-                    >
-                      Buka PDF
-                    </a>
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="text-sky-600 hover:text-sky-700 underline text-[11px] cursor-pointer"
-                    >
-                      Ganti
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+              );
+            };
 
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Catatan Perbaikan <span className="text-rose-500">*</span>
-              </label>
-              <span className="text-[11px] font-semibold text-sky-600">Wajib Diisi</span>
-            </div>
-            <textarea
-              required
-              rows={4}
-              value={revisionNote}
-              onChange={(e) => setRevisionNote(e.target.value)}
-              placeholder="Jelaskan detail perbaikan yang telah dilakukan dan informasi klarifikasi untuk Helpdesk..."
-              className="w-full px-5 py-3.5 border-2 border-slate-300 rounded-2xl text-base focus:outline-none focus:ring-2 focus:ring-sky-500 font-semibold text-slate-800 resize-none leading-relaxed"
-            />
-          </div>
+            return (
+              <div className="space-y-4">
+                {schema.map(f => renderField(f))}
+              </div>
+            );
+          })()}
+
+          {/* Dynamic form ends here */}
 
           <div className="flex gap-3 pt-4 border-t border-slate-100">
             <button

@@ -31,7 +31,7 @@ exports.getAllUsers = async (req, res) => {
 
       if (roles.length === 0) roles.push('USER');
 
-      const primaryRole = roles.includes('MASYARAKAT') ? 'MASYARAKAT' : roles.includes('USER') ? 'USER' : roles.includes('ADMIN') ? 'ADMIN' : roles.includes('HELPDESK') ? 'HELPDESK' : roles.includes('PEGAWAI') ? 'PEGAWAI' : roles[0];
+      const primaryRole = roles.includes('ADMIN') ? 'ADMIN' : roles.includes('HELPDESK') ? 'HELPDESK' : roles.includes('PEGAWAI') ? 'PEGAWAI' : roles.includes('USER') ? 'USER' : roles.includes('MASYARAKAT') ? 'MASYARAKAT' : roles[0];
       const departmentName = row.department || (roles.includes('MASYARAKAT') ? 'Masyarakat Umum' : 'Dinas Komunikasi dan Informatika');
 
       return {
