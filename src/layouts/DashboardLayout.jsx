@@ -2,24 +2,25 @@ import React, { useState } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { ActionModal } from '../components/ActionModal';
-import { 
-  LayoutDashboard, 
-  Users, 
+import {
+  LayoutDashboard,
+  Users,
   User,
-  Layers, 
-  Briefcase, 
-  ShieldCheck, 
-  CheckSquare, 
-  PlusCircle, 
-  FileText, 
-  LogOut, 
+  Layers,
+  Briefcase,
+  ShieldCheck,
+  CheckSquare,
+  PlusCircle,
+  FileText,
+  LogOut,
   ChevronDown,
   ChevronRight,
   Star,
   Home,
   Bell,
   Search,
-  Clock
+  Clock,
+  X
 } from 'lucide-react';
 
 class ErrorBoundary extends React.Component {
@@ -60,57 +61,64 @@ export const DashboardLayout = () => {
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  
+  const [liveToast, setLiveToast] = useState(null);
+
+  React.useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
+
   React.useEffect(() => {
     if (!user) return;
     const fetchNotifications = async () => {
       try {
-        let res;
         const { api } = await import('../services/api');
-        if (user.role === 'ADMIN') res = await api.getAdminTickets();
-        else if (user.role === 'HELPDESK') res = await api.getHelpdeskTickets();
-        else if (user.role === 'PEGAWAI') res = await api.getEmployeeTickets();
-        else res = await api.getMyTickets();
+        const res = await api.getNotifications();
 
         if (res.data) {
-          const recentTickets = res.data.slice(0, 5);
-          const notifs = recentTickets.map(t => {
-             let msg = '';
-             let type = 'info';
-             const statusStr = t.status_name || t.status || '';
-             const ticketNum = t.ticket_number || t.id;
-             if (user.role === 'ADMIN' || user.role === 'HELPDESK') {
-                 if (statusStr === 'PENDING' || statusStr === 'Verifikasi') { msg = `Tiket baru #${ticketNum} butuh verifikasi.`; type = 'warning'; }
-                 else if (statusStr === 'IN_PROGRESS' || statusStr === 'Diproses') { msg = `Tiket #${ticketNum} sedang diproses tim.`; type = 'processing'; }
-                 else if (statusStr === 'COMPLETED' || statusStr === 'Selesai') { msg = `Tiket #${ticketNum} telah selesai dikerjakan.`; type = 'success'; }
-                 else { msg = `Pembaruan status tiket #${ticketNum}: ${statusStr}`; type = 'info'; }
-             } else if (user.role === 'PEGAWAI') {
-                 msg = `Tugas #${ticketNum} saat ini: ${statusStr.replace(/_/g, ' ')}`;
-                 type = 'processing';
-             } else {
-                 if (statusStr === 'WAITING_USER_CONFIRMATION') { msg = `Tiket #${ticketNum} butuh ulasan SKM dari Anda!`; type = 'warning'; }
-                 else if (statusStr === 'COMPLETED' || statusStr === 'Selesai') { msg = `Pengajuan #${ticketNum} telah selesai!`; type = 'success'; }
-                 else { msg = `Status pengajuan #${ticketNum} Anda: ${statusStr.replace(/_/g, ' ')}`; type = 'info'; }
-             }
-             return {
-                 id: t.id,
-                 title: `Update Tiket #${ticketNum}`,
-                 message: msg,
-                 time: t.created_at,
-                 isRead: false,
-                 type
-             };
+          const notifs = res.data.map(n => ({
+            id: n.id,
+            title: n.title || 'Update Tiket',
+            message: n.message,
+            time: n.created_at,
+            isRead: n.is_read,
+            type: n.type ? n.type.toLowerCase() : 'info'
+          }));
+
+          setNotifications(prevNotifs => {
+            if (prevNotifs.length > 0) {
+              const prevIds = prevNotifs.map(n => n.id);
+              const newNotifs = notifs.filter(n => !prevIds.includes(n.id));
+              if (newNotifs.length > 0) {
+                const newest = newNotifs[0];
+                setLiveToast({
+                  title: newest.title,
+                  message: newest.message,
+                  type: newest.type
+                });
+                setTimeout(() => setLiveToast(null), 5000);
+
+                // TRIGER BROWSER PUSH NOTIFICATION
+                if ("Notification" in window && Notification.permission === "granted") {
+                  new Notification(newest.title, {
+                    body: newest.message,
+                    icon: '/logo-bogor.png' // Default icon
+                  });
+                }
+              }
+            }
+            return notifs;
           });
-          setNotifications(notifs);
           setUnreadCount(notifs.filter(n => !n.isRead).length);
         }
       } catch (e) {
         console.error("Failed to fetch notifications:", e);
       }
     };
-    
+
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 15000); 
+    const interval = setInterval(fetchNotifications, 15000);
     return () => clearInterval(interval);
   }, [user]);
 
@@ -133,15 +141,15 @@ export const DashboardLayout = () => {
   ];
 
   const getHistoryLabel = () => {
-    if (!user) return 'Kelola Tiket';
+    if (!user) return 'Tiket Proses';
     if (user.role === 'MASYARAKAT') return 'Tiket Saya';
-    return 'Kelola Tiket';
+    return 'Tiket Proses';
   };
 
   const getMenuLinks = () => {
     const home = { path: '/dashboard', label: 'Ringkasan', icon: LayoutDashboard };
     const history = { path: '/dashboard/history', label: getHistoryLabel(), icon: FileText };
-    const ticketHistory = { path: '/dashboard/ticket-history', label: 'Riwayat Tiket', icon: CheckSquare };
+    const ticketHistory = { path: '/dashboard/ticket-history', label: 'Tiket Selesai', icon: CheckSquare };
     const trackTicket = { path: '/dashboard/track-ticket', label: 'Lacak Tiket', icon: Search };
     const profile = { path: '/dashboard/profile', label: 'Profil Pengguna', icon: User };
 
@@ -188,7 +196,7 @@ export const DashboardLayout = () => {
   const getBreadcrumb = () => {
     const paths = location.pathname.split('/').filter(Boolean);
     if (paths.length <= 1) return 'Ringkasan';
-    
+
     const pageName = paths[paths.length - 1];
     const mapping = {
       users: 'Kelola User',
@@ -199,7 +207,7 @@ export const DashboardLayout = () => {
       'create-ticket': 'Ajukan Layanan',
       profile: 'Profil Pengguna',
       history: getHistoryLabel(),
-      'ticket-history': 'Riwayat Tiket'
+      'ticket-history': 'Tiket Selesai'
     };
 
     return mapping[pageName] || pageName;
@@ -307,11 +315,10 @@ export const DashboardLayout = () => {
               <Link
                 key={link.path}
                 to={link.path}
-                className={`flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-all ${
-                  isActive 
-                    ? 'bg-sky-600 text-white shadow-md shadow-sky-500/30 translate-x-1 border border-sky-500' 
+                className={`flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-all ${isActive
+                    ? 'bg-sky-600 text-white shadow-md shadow-sky-500/30 translate-x-1 border border-sky-500'
                     : 'text-slate-550 hover:bg-slate-50 hover:text-slate-800'
-                }`}
+                  }`}
               >
                 <Icon className={`w-5 h-5 transition-colors ${isActive ? 'text-white' : 'text-slate-400'}`} />
                 <span>{link.label}</span>
@@ -321,7 +328,7 @@ export const DashboardLayout = () => {
         </nav>
 
         <div className="p-4 border-t border-slate-100">
-          <button 
+          <button
             onClick={handleLogout}
             className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold text-rose-500 hover:bg-rose-50 transition-all text-left"
           >
@@ -340,10 +347,10 @@ export const DashboardLayout = () => {
           </div>
 
           <div className="flex items-center gap-4">
-            
+
             {/* NOTIFICATIONS */}
             <div className="relative">
-              <button 
+              <button
                 onClick={() => {
                   setShowNotifications(!showNotifications);
                   setUnreadCount(0);
@@ -364,14 +371,14 @@ export const DashboardLayout = () => {
                       Notifikasi
                     </h3>
                     {notifications.length > 0 && (
-                       <span className="text-xs font-bold bg-sky-100 text-sky-700 px-2 py-0.5 rounded-lg">{notifications.length} Baru</span>
+                      <span className="text-xs font-bold bg-sky-100 text-sky-700 px-2 py-0.5 rounded-lg">{notifications.length} Baru</span>
                     )}
                   </div>
                   <div className="max-h-[26rem] overflow-y-auto p-2 space-y-1 bg-white/40">
                     {notifications.length === 0 ? (
                       <div className="p-8 flex flex-col items-center justify-center text-center">
                         <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mb-3 border border-slate-100 shadow-sm">
-                           <Bell className="w-5 h-5 text-slate-300" />
+                          <Bell className="w-5 h-5 text-slate-300" />
                         </div>
                         <p className="text-slate-500 text-sm font-bold">Belum ada notifikasi.</p>
                         <p className="text-slate-400 text-xs font-medium mt-1">Anda sudah melihat semuanya.</p>
@@ -379,16 +386,15 @@ export const DashboardLayout = () => {
                     ) : (
                       notifications.map((n, i) => (
                         <div key={i} className="p-3.5 rounded-2xl hover:bg-white/80 transition-all cursor-pointer group flex items-start gap-3 border border-transparent hover:border-slate-100 shadow-xs hover:shadow-md">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border shadow-xs transition-colors ${
-                             n.type === 'warning' ? 'bg-amber-50 border-amber-100 text-amber-600 group-hover:bg-amber-100' :
-                             n.type === 'success' ? 'bg-emerald-50 border-emerald-100 text-emerald-600 group-hover:bg-emerald-100' :
-                             n.type === 'processing' ? 'bg-sky-50 border-sky-100 text-sky-600 group-hover:bg-sky-100' :
-                             'bg-slate-50 border-slate-200 text-slate-600 group-hover:bg-slate-100'
-                          }`}>
-                             {n.type === 'warning' ? <ShieldCheck className="w-5 h-5" /> :
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border shadow-xs transition-colors ${n.type === 'warning' ? 'bg-amber-50 border-amber-100 text-amber-600 group-hover:bg-amber-100' :
+                              n.type === 'success' ? 'bg-emerald-50 border-emerald-100 text-emerald-600 group-hover:bg-emerald-100' :
+                                n.type === 'processing' ? 'bg-sky-50 border-sky-100 text-sky-600 group-hover:bg-sky-100' :
+                                  'bg-slate-50 border-slate-200 text-slate-600 group-hover:bg-slate-100'
+                            }`}>
+                            {n.type === 'warning' ? <ShieldCheck className="w-5 h-5" /> :
                               n.type === 'success' ? <CheckSquare className="w-5 h-5" /> :
-                              n.type === 'processing' ? <Briefcase className="w-5 h-5" /> :
-                              <FileText className="w-5 h-5" />}
+                                n.type === 'processing' ? <Briefcase className="w-5 h-5" /> :
+                                  <FileText className="w-5 h-5" />}
                           </div>
                           <div className="flex-1 min-w-0 pt-0.5">
                             <div className="flex items-center justify-between gap-2">
@@ -398,7 +404,7 @@ export const DashboardLayout = () => {
                             <p className="text-xs font-semibold text-slate-600 mt-1 leading-relaxed line-clamp-2">{n.message}</p>
                             <div className="flex items-center gap-1.5 mt-2 text-[10px] font-bold text-slate-400">
                               <Clock className="w-3 h-3" />
-                              <span>{new Date(n.time).toLocaleString('id-ID', { hour: '2-digit', minute:'2-digit', day: 'numeric', month: 'short' })}</span>
+                              <span>{new Date(n.time).toLocaleString('id-ID', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}</span>
                             </div>
                           </div>
                         </div>
@@ -415,7 +421,7 @@ export const DashboardLayout = () => {
               )}
             </div>
 
-            <Link 
+            <Link
               to="/dashboard/profile"
               className="flex items-center gap-3 glass-card hover:bg-white/80 border border-white/50 hover:border-sky-300 px-3.5 py-2 rounded-2xl transition-all shadow-xs hover:shadow-sm cursor-pointer group shrink-0"
               title="Lihat & Kelola Profil Pengguna"
@@ -458,6 +464,29 @@ export const DashboardLayout = () => {
         cancelText="Batal"
         onConfirm={handleConfirmLogout}
       />
+
+      {/* Global Real-time Notification Toast (WhatsApp-like) */}
+      {liveToast && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300">
+          <div className="glass-panel bg-white/90 shadow-2xl rounded-2xl p-4 flex items-start gap-4 border border-sky-100 max-w-sm">
+            <div className="w-10 h-10 rounded-full bg-sky-100 flex items-center justify-center shrink-0 border border-sky-200">
+              <Bell className="w-5 h-5 text-sky-600 animate-pulse" />
+            </div>
+            <div className="flex-1 min-w-0 pr-2 pt-0.5">
+              <h4 className="text-sm font-black text-slate-800">{liveToast.title}</h4>
+              <p className="text-xs font-semibold text-slate-600 mt-1 line-clamp-2 leading-relaxed">
+                {liveToast.message}
+              </p>
+            </div>
+            <button
+              onClick={() => setLiveToast(null)}
+              className="text-slate-400 hover:text-slate-600 transition-colors shrink-0"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -8,7 +8,7 @@ const crypto = require('crypto');
 const JWT_SECRET = process.env.JWT_SECRET || 'secret-key-kominfo-2026';
 
 // Encryption config for 2FA secret
-const ENCRYPTION_KEY = crypto.scryptSync(JWT_SECRET, 'salt', 32); 
+const ENCRYPTION_KEY = crypto.scryptSync(JWT_SECRET, 'salt', 32);
 const IV_LENGTH = 16;
 
 function encrypt(text) {
@@ -89,10 +89,10 @@ exports.getCaptcha = (req, res) => {
   const num2 = Math.floor(Math.random() * 10) + 1;
   const answer = num1 + num2;
   const text = `${num1} + ${num2} = ?`;
-  
+
   // Sign the answer into a short-lived token (5 mins)
   const token = jwt.sign({ captchaAnswer: answer.toString() }, JWT_SECRET, { expiresIn: '5m' });
-  
+
   res.json({ success: true, text, token });
 };
 
@@ -103,7 +103,7 @@ exports.login = async (req, res) => {
     if (!captchaToken || !captchaAnswer) {
       return res.status(400).json({ success: false, message: 'Captcha wajib diisi.' });
     }
-    
+
     try {
       const decoded = jwt.verify(captchaToken, JWT_SECRET);
       if (decoded.captchaAnswer !== captchaAnswer.trim()) {
@@ -124,7 +124,7 @@ exports.login = async (req, res) => {
     if (userRes.rows.length > 0) {
       user = userRes.rows[0];
       user.roles = await resolveUserRoles(user.id);
-      
+
       if (password === 'admin123' || password === 'password123') {
         isMatch = true;
       } else {
@@ -140,7 +140,7 @@ exports.login = async (req, res) => {
       try {
         // Jangan potong inputan user. API TND bisa menerima NIP, Gmail, maupun @bogor
         const tndUsername = email;
-        
+
         const ssoUrl = process.env.SSO_API_URL || 'https://dev-tnd.kotabogor.go.id/api-baru/api/v1/login';
         const tndResponse = await fetch(ssoUrl, {
           method: 'POST',
@@ -151,7 +151,7 @@ exports.login = async (req, res) => {
         if (tndResponse.ok) {
           const tndData = await tndResponse.json();
           isMatch = true; // Kredensial valid menurut TND
-          
+
           if (!user) {
             // User belum ada di database lokal, otomatis insert
             const roleRes = await db.query("SELECT id FROM roles WHERE name = 'USER'");
@@ -159,10 +159,6 @@ exports.login = async (req, res) => {
 
             const salt = await bcrypt.genSalt(10);
             const hash = await bcrypt.hash(password, salt); // Simpan hash agar bisa login lokal kelak
-
-            // LOG RESPONSE TND KE FILE AGAR KITA BISA LIHAT BENTUK ASLINYA
-            const fs = require('fs');
-            fs.writeFileSync('tnd_response.json', JSON.stringify(tndData, null, 2));
 
             // Ambil data asli dari TND. Tambahkan banyak kemungkinan kunci (key) API TND
             const fullName = tndData?.data?.user?.nama || tndData?.data?.nama_lengkap || tndData?.data?.nama || tndData?.data?.name || tndUsername;
@@ -178,13 +174,13 @@ exports.login = async (req, res) => {
                 [email, hash, fullName, phone, department]
               );
               user = insertRes.rows[0];
-              
+
               await client.query(
                 `INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)`,
                 [user.id, roleId]
               );
               await client.query('COMMIT');
-            } catch(err) {
+            } catch (err) {
               await client.query('ROLLBACK');
               throw err;
             } finally {
@@ -194,10 +190,6 @@ exports.login = async (req, res) => {
             // User sudah ada, lakukan sinkronisasi data dari TND (Auto-Update)
             const salt = await bcrypt.genSalt(10);
             const hash = await bcrypt.hash(password, salt);
-            
-            // LOG RESPONSE TND KE FILE AGAR KITA BISA LIHAT BENTUK ASLINYA
-            const fs = require('fs');
-            fs.writeFileSync('tnd_response.json', JSON.stringify(tndData, null, 2));
 
             // Ambil data terbaru dari TND untuk memperbaiki jika sebelumnya NIP dijadikan nama
             const fullName = tndData?.data?.user?.nama || tndData?.data?.nama_lengkap || tndData?.data?.nama || tndData?.data?.name || tndUsername;
@@ -206,17 +198,17 @@ exports.login = async (req, res) => {
 
             // Timpa nama/department lama dengan data asli
             await db.query(
-              `UPDATE users SET password_hash = $1, full_name = $2, department = $3, phone_number = $4 WHERE id = $5`, 
+              `UPDATE users SET password_hash = $1, full_name = $2, department = $3, phone_number = $4 WHERE id = $5`,
               [hash, fullName, department, phone, user.id]
             );
-            
+
             // Update state user di memori agar token memuat data terbaru
             user.full_name = fullName;
             user.department = department;
           }
-          
+
           if (!user.roles) {
-             user.roles = await resolveUserRoles(user.id);
+            user.roles = await resolveUserRoles(user.id);
           }
         }
       } catch (err) {
@@ -245,7 +237,7 @@ exports.login = async (req, res) => {
               isTrustedDevice = true;
             }
           }
-        } catch (err) {}
+        } catch (err) { }
       }
 
       if (isTrustedDevice) {
@@ -298,6 +290,11 @@ exports.login = async (req, res) => {
 exports.register = async (req, res) => {
   const { email, password, fullName, phone } = req.body;
   try {
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d]{8,}$/;
+    if (!passwordRegex.test(password)) {
+      return res.status(400).json({ success: false, message: 'Password harus minimal 8 karakter, mengandung huruf besar, huruf kecil, dan angka.' });
+    }
+
     const roleRes = await db.query("SELECT id FROM roles WHERE name = 'MASYARAKAT'");
     const roleId = roleRes.rows[0].id;
 
@@ -318,7 +315,7 @@ exports.register = async (req, res) => {
         [insertRes.rows[0].id, roleId]
       );
       await client.query('COMMIT');
-    } catch(err) {
+    } catch (err) {
       await client.query('ROLLBACK');
       throw err;
     } finally {
@@ -347,7 +344,7 @@ exports.getMe = async (req, res) => {
     user.roles = await resolveUserRoles(user.id);
     user.role = getPrimaryRole(user.roles);
     user.teams = await getUserTeams(user.id);
-    
+
     res.json({ success: true, user });
   } catch (err) {
     console.error(err);
@@ -365,11 +362,11 @@ exports.generate2FA = async (req, res) => {
   try {
     const userRes = await db.query('SELECT email, is_two_factor_enabled FROM users WHERE id = $1', [req.user.id]);
     if (userRes.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
-    
+
     if (userRes.rows[0].is_two_factor_enabled) {
       return res.status(400).json({ success: false, message: '2FA is already enabled. You cannot generate a new QR code.' });
     }
-    
+
     const secret = generateSecret();
     const otpauth = generateURI({
       strategy: 'totp',
@@ -378,10 +375,10 @@ exports.generate2FA = async (req, res) => {
       secret: secret
     });
     const qrCodeUrl = await qrcode.toDataURL(otpauth);
-    
+
     const encryptedSecret = encrypt(secret);
     await db.query('UPDATE users SET two_factor_secret = $1 WHERE id = $2', [encryptedSecret, req.user.id]);
-    
+
     res.json({ success: true, qrCodeUrl, secret });
   } catch (err) {
     console.error(err);
@@ -397,25 +394,25 @@ exports.verifySetup2FA = async (req, res) => {
   try {
     const userRes = await db.query('SELECT two_factor_secret, is_two_factor_enabled FROM users WHERE id = $1', [req.user.id]);
     if (userRes.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
-    
+
     if (userRes.rows[0].is_two_factor_enabled) {
       return res.status(400).json({ success: false, message: '2FA is already enabled' });
     }
-    
+
     const encryptedSecret = userRes.rows[0].two_factor_secret;
     if (!encryptedSecret) {
       return res.status(400).json({ success: false, message: 'Please generate 2FA QR code first' });
     }
-    
+
     const secret = decrypt(encryptedSecret);
     const result = verifySync({ strategy: 'totp', token: otp, secret, window: 2 });
-    
+
     if (!result.valid) return res.status(401).json({ success: false, message: 'Kode OTP tidak valid atau sudah kadaluarsa. Silakan coba kode terbaru.' });
-    
+
     // Generate 8 backup codes
     const backupCodesRaw = Array.from({ length: 8 }, () => crypto.randomBytes(4).toString('hex'));
     const backupCodesHashed = backupCodesRaw.map(hashBackupCode);
-    
+
     await db.query(
       'UPDATE users SET is_two_factor_enabled = true, backup_codes = $1 WHERE id = $2',
       [JSON.stringify(backupCodesHashed), req.user.id]
@@ -431,10 +428,10 @@ exports.verifySetup2FA = async (req, res) => {
       JWT_SECRET,
       { expiresIn: '24h' }
     );
-    
-    res.json({ 
-      success: true, 
-      message: '2FA enabled successfully', 
+
+    res.json({
+      success: true,
+      message: '2FA enabled successfully',
       backupCodes: backupCodesRaw,
       token,
       user: {
@@ -455,37 +452,37 @@ exports.verifySetup2FA = async (req, res) => {
 
 exports.login2FA = async (req, res) => {
   const { tempToken, otp, trustDevice } = req.body;
-  
+
   if (!tempToken || typeof tempToken !== 'string') {
     return res.status(401).json({ success: false, message: 'Temporary token is required' });
   }
-  
+
   if (!otp || typeof otp !== 'string') {
     return res.status(401).json({ success: false, message: 'OTP is required' });
   }
-  
+
   try {
     const decoded = jwt.verify(tempToken, JWT_SECRET);
     if (decoded.purpose !== '2fa') return res.status(401).json({ success: false, message: 'Invalid token purpose' });
-    
+
     const userRes = await db.query('SELECT * FROM users WHERE id = $1', [decoded.id]);
-    
+
     if (userRes.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
     const user = userRes.rows[0];
     user.roles = await resolveUserRoles(user.id);
-    
+
     if (!user.is_two_factor_enabled || !user.two_factor_secret) {
       return res.status(400).json({ success: false, message: '2FA is not enabled for this user' });
     }
-    
+
     let isValid = false;
     let isBackupCode = false;
-    
+
     // Check TOTP
     try {
       const secret = decrypt(user.two_factor_secret);
       let result = { valid: false };
-      
+
       // otplib strict validation: token must be pure digits
       const cleanOtp = String(otp || '').trim();
       if (/^\d+$/.test(cleanOtp)) {
@@ -495,14 +492,14 @@ exports.login2FA = async (req, res) => {
           console.error('otplib error:', otplibErr.message);
         }
       }
-      
+
       if (result.valid) {
         isValid = true;
       } else {
         // Check backup codes
         const backupCodesHashed = typeof user.backup_codes === 'string' ? JSON.parse(user.backup_codes) : (user.backup_codes || []);
         const hashedInput = hashBackupCode(otp);
-        
+
         if (backupCodesHashed.includes(hashedInput)) {
           isValid = true;
           isBackupCode = true;
@@ -515,11 +512,11 @@ exports.login2FA = async (req, res) => {
       console.error('Error during 2FA crypto validation:', cryptoErr);
       return res.status(500).json({ success: false, message: 'Internal error validating 2FA' });
     }
-    
+
     if (!isValid) {
       return res.status(401).json({ success: false, message: 'Invalid OTP or Backup Code. Access Denied.' });
     }
-    
+
     const primaryRole = getPrimaryRole(user.roles);
 
     const token = jwt.sign(

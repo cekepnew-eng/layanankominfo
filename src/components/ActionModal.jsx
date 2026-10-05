@@ -120,6 +120,7 @@ export const ActionModal = ({
                 type="button"
                 onClick={() => {
                   if (onConfirm) onConfirm();
+                  onClose();
                 }}
                 className={`flex-1 py-3 px-5 rounded-xl text-sm sm:text-base font-bold transition-all shadow-md hover:shadow-lg cursor-pointer ${config.btnBg}`}
               >

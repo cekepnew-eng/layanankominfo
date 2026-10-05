@@ -558,9 +558,9 @@ export const TicketHistory = ({ mode = 'active' }) => {
     <div className="space-y-8 font-sans text-left">
       <div>
         <h2 className="text-3xl font-black text-slate-900 tracking-tight">
-          {mode === 'history' ? 'Riwayat Tiket Selesai' :
-            (user?.role === 'USER' || user?.role === 'MASYARAKAT') ? 'Kelola Pengajuan Tiket' :
-              'Kelola Tiket SPBE'}
+          {mode === 'history' ? 'Tiket Selesai' :
+            (user?.role === 'USER' || user?.role === 'MASYARAKAT') ? 'Pengajuan Tiket Proses' :
+              'Tiket Proses SPBE'}
         </h2>
         <p className="text-slate-500 text-base leading-relaxed mt-1.5">
           {mode === 'history' ? 'Daftar riwayat seluruh tiket layanan SPBE yang telah selesai dikerjakan dan dinilai.' :
@@ -621,11 +621,6 @@ export const TicketHistory = ({ mode = 'active' }) => {
                       </div>
                       <h3 className="font-extrabold text-base text-slate-800 leading-snug">{t.title}</h3>
                       <p className="text-xs text-slate-450 font-bold uppercase tracking-wider">{t.pemohon}</p>
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        <span className="text-xs bg-sky-50 text-sky-700 border border-sky-100 px-2 py-0.5 rounded font-semibold">
-                          {t.requestType}
-                        </span>
-                      </div>
                       {/* Progress bar removed dynamically */}
 
                       <div className="text-xs text-slate-450 font-bold mt-2.5 flex items-center gap-1.5 flex-wrap">
@@ -946,21 +941,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
                     </select>
                   </div>
 
-                  {pegawaiAction === 'pending' && (
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
-                        Persentase Progres (%)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="99"
-                        value={tempProgress}
-                        onChange={(e) => setTempProgress(Number(e.target.value))}
-                        className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
-                      />
-                    </div>
-                  )}
+
 
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">

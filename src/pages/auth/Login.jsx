@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { authService } from '../../services/authService';
 import { api } from '../../services/api';
 import { ActionModal } from '../../components/ActionModal';
-import { Monitor, ArrowLeft, Lock, Mail, ChevronRight, Check, ShieldCheck, QrCode, Copy } from 'lucide-react';
+import { Monitor, ArrowLeft, Lock, Mail, ChevronRight, Check, ShieldCheck, QrCode, Copy, Eye, EyeOff } from 'lucide-react';
 
 export const Login = () => {
   const { login, login2FA, setUser } = useAuth();
@@ -12,6 +12,7 @@ export const Login = () => {
   
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [tempToken, setTempToken] = useState('');
 
   const [showOtpModal, setShowOtpModal] = useState(false);
@@ -86,15 +87,15 @@ export const Login = () => {
           setOtpError('');
           setShowOtpModal(true);
         } else {
-          alert('Gagal generate QR Code 2FA.');
+          setModalConfig({ isOpen: true, type: 'danger', title: 'Gagal', message: 'Gagal generate QR Code 2FA.' });
         }
       } catch (err) {
-        alert('Error generate 2FA QR: ' + err.message);
+        setModalConfig({ isOpen: true, type: 'danger', title: 'Error', message: 'Error generate 2FA QR: ' + err.message });
       }
     } else if (loginResult && loginResult.success) {
       navigate('/dashboard');
     } else {
-      alert(loginResult?.message || 'Login gagal, periksa kredensial Anda.');
+      setModalConfig({ isOpen: true, type: 'danger', title: 'Login Gagal', message: loginResult?.message || 'Login gagal, periksa kredensial Anda.' });
       loadCaptcha(); // Reload captcha on failure
     }
   };
@@ -143,11 +144,11 @@ export const Login = () => {
   const handleStandardLogin = (e) => {
     if (e) e.preventDefault();
     if (!identifier.trim() || !password) {
-      alert('Silakan masukkan Email/Username dan password terlebih dahulu!');
+      setModalConfig({ isOpen: true, type: 'warning', title: 'Perhatian', message: 'Silakan masukkan Email/Username dan password terlebih dahulu!' });
       return;
     }
     if (!captchaAnswer.trim()) {
-      alert('Silakan isi Captcha terlebih dahulu!');
+      setModalConfig({ isOpen: true, type: 'warning', title: 'Perhatian', message: 'Silakan isi Captcha terlebih dahulu!' });
       return;
     }
 
@@ -346,13 +347,20 @@ export const Login = () => {
                 </div>
                 <input
                   id="password"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Masukkan kata sandi"
-                  className="block w-full pl-11 pr-4 py-3 bg-transparent text-slate-800 text-base placeholder-slate-400 focus:outline-none"
+                  className="block w-full pl-11 pr-12 py-3 bg-transparent text-slate-800 text-base placeholder-slate-400 focus:outline-none"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-sky-600 focus:outline-none cursor-pointer"
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
               </div>
             </div>
 

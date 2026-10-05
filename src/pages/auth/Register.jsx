@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
+import { ActionModal } from '../../components/ActionModal';
 import { Monitor, ArrowLeft, Lock, Mail, User, ShieldCheck, QrCode, Copy, Eye, EyeOff } from 'lucide-react';
 
 export const Register = () => {
@@ -15,7 +16,19 @@ export const Register = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  
+  const [passwordError, setPasswordError] = useState('');
+
+  const [modalConfig, setModalConfig] = useState({
+    isOpen: false,
+    type: 'warning',
+    title: '',
+    message: '',
+    confirmText: 'Tutup',
+    onConfirm: null
+  });
+
+  const closeModal = () => setModalConfig(prev => ({ ...prev, isOpen: false }));
+
   const getPasswordStrength = (pass) => {
     if (!pass) return null;
     let score = 0;
@@ -24,14 +37,14 @@ export const Register = () => {
     if (/[A-Z]/.test(pass)) score += 1;
     if (/[0-9]/.test(pass)) score += 1;
     if (/[^A-Za-z0-9]/.test(pass)) score += 1;
-    
+
     if (score < 2) return { text: 'Lemah', color: 'text-rose-600 bg-rose-50 border-rose-200' };
     if (score === 2 || score === 3) return { text: 'Sedang', color: 'text-amber-600 bg-amber-50 border-amber-200' };
     return { text: 'Kuat', color: 'text-emerald-600 bg-emerald-50 border-emerald-200' };
   };
-  
+
   const strength = getPasswordStrength(password);
-  
+
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [otpStep, setOtpStep] = useState(1);
   const [otpCode, setOtpCode] = useState('');
@@ -54,25 +67,46 @@ export const Register = () => {
     };
   }, [showOtpModal]);
 
+  useEffect(() => {
+    if (confirmPassword && password !== confirmPassword) {
+      setPasswordError('Coba cocokkan password Anda kembali');
+    } else {
+      setPasswordError('');
+    }
+  }, [password, confirmPassword]);
+
   const handleFormSubmit = async (e) => {
     e.preventDefault();
     const emailLower = email.toLowerCase().trim();
-    if (!emailLower.endsWith('@gmail.com')) {
-      alert('Registrasi akun baru hanya dibuka untuk Masyarakat menggunakan e-mail Gmail (@gmail.com)!');
+
+    // Password Validation
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d]{8,}$/;
+    if (!passwordRegex.test(password)) {
+      setModalConfig({ isOpen: true, type: 'warning', title: 'Perhatian', message: 'Password harus minimal 8 karakter, mengandung huruf besar, huruf kecil, dan angka.', confirmText: 'Mengerti' });
       return;
     }
+
     if (password !== confirmPassword) {
-      alert('Konfirmasi kata sandi tidak cocok! Pastikan kata sandi dan konfirmasi kata sandi sama.');
-      return;
-    }
-    const regResult = await register({ email: emailLower, password, fullName: name, phone: '00000' });
-    if (!regResult.success) {
-      alert(regResult.message || 'Registrasi gagal');
+      setPasswordError('Konfirmasi kata sandi tidak cocok! Pastikan kata sandi dan konfirmasi kata sandi sama.');
       return;
     }
     
-    alert('🎉 Anda sudah berhasil membuat akun. Silakan masuk (login) untuk melanjutkan.');
-    navigate('/auth/login');
+    setPasswordError('');
+    
+    const regResult = await register({ email: emailLower, password, fullName: name, phone: '00000' });
+    if (!regResult.success) {
+      setModalConfig({ isOpen: true, type: 'danger', title: 'Registrasi Gagal', message: regResult.message || 'Registrasi gagal', confirmText: 'Tutup' });
+      return;
+    }
+
+    setModalConfig({
+      isOpen: true,
+      type: 'success',
+      title: 'Berhasil',
+      message: 'Anda berhasil membuat akun',
+      confirmText: 'Lanjutkan',
+      onConfirm: () => navigate('/auth/login')
+    });
   };
 
   const handleOtpVerify = async (e) => {
@@ -81,7 +115,7 @@ export const Register = () => {
       setOtpError('Masukkan 6 digit kode OTP');
       return;
     }
-    
+
     try {
       const result = await verifySetup2FA(tempToken, otpCode);
       if (result.success) {
@@ -106,9 +140,9 @@ export const Register = () => {
     <div className="min-h-screen bg-white flex flex-col md:flex-row font-sans overflow-hidden">
       <div className="hidden md:flex md:w-1/2 relative bg-slate-950 overflow-hidden">
         <div className="absolute inset-0 z-0">
-          <img 
-            src="/tugu.jpg" 
-            alt="Tugu Kujang Bogor" 
+          <img
+            src="/tugu.jpg"
+            alt="Tugu Kujang Bogor"
             className="w-full h-full object-cover opacity-25 scale-105"
           />
         </div>
@@ -250,6 +284,9 @@ export const Register = () => {
                   {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
+              {passwordError && (
+                <p className="text-xs font-bold text-rose-500 mt-1">{passwordError}</p>
+              )}
             </div>
 
             <button
@@ -289,11 +326,11 @@ export const Register = () => {
 
                 <div className="flex flex-col items-center gap-2.5 pt-1">
                   <div className="p-3 bg-white border border-slate-200 rounded-2xl shadow-xs">
-                    <img 
-                      src={qrData.qrUrl || '/google_authenticator_qr.png'} 
+                    <img
+                      src={qrData.qrUrl || '/google_authenticator_qr.png'}
                       onError={(e) => { e.target.src = '/google_authenticator_qr.png'; }}
-                      alt="QR Google Authenticator" 
-                      className="w-48 h-48 sm:w-52 sm:h-52 object-contain" 
+                      alt="QR Google Authenticator"
+                      className="w-48 h-48 sm:w-52 sm:h-52 object-contain"
                     />
                   </div>
                   <p className="text-xs sm:text-sm text-slate-500 font-medium text-center">Tidak bisa scan? Masukkan kode manual:</p>
@@ -384,6 +421,17 @@ export const Register = () => {
           </div>
         </div>
       )}
+
+      <ActionModal
+        isOpen={modalConfig.isOpen}
+        onClose={closeModal}
+        type={modalConfig.type}
+        title={modalConfig.title}
+        message={modalConfig.message}
+        confirmText={modalConfig.confirmText}
+        cancelText={modalConfig.cancelText}
+        onConfirm={modalConfig.onConfirm}
+      />
     </div>
   );
 };

@@ -627,7 +627,7 @@ export const Overview = () => {
                       </p>
                       <h4 className="font-bold text-slate-850 text-base">{userInProgressTicket.title}</h4>
                       <p className="text-base text-slate-500 leading-relaxed">
-                        Status: {userInProgressTicket.status === 'Pending' ? 'Berkas permohonan kurang lengkap / ditangguhkan.' : `Pekerjaan teknis sedang berjalan | SLA: ${userInProgressTicket.slaDuration} Hari (Sisa ${userInProgressTicket.slaRemainingDays} Hari)`}
+                        Status: {userInProgressTicket.status === 'Pending' ? 'Berkas permohonan kurang lengkap / ditangguhkan.' : `Pekerjaan teknis sedang berjalan | SLA: ${userInProgressTicket.slaDuration || 3} Hari (Sisa ${userInProgressTicket.slaRemainingDays !== undefined ? userInProgressTicket.slaRemainingDays : 3} Hari)`}
                       </p>
                     </div>
                   </div>

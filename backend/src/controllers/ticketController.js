@@ -57,10 +57,24 @@ exports.createTicket = async (req, res) => {
     const needsVerification = srvRes.rows[0]?.verification_type === 'Wajib Verifikasi';
     const defaultTeamId = srvRes.rows[0]?.default_team_id;
 
+    // Check if user is HELPDESK or ADMIN to skip PENDING
+    let isHelpdeskOrAdmin = false;
+    try {
+      const userRolesQuery = await client.query(`
+        SELECT r.name FROM user_roles ur
+        JOIN roles r ON ur.role_id = r.id
+        WHERE ur.user_id = $1
+      `, [req.user.id]);
+      const roles = userRolesQuery.rows.map(row => row.name);
+      isHelpdeskOrAdmin = roles.includes('HELPDESK') || roles.includes('ADMIN');
+    } catch(e) {
+      console.error(e);
+    }
+
     let initialStatusId = 1; // PENDING
     let isAutoAssigned = false;
     
-    if (!needsVerification) {
+    if (!needsVerification || isHelpdeskOrAdmin) {
       if (defaultTeamId) {
         initialStatusId = 4; // ASSIGNED directly to team
         isAutoAssigned = true;

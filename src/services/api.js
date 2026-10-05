@@ -1,7 +1,6 @@
 const configuredApiUrl = import.meta.env.VITE_API_URL;
-const currentHostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-const defaultApiOrigin = `http://${currentHostname}:5000`;
-const BASE_URL = `${(configuredApiUrl || defaultApiOrigin).replace(/\/$/, '')}/api`;
+// Gunakan relative path '/api' agar otomatis menumpang di atas proxy Vite / ngrok tanpa mempedulikan port 5000
+const BASE_URL = configuredApiUrl ? `${configuredApiUrl.replace(/\/$/, '')}/api` : '/api';
 
 export const API_BASE_URL = BASE_URL;
 
@@ -146,6 +145,16 @@ export const api = {
   },
   getMe: async () => {
     const res = await fetch(`${BASE_URL}/auth/me`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  // NOTIFICATIONS
+  getNotifications: async () => {
+    const res = await fetch(`${BASE_URL}/notifications`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+  markNotificationRead: async (id) => {
+    const res = await fetch(`${BASE_URL}/notifications/${id}/read`, { method: 'PATCH', headers: getHeaders() });
     return handleResponse(res);
   },
 
