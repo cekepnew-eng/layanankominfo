@@ -3,7 +3,7 @@ import { X, FileText, Download, ExternalLink, Clock, ShieldCheck, CheckCircle2, 
 import { useAuth } from '../context/AuthContext';
 import { parseFileValue } from '../utils/fileUtils';
 
-export const TicketDetailModal = ({ isOpen, onClose, ticket }) => {
+export const TicketDetailModal = ({ isOpen, onClose, ticket, onBagiTugas }) => {
   const { user, services } = useAuth();
   if (!isOpen || !ticket) return null;
 
@@ -171,8 +171,8 @@ export const TicketDetailModal = ({ isOpen, onClose, ticket }) => {
                               );
                             }
 
-                            const fieldKey = field.label || field.name;
-                            const val = ticket.form_data[fieldKey];
+                            const fieldKey = field.id || field.label || field.name;
+                            const val = ticket.form_data[fieldKey] !== undefined ? ticket.form_data[fieldKey] : ticket.form_data[field.label || field.name];
 
                             if (val === undefined || val === null || val === '') return null;
 
@@ -325,6 +325,9 @@ export const TicketDetailModal = ({ isOpen, onClose, ticket }) => {
               )}
             </div>
           </div>
+
+          {/* Fitur UI Subtask Kolegial Dipindahkan ke Dashboard */}
+
         </div>
 
         <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">

@@ -2,7 +2,12 @@ const db = require('../config/database');
 
 exports.getAllTeams = async (req, res) => {
   try {
-    const result = await db.pool.query('SELECT * FROM teams ORDER BY id ASC');
+    const result = await db.pool.query(`
+      SELECT t.*, u.full_name as leader_name 
+      FROM teams t 
+      LEFT JOIN users u ON u.id = t.leader_id 
+      ORDER BY t.id ASC
+    `);
 
     const membersRes = await db.pool.query(`
       SELECT tm.team_id, u.id as user_id, u.full_name
@@ -21,7 +26,7 @@ exports.getAllTeams = async (req, res) => {
         name: team.team_name,
         description: team.description,
         members: members,
-        leader: members[0] || ''
+        leader: team.leader_name || members[0] || ''
       };
     });
 
@@ -37,9 +42,12 @@ exports.createTeam = async (req, res) => {
 
   try {
     await client.query('BEGIN');
+    const leaderMatch = leader ? await client.query('SELECT id FROM users WHERE full_name = $1', [leader]) : null;
+    const leaderId = leaderMatch?.rows?.[0]?.id || null;
+
     const result = await client.query(
-      'INSERT INTO teams (team_name, description) VALUES ($1, $2) RETURNING id, team_name as name, description',
-      [name, description]
+      'INSERT INTO teams (team_name, description, leader_id) VALUES ($1, $2, $3) RETURNING id, team_name as name, description',
+      [name, description, leaderId]
     );
     const teamId = result.rows[0].id;
 
@@ -91,9 +99,12 @@ exports.updateTeam = async (req, res) => {
 
   try {
     await client.query('BEGIN');
+    const leaderMatch = leader ? await client.query('SELECT id FROM users WHERE full_name = $1', [leader]) : null;
+    const leaderId = leaderMatch?.rows?.[0]?.id || null;
+
     const result = await client.query(
-      'UPDATE teams SET team_name = $1, description = $2 WHERE id = $3 RETURNING id, team_name as name, description',
-      [name, description, id]
+      'UPDATE teams SET team_name = $1, description = $2, leader_id = $3 WHERE id = $4 RETURNING id, team_name as name, description',
+      [name, description, leaderId, id]
     );
 
     await client.query('DELETE FROM team_members WHERE team_id = $1', [id]);

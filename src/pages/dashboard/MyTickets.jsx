@@ -562,8 +562,19 @@ export const MyTickets = () => {
             <div className="p-6 overflow-y-auto">
               <form onSubmit={handleSendSurvey} className="space-y-6">
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Bintang Penilaian (1-5)</label>
-                  <input type="number" min="1" max="5" value={ratingResult} onChange={(e)=>setRatingResult(e.target.value)} className="w-full border p-2 rounded-xl" required />
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Bintang Penilaian</label>
+                  <div className="flex gap-2">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setRatingResult(star)}
+                        className="focus:outline-none transition-all hover:scale-110 cursor-pointer"
+                      >
+                        <Star className={`w-8 h-8 ${star <= ratingResult ? 'fill-amber-500 text-amber-500' : 'text-slate-200'}`} />
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-2">Ulasan</label>

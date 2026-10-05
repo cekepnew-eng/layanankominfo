@@ -25,5 +25,6 @@ router.get('/admin/tickets', authenticateToken, authorizeRole(['ADMIN']), ticket
 // GENERAL
 router.get('/tickets/:id/history', authenticateToken, ticketController.getHistory);
 router.patch('/tickets/:id/reject', authenticateToken, authorizeRole(['HELPDESK', 'PEGAWAI', 'ADMIN']), ticketController.rejectTicket);
+router.post('/tickets/:id/subtasks', authenticateToken, authorizeRole(['PEGAWAI', 'ADMIN']), ticketController.createSubtask);
 
 module.exports = router;

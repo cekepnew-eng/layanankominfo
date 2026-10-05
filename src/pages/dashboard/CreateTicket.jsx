@@ -674,7 +674,7 @@ export const CreateTicket = () => {
                 );
               }
 
-              const fieldKey = field.label || field.name;
+              const fieldKey = field.id || field.label || field.name;
 
               if (field.type === 'file') {
                 return (
@@ -692,7 +692,7 @@ export const CreateTicket = () => {
                           if (file) {
                              const reader = new FileReader();
                              reader.onload = (ev) => {
-                               setFormData({...formData, [fieldKey]: ev.target.result, [`${fieldKey}_name`]: file.name});
+                               setFormData(prev => ({...prev, [fieldKey]: ev.target.result, [`${fieldKey}_name`]: file.name}));
                              };
                              reader.readAsDataURL(file);
                           }

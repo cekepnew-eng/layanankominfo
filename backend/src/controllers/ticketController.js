@@ -67,13 +67,13 @@ exports.createTicket = async (req, res) => {
       `, [req.user.id]);
       const roles = userRolesQuery.rows.map(row => row.name);
       isHelpdeskOrAdmin = roles.includes('HELPDESK') || roles.includes('ADMIN');
-    } catch(e) {
+    } catch (e) {
       console.error(e);
     }
 
     let initialStatusId = 1; // PENDING
     let isAutoAssigned = false;
-    
+
     if (!needsVerification || isHelpdeskOrAdmin) {
       if (defaultTeamId) {
         initialStatusId = 4; // ASSIGNED directly to team
@@ -99,7 +99,7 @@ exports.createTicket = async (req, res) => {
       INSERT INTO ticket_details (ticket_id, title, description, form_data)
       VALUES ($1, $2, $3, $4)
     `, [ticketId, title, description, form_data]);
-    
+
     // 3. Auto Assign if applicable
     if (isAutoAssigned) {
       await client.query(`
@@ -115,7 +115,7 @@ exports.createTicket = async (req, res) => {
     } else if (initialStatusId === 2) {
       historyTextCreate = 'Tiket otomatis terverifikasi, menunggu penugasan.';
     }
-    
+
     await createHistory(client, ticketId, req.user.id, null, initialStatusId, historyTextCreate);
 
     // 5. Notifications
@@ -152,10 +152,11 @@ exports.getMyTickets = async (req, res) => {
     const result = await db.query(`
       SELECT t.id, t.ticket_number, t.progress, t.priority, t.created_at,
              u.full_name as pemohon, (CASE WHEN u.department IN ('Masyarakat Umum', 'TND', 'TND User', 'MASYARAKAT', 'Masyarakat') OR u.department IS NULL THEN u.full_name ELSE u.department END) as opd,
-             s.service_name as service_name, st.name as status_name, s.required_docs as required_docs, td.form_data, td.title, td.description,
+             s.service_name as service_name, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
              tf.rating,
              (SELECT file_name FROM ticket_attachments WHERE ticket_id = t.id ORDER BY uploaded_at DESC LIMIT 1) as bast_file_name,
-             (SELECT file_url FROM ticket_attachments WHERE ticket_id = t.id ORDER BY uploaded_at DESC LIMIT 1) as bast_file_url
+             (SELECT file_url FROM ticket_attachments WHERE ticket_id = t.id ORDER BY uploaded_at DESC LIMIT 1) as bast_file_url,
+             (SELECT COALESCE(json_agg(json_build_object('id', sub.id, 'task_name', sub.task_name, 'assigned_to_name', su.full_name, 'status', sub.status)), '[]'::json) FROM subtasks sub LEFT JOIN users su ON sub.assigned_to = su.id WHERE sub.ticket_id = t.id) as subtasks
       FROM tickets t
       JOIN users u ON t.user_id = u.id
       JOIN services s ON t.service_id = s.id
@@ -170,11 +171,11 @@ exports.getMyTickets = async (req, res) => {
       status: t.status_name === 'PENDING' ? 'Verifikasi'
         : t.status_name === 'VERIFIED' ? 'Menunggu Validasi'
           : t.status_name === 'REJECTED' ? 'Pending'
-          : t.status_name === 'ASSIGNED' ? 'Diproses'
-            : t.status_name === 'IN_PROGRESS' ? 'Diproses'
-              : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Selesai'
-                : t.status_name === 'COMPLETED' ? 'Selesai'
-                  : t.status_name
+            : t.status_name === 'ASSIGNED' ? 'Diproses'
+              : t.status_name === 'IN_PROGRESS' ? 'Diproses'
+                : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Selesai'
+                  : t.status_name === 'COMPLETED' ? 'Selesai'
+                    : t.status_name
     }));
     res.json({ success: true, data: mappedRows, meta: { total: mappedRows.length } });
   } catch (err) {
@@ -189,7 +190,7 @@ exports.updateTicketData = async (req, res) => {
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
-    
+
     let actualTicketId = id;
     if (id && id.startsWith('REQ-')) {
       const tRes = await client.query('SELECT id FROM tickets WHERE ticket_number = $1', [id]);
@@ -250,6 +251,35 @@ exports.updateTicketData = async (req, res) => {
     await client.query('ROLLBACK');
     console.error('updateTicketData error:', err);
     res.status(500).json({ success: false, message: 'Server error updating ticket' });
+  } finally {
+    client.release();
+  }
+};
+
+exports.createSubtask = async (req, res) => {
+  const { id } = req.params; // ticket_id
+  const { task_name, assigned_to_name } = req.body;
+  const client = await db.pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    // Find the assigned_to user id
+    const userRes = await client.query('SELECT id FROM users WHERE full_name = $1', [assigned_to_name]);
+    let assigned_to = null;
+    if (userRes.rows.length > 0) assigned_to = userRes.rows[0].id;
+
+    const result = await client.query(`
+      INSERT INTO subtasks (ticket_id, assigned_to, task_name, status)
+      VALUES ($1, $2, $3, 'PENDING')
+      RETURNING *
+    `, [id, assigned_to, task_name]);
+
+    await client.query('COMMIT');
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ success: false, message: err.message });
   } finally {
     client.release();
   }
@@ -347,8 +377,11 @@ exports.getHelpdeskTickets = async (req, res) => {
   try {
     const result = await db.query(`
       SELECT t.id, t.ticket_number, t.progress, t.created_at, u.full_name as pemohon, (CASE WHEN u.department IN ('Masyarakat Umum', 'TND', 'TND User', 'MASYARAKAT', 'Masyarakat') OR u.department IS NULL THEN u.full_name ELSE u.department END) as opd,
-             s.service_name as service_name, st.name as status_name, s.required_docs as required_docs, td.form_data, td.title, td.description,
-             tf.rating
+             s.service_name as service_name, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
+             tf.rating,
+             (SELECT file_name FROM ticket_attachments WHERE ticket_id = t.id ORDER BY uploaded_at DESC LIMIT 1) as bast_file_name,
+             (SELECT file_url FROM ticket_attachments WHERE ticket_id = t.id ORDER BY uploaded_at DESC LIMIT 1) as bast_file_url,
+             (SELECT COALESCE(json_agg(json_build_object('id', sub.id, 'task_name', sub.task_name, 'assigned_to_name', su.full_name, 'status', sub.status)), '[]'::json) FROM subtasks sub LEFT JOIN users su ON sub.assigned_to = su.id WHERE sub.ticket_id = t.id) as subtasks
       FROM tickets t
       JOIN users u ON t.user_id = u.id
       JOIN services s ON t.service_id = s.id
@@ -362,11 +395,11 @@ exports.getHelpdeskTickets = async (req, res) => {
       status: t.status_name === 'PENDING' ? 'Verifikasi'
         : t.status_name === 'VERIFIED' ? 'Menunggu Validasi'
           : t.status_name === 'REJECTED' ? 'Pending'
-          : t.status_name === 'ASSIGNED' ? 'Diproses'
-            : t.status_name === 'IN_PROGRESS' ? 'Diproses'
-              : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Selesai'
-                : t.status_name === 'COMPLETED' ? 'Selesai'
-                  : t.status_name
+            : t.status_name === 'ASSIGNED' ? 'Diproses'
+              : t.status_name === 'IN_PROGRESS' ? 'Diproses'
+                : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Selesai'
+                  : t.status_name === 'COMPLETED' ? 'Selesai'
+                    : t.status_name
     }));
     res.json({ success: true, data: mappedRows });
   } catch (err) {
@@ -432,10 +465,11 @@ exports.getEmployeeTickets = async (req, res) => {
   try {
     const result = await db.query(`
       SELECT DISTINCT ON (t.id) t.id, t.ticket_number, t.progress, t.created_at, u.full_name as pemohon, (CASE WHEN u.department IN ('Masyarakat Umum', 'TND', 'TND User', 'MASYARAKAT', 'Masyarakat') OR u.department IS NULL THEN u.full_name ELSE u.department END) as opd,
-             s.service_name as service_name, st.name as status_name, s.required_docs as required_docs, td.form_data, td.title, td.description,
+             s.service_name as service_name, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
              tf.rating,
              (SELECT file_name FROM ticket_attachments WHERE ticket_id = t.id ORDER BY uploaded_at DESC LIMIT 1) as bast_file_name,
-             (SELECT file_url FROM ticket_attachments WHERE ticket_id = t.id ORDER BY uploaded_at DESC LIMIT 1) as bast_file_url
+             (SELECT file_url FROM ticket_attachments WHERE ticket_id = t.id ORDER BY uploaded_at DESC LIMIT 1) as bast_file_url,
+             (SELECT COALESCE(json_agg(json_build_object('id', sub.id, 'task_name', sub.task_name, 'assigned_to_name', su.full_name, 'status', sub.status)), '[]'::json) FROM subtasks sub LEFT JOIN users su ON sub.assigned_to = su.id WHERE sub.ticket_id = t.id) as subtasks
       FROM tickets t
       JOIN ticket_assignments a ON a.ticket_id = t.id
       JOIN users u ON t.user_id = u.id
@@ -451,11 +485,11 @@ exports.getEmployeeTickets = async (req, res) => {
       status: t.status_name === 'PENDING' ? 'Verifikasi'
         : t.status_name === 'VERIFIED' ? 'Menunggu Validasi'
           : t.status_name === 'REJECTED' ? 'Pending'
-          : t.status_name === 'ASSIGNED' ? 'Diproses'
-            : t.status_name === 'IN_PROGRESS' ? 'Diproses'
-              : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Menunggu Konfirmasi User'
-                : t.status_name === 'COMPLETED' ? 'Selesai'
-                  : t.status_name
+            : t.status_name === 'ASSIGNED' ? 'Diproses'
+              : t.status_name === 'IN_PROGRESS' ? 'Diproses'
+                : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Menunggu Konfirmasi User'
+                  : t.status_name === 'COMPLETED' ? 'Selesai'
+                    : t.status_name
     }));
     res.json({ success: true, data: mappedRows });
   } catch (err) {
@@ -492,7 +526,7 @@ exports.updateProgress = async (req, res) => {
     if (finalNote) {
       await createHistory(client, id, req.user.id, oldStatus, newStatus, finalNote);
     }
-    
+
     if (bastFileName) {
       // Ensure the table exists before inserting
       await client.query(`
@@ -535,10 +569,11 @@ exports.getAdminTickets = async (req, res) => {
   try {
     const result = await db.query(`
       SELECT t.id, t.ticket_number, t.progress, t.created_at, u.full_name as pemohon, (CASE WHEN u.department IN ('Masyarakat Umum', 'TND', 'TND User', 'MASYARAKAT', 'Masyarakat') OR u.department IS NULL THEN u.full_name ELSE u.department END) as opd,
-             s.service_name as service_name, st.name as status_name, s.required_docs as required_docs, td.form_data, td.title, td.description,
+             s.service_name as service_name, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
              tf.rating,
              (SELECT file_name FROM ticket_attachments WHERE ticket_id = t.id ORDER BY uploaded_at DESC LIMIT 1) as bast_file_name,
-             (SELECT file_url FROM ticket_attachments WHERE ticket_id = t.id ORDER BY uploaded_at DESC LIMIT 1) as bast_file_url
+             (SELECT file_url FROM ticket_attachments WHERE ticket_id = t.id ORDER BY uploaded_at DESC LIMIT 1) as bast_file_url,
+             (SELECT COALESCE(json_agg(json_build_object('id', sub.id, 'task_name', sub.task_name, 'assigned_to_name', su.full_name, 'status', sub.status)), '[]'::json) FROM subtasks sub LEFT JOIN users su ON sub.assigned_to = su.id WHERE sub.ticket_id = t.id) as subtasks
       FROM tickets t
       JOIN users u ON t.user_id = u.id
       JOIN services s ON t.service_id = s.id
@@ -552,11 +587,11 @@ exports.getAdminTickets = async (req, res) => {
       status: t.status_name === 'PENDING' ? 'Verifikasi'
         : t.status_name === 'VERIFIED' ? 'Menunggu Validasi'
           : t.status_name === 'REJECTED' ? 'Pending'
-          : t.status_name === 'ASSIGNED' ? 'Diproses'
-            : t.status_name === 'IN_PROGRESS' ? 'Diproses'
-              : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Selesai'
-                : t.status_name === 'COMPLETED' ? 'Selesai'
-                  : t.status_name
+            : t.status_name === 'ASSIGNED' ? 'Diproses'
+              : t.status_name === 'IN_PROGRESS' ? 'Diproses'
+                : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Selesai'
+                  : t.status_name === 'COMPLETED' ? 'Selesai'
+                    : t.status_name
     }));
     res.json({ success: true, data: mappedRows });
   } catch (err) {
@@ -580,10 +615,10 @@ exports.getHistory = async (req, res) => {
       WHERE h.ticket_id = $1
       ORDER BY h.created_at ASC
     `, [req.params.id]);
-    
+
     // Deduplicate by history log ID because a user can have multiple roles
     const uniqueLogsMap = new Map();
-    
+
     for (const row of result.rows) {
       if (!uniqueLogsMap.has(row.id)) {
         uniqueLogsMap.set(row.id, row);
@@ -594,7 +629,7 @@ exports.getHistory = async (req, res) => {
         const priorities = { 'ADMIN': 4, 'HELPDESK': 3, 'PEGAWAI': 2, 'USER': 1, 'MASYARAKAT': 1 };
         const existingPriority = existing.user_role ? priorities[existing.user_role] || 0 : 0;
         const newPriority = row.user_role ? priorities[row.user_role] || 0 : 0;
-        
+
         if (newPriority > existingPriority) {
           existing.user_role = row.user_role;
         }
@@ -616,28 +651,28 @@ exports.rejectTicket = async (req, res) => {
 
   try {
     await client.query('BEGIN');
-    
+
     // Status 3 is Rejected/Pending/Revision
     const updateRes = await client.query('UPDATE tickets SET status_id = 3, updated_at = NOW() WHERE id = $1 RETURNING status_id', [id]);
-    
+
     if (updateRes.rowCount === 0) throw new Error('Ticket not found');
-    
+
     const userRoles = req.user.roles || [req.user.role];
     const isUser = userRoles.includes('USER') || userRoles.includes('MASYARAKAT');
-    
+
     let finalNote = '';
     if (isUser) {
-      finalNote = note 
+      finalNote = note
         ? `Sanggahan: "${note}". Menunggu evaluasi Tim Kerja.`
         : `Sanggahan diajukan. Menunggu evaluasi Tim Kerja.`;
     } else {
-      finalNote = note 
-        ? `Ditangguhkan. Alasan: "${note}". Mohon revisi.` 
+      finalNote = note
+        ? `Ditangguhkan. Alasan: "${note}". Mohon revisi.`
         : `Ditangguhkan. Mohon revisi.`;
     }
-    
+
     await createHistory(client, id, req.user.id, null, 3, finalNote);
-    
+
     // Assuming status 1 is the previous, though we don't know it. Passing null for old_status is handled by db if nullable.
     // Or we could fetch old status first:
     // const tRes = await client.query('SELECT status_id FROM tickets WHERE id = $1', [id]);

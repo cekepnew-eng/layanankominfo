@@ -44,7 +44,8 @@ export const TaskList = () => {
 
   const getUserTeam = (u) => {
     if (!u) return '';
-    const myTeams = (teams || []).filter(t => t.members.includes(u.name));
+    const userName = u.full_name || u.name;
+    const myTeams = (teams || []).filter(t => t.members.includes(userName) || t.leader === userName);
     return myTeams.length > 0 ? myTeams[0].name : '';
   };
 

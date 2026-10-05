@@ -156,34 +156,6 @@ export const Login = () => {
     triggerLogin(email, password, captchaData.token, captchaAnswer);
   };
 
-
-
-  const handleQuickLogin = async (role) => {
-    const quickEmails = {
-      admin: 'admin@bogor.go.id',
-      helpdesk: 'helpdesk@bogor.go.id',
-      pegawai: 'pegawai@bogor.go.id',
-      user: 'opd@bogor.go.id',
-      masyarakat: 'masyarakat@bogor.go.id'
-    };
-    const quickPasswords = {
-      admin: 'admin123',
-      helpdesk: 'admin123',
-      pegawai: 'admin123',
-      user: 'admin123',
-      masyarakat: 'admin123'
-    };
-
-    const email = quickEmails[role] || 'masyarakat@bogor.go.id';
-    const password = quickPasswords[role] || 'admin123';
-    setIdentifier(email);
-    setPassword(password);
-
-    const match = captchaData.text?.match(/(\d+)\s*\+\s*(\d+)/i);
-    const answer = match ? Number(match[1]) + Number(match[2]) : '';
-    triggerLogin(email, password, captchaData.token, String(answer));
-  };
-
   const handleOtpVerify = async (e) => {
     e.preventDefault();
     if (!otpCode || otpCode.length !== 6) {
@@ -399,54 +371,6 @@ export const Login = () => {
                 <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out"></div>
                 <span className="relative z-10 tracking-[0.2em]">MASUK</span>
                 <ChevronRight className="relative z-10 w-5 h-5 group-hover:translate-x-1 transition-transform duration-300" />
-              </button>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-100 pt-5 space-y-3">
-            <span className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
-              Akses Cepat (Prototype Demo)
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('admin')}
-                className="flex items-center justify-between px-3 py-2 border border-slate-200/80 bg-slate-50/50 hover:bg-sky-50 hover:border-sky-200 rounded-xl text-sm font-bold text-slate-700 hover:text-sky-700 transition-all shadow-sm cursor-pointer"
-              >
-                <span>Admin</span>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-450" />
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('helpdesk')}
-                className="flex items-center justify-between px-3 py-2 border border-slate-200/80 bg-slate-50/50 hover:bg-sky-50 hover:border-sky-200 rounded-xl text-sm font-bold text-slate-700 hover:text-sky-700 transition-all shadow-sm cursor-pointer"
-              >
-                <span>Helpdesk</span>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-450" />
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('pegawai')}
-                className="flex items-center justify-between px-3 py-2 border border-slate-200/80 bg-slate-50/50 hover:bg-sky-50 hover:border-sky-200 rounded-xl text-sm font-bold text-slate-700 hover:text-sky-700 transition-all shadow-sm cursor-pointer"
-              >
-                <span>Pegawai (Teknisi)</span>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-450" />
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('user')}
-                className="flex items-center justify-between px-3 py-2 border border-slate-200/80 bg-slate-50/50 hover:bg-sky-50 hover:border-sky-200 rounded-xl text-sm font-bold text-slate-700 hover:text-sky-700 transition-all shadow-sm cursor-pointer"
-              >
-                <span>User (OPD)</span>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-450" />
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('masyarakat')}
-                className="col-span-2 flex items-center justify-between px-3 py-2 border border-slate-200/80 bg-slate-50/50 hover:bg-sky-50 hover:border-sky-200 rounded-xl text-sm font-bold text-slate-700 hover:text-sky-700 transition-all shadow-sm cursor-pointer"
-              >
-                <span>Masyarakat Umum (Gmail)</span>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-450" />
               </button>
             </div>
           </div>

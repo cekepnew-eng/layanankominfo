@@ -204,7 +204,7 @@ export const api = {
     });
     return handleResponse(res);
   },
-  
+
   // TEAMS
   getTeams: async () => {
     const res = await fetch(`${BASE_URL}/admin/teams`, { headers: getHeaders() });
@@ -233,7 +233,7 @@ export const api = {
     });
     return handleResponse(res);
   },
-  
+
   getMyTickets: async () => {
     const res = await fetch(`${BASE_URL}/my/tickets`, { headers: getHeaders() });
     return handleResponse(res);
@@ -259,6 +259,14 @@ export const api = {
       method: 'PATCH',
       headers: getHeaders(),
       body: JSON.stringify({ form_data, logMessage, files, fileUrl })
+    });
+    return handleResponse(res);
+  },
+  createSubtask: async (ticketId, payload) => {
+    const res = await fetch(`${BASE_URL}/tickets/${ticketId}/subtasks`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload)
     });
     return handleResponse(res);
   },

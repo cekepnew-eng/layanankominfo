@@ -345,10 +345,10 @@ export const ManageTeams = () => {
                   <div>
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Anggota Pegawai</span>
                     <div className="flex flex-wrap gap-1.5 mt-1">
-                      {t.members.length === 0 ? (
+                      {t.members.filter(m => m !== t.leader).length === 0 ? (
                         <span className="text-xs text-slate-400 italic">Belum ada anggota</span>
                       ) : (
-                        t.members.map((member, mIdx) => (
+                        t.members.filter(m => m !== t.leader).map((member, mIdx) => (
                           <span key={mIdx} className="text-xs bg-slate-50 border border-slate-200 text-slate-600 px-2.5 py-0.5 rounded-lg font-bold">
                             {member}
                           </span>

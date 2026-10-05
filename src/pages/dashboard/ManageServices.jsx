@@ -55,7 +55,7 @@ export const ManageServices = () => {
   const [sopFile, setSopFile] = useState(null);
   const [requiredDocs, setRequiredDocs] = useState('');
   const [requiredDocsFile, setRequiredDocsFile] = useState(null);
-  const [requiresHelpdesk, setRequiresHelpdesk] = useState(true);
+  const [requiresHelpdesk, setRequiresHelpdesk] = useState('true');
   const [serviceStatus, setServiceStatus] = useState('Aktif');
   const { user } = useAuth();
   const [services, setServices] = useState([]);
@@ -87,7 +87,7 @@ export const ManageServices = () => {
         category: s.category_name || s.category,
         status: s.status || (s.is_active ? 'Aktif' : 'Tahap Pengembangan'),
         sla: s.target_sla || s.sla,
-        requiresHelpdesk: s.verification_type !== 'Otomatis',
+        requiresHelpdesk: s.verification_type === 'Asesmen' ? 'asesmen' : (s.verification_type !== 'Otomatis' ? 'true' : 'false'),
         sop: s.sop_link,
         requiredDocs: s.required_docs,
         defaultTeamId: s.default_team_id
@@ -120,7 +120,7 @@ export const ManageServices = () => {
   const [editSopFile, setEditSopFile] = useState(null);
   const [editRequiredDocs, setEditRequiredDocs] = useState('');
   const [editRequiredDocsFile, setEditRequiredDocsFile] = useState(null);
-  const [editRequiresHelpdesk, setEditRequiresHelpdesk] = useState(true);
+  const [editRequiresHelpdesk, setEditRequiresHelpdesk] = useState('true');
   const [editDefaultTeamId, setEditDefaultTeamId] = useState('');
   const [editStatus, setEditStatus] = useState('Aktif');
 
@@ -247,7 +247,7 @@ export const ManageServices = () => {
     setEditSopFile(null);
     setEditRequiredDocs(s.requiredDocs || '');
     setEditRequiredDocsFile(null);
-    setEditRequiresHelpdesk(s.requiresHelpdesk !== false);
+    setEditRequiresHelpdesk(s.requiresHelpdesk || 'true');
     setEditDefaultTeamId(s.defaultTeamId || '');
     setEditStatus(s.status || 'Tahap Pengembangan');
   };
@@ -255,7 +255,7 @@ export const ManageServices = () => {
   const handleSaveEdit = async (e) => {
     e.preventDefault();
     const formattedSla = formatSlaString(editSlaMin, editSlaMax);
-    const verificationType = editRequiresHelpdesk ? 'Wajib Verifikasi' : 'Otomatis';
+    const verificationType = editRequiresHelpdesk === 'asesmen' ? 'Asesmen' : (editRequiresHelpdesk === 'false' ? 'Otomatis' : 'Wajib Verifikasi');
     try {
       let finalSop = editSop;
       if (editSopFile) {
@@ -480,25 +480,26 @@ export const ManageServices = () => {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Verifikasi Helpdesk</label>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Tipe Layanan / Verifikasi</label>
               <select
-                value={requiresHelpdesk ? 'true' : 'false'}
+                value={requiresHelpdesk}
                 onChange={(e) => {
-                  setRequiresHelpdesk(e.target.value === 'true');
-                  if (e.target.value === 'true') setDefaultTeamId('');
+                  setRequiresHelpdesk(e.target.value);
+                  if (e.target.value === 'true' || e.target.value === 'asesmen') setDefaultTeamId('');
                 }}
                 className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold"
               >
-                <option value="true">Wajib Verifikasi Manual Helpdesk</option>
+                <option value="true">Layanan Umum (Wajib Verifikasi Helpdesk)</option>
+                <option value="asesmen">Layanan Asesmen (Helpdesk &rarr; Ketua Tim &rarr; Subtask)</option>
                 <option value="false">Otomatis Langsung Diproses (Bypass)</option>
               </select>
             </div>
 
-            {!requiresHelpdesk && (
+            {requiresHelpdesk === 'false' && (
               <div>
                 <label className="block text-xs font-bold text-emerald-600 uppercase tracking-wider mb-1">Tim Pelaksana Otomatis</label>
                 <select
-                  required={!requiresHelpdesk}
+                  required={requiresHelpdesk === 'false'}
                   value={defaultTeamId ?? ""}
                   onChange={(e) => setDefaultTeamId(e.target.value)}
                   className="w-full px-4 py-2.5 border border-emerald-300 bg-emerald-50 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 font-semibold"
@@ -1035,24 +1036,25 @@ export const ManageServices = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Verifikasi Helpdesk</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Tipe Layanan / Verifikasi</label>
                   <select
-                    value={editRequiresHelpdesk ? 'true' : 'false'}
+                    value={editRequiresHelpdesk}
                     onChange={(e) => {
-                      setEditRequiresHelpdesk(e.target.value === 'true');
-                      if (e.target.value === 'true') setEditDefaultTeamId('');
+                      setEditRequiresHelpdesk(e.target.value);
+                      if (e.target.value === 'true' || e.target.value === 'asesmen') setEditDefaultTeamId('');
                     }}
                     className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm sm:text-base bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-semibold"
                   >
-                    <option value="true">Wajib Verifikasi Manual Helpdesk</option>
+                    <option value="true">Layanan Umum (Wajib Verifikasi Helpdesk)</option>
+                    <option value="asesmen">Layanan Asesmen (Helpdesk &rarr; Ketua Tim &rarr; Subtask)</option>
                     <option value="false">Otomatis Langsung Diproses (Bypass)</option>
                   </select>
                 </div>
-                {!editRequiresHelpdesk && (
+                {editRequiresHelpdesk === 'false' && (
                   <div>
                     <label className="block text-xs font-bold text-emerald-600 uppercase tracking-wider mb-1.5">Tim Pelaksana Otomatis</label>
                     <select
-                      required={!editRequiresHelpdesk}
+                      required={editRequiresHelpdesk === 'false'}
                       value={editDefaultTeamId ?? ""}
                       onChange={(e) => setEditDefaultTeamId(e.target.value)}
                       className="w-full px-4 py-2.5 border border-emerald-300 bg-emerald-50 rounded-xl text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-semibold"
@@ -1064,7 +1066,7 @@ export const ManageServices = () => {
                     </select>
                   </div>
                 )}
-                <div className={!editRequiresHelpdesk ? "col-span-1 sm:col-span-2" : ""}>
+                <div className={editRequiresHelpdesk !== 'false' ? "col-span-1 sm:col-span-2" : ""}>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Status Layanan</label>
                   <select
                     value={editStatus ?? "Aktif"}

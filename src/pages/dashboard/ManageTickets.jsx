@@ -18,7 +18,10 @@ import {
   Eye,
   Upload,
   Check,
-  AlertTriangle
+  AlertTriangle,
+  ShieldCheck,
+  User,
+  X
 } from 'lucide-react';
 
 const getServiceSlaDays = (serviceName) => {
@@ -134,7 +137,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
 
   useEffect(() => {
     const fetchTeams = async () => {
-      if (user?.role !== 'ADMIN' && user?.role !== 'HELPDESK') return;
+      if (user?.role !== 'ADMIN' && user?.role !== 'HELPDESK' && user?.role !== 'PEGAWAI') return;
       try {
         const res = await api.getTeams();
         if (res && res.data) {
@@ -156,10 +159,10 @@ export const TicketHistory = ({ mode = 'active' }) => {
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [ratings, setRatings] = useState([]);
 
-  const [rateSpeed, setRateSpeed] = useState(5);
-  const [rateResult, setRateResult] = useState(5);
-  const [rateComm, setRateComm] = useState(5);
-  const [rateQuality, setRateQuality] = useState(5);
+  const [rateSpeed, setRateSpeed] = useState(0);
+  const [rateResult, setRateResult] = useState(0);
+  const [rateComm, setRateComm] = useState(0);
+  const [rateQuality, setRateQuality] = useState(0);
   const rateOverall = Math.round((rateSpeed + rateResult + rateComm + rateQuality) / 4);
   const [rateComment, setRateComment] = useState('');
 
@@ -176,6 +179,73 @@ export const TicketHistory = ({ mode = 'active' }) => {
   const [showSkmModal, setShowSkmModal] = useState(false);
   const [showDisputeForm, setShowDisputeForm] = useState(false);
   const [disputeReason, setDisputeReason] = useState('');
+  const [showSubtaskModal, setShowSubtaskModal] = useState(false);
+  const [subtaskAssignees, setSubtaskAssignees] = useState({});
+  const [rejectSubtaskId, setRejectSubtaskId] = useState(null);
+  const [rejectSubtaskReason, setRejectSubtaskReason] = useState('');
+  const [showRejectSubtaskModal, setShowRejectSubtaskModal] = useState(false);
+
+  const handleUpdateSubtaskStatus = async (subtaskId, status, comment = '') => {
+    try {
+      await api.updateSubtaskStatus(selectedTicket.uuid || selectedTicket.id, subtaskId, { status, comment });
+      const updatedSubtasks = selectedTicket.subtasks.map(s => s.id === subtaskId ? { ...s, status, comment } : s);
+      setSelectedTicket({ ...selectedTicket, subtasks: updatedSubtasks });
+      
+      if (status === 'REJECTED') {
+         setShowRejectSubtaskModal(false);
+         setRejectSubtaskReason('');
+         setRejectSubtaskId(null);
+      }
+      loadTickets();
+    } catch (err) {
+      alert("Gagal update status subtask: " + err.message);
+    }
+  };
+
+  const handleCreateSubtask = async (e) => {
+    e.preventDefault();
+    const tasks = Object.entries(subtaskAssignees).filter(([task, assignee]) => assignee && assignee.trim() !== '');
+    if (tasks.length === 0) return;
+    
+    try {
+      await Promise.all(tasks.map(([task, assignee]) => 
+        api.createSubtask(selectedTicket.uuid || selectedTicket.id, {
+          task_name: task,
+          assigned_to_name: assignee
+        })
+      ));
+      
+      setShowSubtaskModal(false);
+      setSubtaskAssignees({});
+      loadTickets();
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: 'Berhasil Bagikan Tugas',
+        message: 'Tugas asesmen dokumen berhasil disebar ke anggota tim teknis.',
+        confirmText: 'Selesai',
+        cancelText: '',
+        onConfirm: closeModal
+      });
+    } catch (err) {
+      alert("Gagal membagikan tugas: " + err.message);
+    }
+  };
+
+  const getFileTasks = () => {
+    if (!selectedTicket || !selectedTicket.form_data) return ['Evaluasi Dokumen Pemohon'];
+    
+    const fileFields = [];
+    Object.keys(selectedTicket.form_data).forEach(key => {
+      // Jika ada key_name, maka field ini adalah upload file
+      if (!key.endsWith('_name') && selectedTicket.form_data[`${key}_name`]) {
+        fileFields.push(`Asesmen ${key}`);
+      }
+    });
+
+    return fileFields.length > 0 ? fileFields : ['Evaluasi Dokumen Pemohon'];
+  };
+
 
   const handleDisputeSubmit = async () => {
     if (!disputeReason.trim()) return;
@@ -315,6 +385,10 @@ export const TicketHistory = ({ mode = 'active' }) => {
   };
 
   const handleConfirmAndRate = async (ticketId) => {
+    if (rateSpeed === 0 || rateResult === 0 || rateComm === 0 || rateQuality === 0) {
+      alert("Harap berikan penilaian bintang untuk semua aspek terlebih dahulu.");
+      return;
+    }
     try {
       await api.submitFeedback(ticketId, { rating: rateOverall, comment: rateComment });
       loadTickets(); // Refresh from DB
@@ -339,10 +413,10 @@ export const TicketHistory = ({ mode = 'active' }) => {
       }
 
 
-      setRateSpeed(5);
-      setRateResult(5);
-      setRateComm(5);
-      setRateQuality(5);
+      setRateSpeed(0);
+      setRateResult(0);
+      setRateComm(0);
+      setRateQuality(0);
       setRateComment('');
       setModalConfig({
         isOpen: true,
@@ -615,8 +689,11 @@ export const TicketHistory = ({ mode = 'active' }) => {
                       }`}
                   >
                     <div className="space-y-2 flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-bold text-sky-600 uppercase tracking-widest bg-sky-50 px-2 py-0.5 rounded">{t.id}</span>
+                        {(t.requires_helpdesk === 'asesmen' || t.requiresHelpdesk === 'asesmen') && (
+                          <span className="text-[10px] font-black text-indigo-700 bg-indigo-100 uppercase tracking-wider px-2 py-0.5 rounded">Asesmen</span>
+                        )}
                         <span className="text-sm text-slate-400 font-semibold">{t.date}</span>
                       </div>
                       <h3 className="font-extrabold text-base text-slate-800 leading-snug">{t.title}</h3>
@@ -665,7 +742,12 @@ export const TicketHistory = ({ mode = 'active' }) => {
             <div className="glass-card rounded-3xl border border-white/60 p-6 space-y-6 sticky top-24 shadow-sm">
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-sky-655 uppercase tracking-widest bg-sky-50 px-2 py-0.5 rounded inline-block">{selectedTicket.id}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-sky-655 uppercase tracking-widest bg-sky-50 px-2 py-0.5 rounded inline-block">{selectedTicket.id}</span>
+                    {(selectedTicket?.requires_helpdesk?.toLowerCase() === 'asesmen' || selectedTicket?.requiresHelpdesk?.toLowerCase() === 'asesmen') && (
+                      <span className="text-[10px] font-black text-indigo-700 bg-indigo-100 uppercase tracking-wider px-2 py-0.5 rounded inline-block">Asesmen</span>
+                    )}
+                  </div>
                   <span className={`px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${selectedTicket.status.includes('Selesai') ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
                       selectedTicket.status === 'Pending' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
                         selectedTicket.status === 'Diproses' ? 'bg-sky-50 text-sky-700 border border-sky-100' :
@@ -916,6 +998,71 @@ export const TicketHistory = ({ mode = 'active' }) => {
                   >
                     Mulai Kerjakan Kembali Tiket Ini
                   </button>
+                </div>
+              )}
+
+              {/* Fitur UI Subtask Kolegial */}
+              {(selectedTicket?.requires_helpdesk?.toLowerCase() === 'asesmen' || selectedTicket?.requiresHelpdesk?.toLowerCase() === 'asesmen') && user?.role !== 'USER' && user?.role !== 'MASYARAKAT' && user?.role !== 'HELPDESK' && (
+                <div className="bg-slate-50 border border-indigo-100 rounded-2xl p-5 space-y-4 text-left">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-black text-indigo-600 uppercase tracking-wider flex items-center gap-1.5">
+                        <ShieldCheck className="w-4 h-4" /> Tim Asesmen Internal
+                      </h4>
+                      <p className="text-[10px] text-slate-500 font-medium mt-0.5">Status pembagian tugas ke anggota tim.</p>
+                    </div>
+                    {(user?.role === 'KETUA TIM' || user?.role === 'ADMIN' || teams?.some(t => t.leader === (user?.full_name || user?.name))) && (
+                      <button type="button" onClick={() => setShowSubtaskModal(true)} className="text-[11px] font-bold px-3.5 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all shadow-xs cursor-pointer">
+                        + Bagi Tugas
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+                    {(!selectedTicket.subtasks || selectedTicket.subtasks.length === 0) ? (
+                       <div className="col-span-full text-center py-4 text-slate-400 font-medium italic text-xs bg-white border border-slate-200 border-dashed rounded-xl">
+                         Belum ada pembagian tugas asesmen.
+                       </div>
+                    ) : (
+                       selectedTicket.subtasks.map((sub, idx) => (
+                         <div key={idx} className="p-3 bg-white border border-slate-200 rounded-xl flex flex-col justify-between gap-3 shadow-sm hover:border-indigo-200 transition-colors">
+                           <div>
+                             <p className="text-xs font-bold text-slate-800">{sub.task_name || 'Evaluasi Dokumen'}</p>
+                             <p className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
+                                <User className="w-3 h-3 text-slate-400" />
+                                Ditugaskan ke: <span className="font-bold text-indigo-700">{sub.assigned_to_name}</span>
+                             </p>
+                           </div>
+                           <div className="flex items-center justify-between border-t border-slate-100 pt-2">
+                             {sub.status === 'APPROVED' ? (
+                               <span className="px-2 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-black rounded-md uppercase tracking-wider flex items-center gap-1">
+                                 <CheckCircle2 className="w-3 h-3" /> Approved
+                               </span>
+                             ) : sub.status === 'REJECTED' ? (
+                               <span className="px-2 py-1 bg-rose-100 text-rose-800 text-[10px] font-black rounded-md uppercase tracking-wider flex items-center gap-1">
+                                 <X className="w-3 h-3" /> Rejected
+                               </span>
+                             ) : (
+                               <div className="flex gap-2">
+                                 {sub.assigned_to_name === (user?.full_name || user?.name) ? (
+                                   <>
+                                     <button onClick={() => handleUpdateSubtaskStatus(sub.id, 'APPROVED')} className="px-2.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[10px] font-black rounded-md uppercase tracking-wider transition-all cursor-pointer">✅ Sesuai</button>
+                                     <button onClick={() => {
+                                        setRejectSubtaskId(sub.id);
+                                        setShowRejectSubtaskModal(true);
+                                     }} className="px-2.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-800 text-[10px] font-black rounded-md uppercase tracking-wider transition-all cursor-pointer">❌ Tidak Sesuai</button>
+                                   </>
+                                 ) : (
+                                   <span className="px-2 py-1 bg-slate-100 text-slate-600 text-[10px] font-black rounded-md uppercase tracking-wider">
+                                     Pending
+                                   </span>
+                                 )}
+                               </div>
+                             )}
+                           </div>
+                         </div>
+                       ))
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -1209,7 +1356,51 @@ export const TicketHistory = ({ mode = 'active' }) => {
         isOpen={showDetailModal}
         onClose={() => setShowDetailModal(false)}
         ticket={selectedTicket}
+        onBagiTugas={() => {
+          setShowDetailModal(false);
+          setShowSubtaskModal(true);
+        }}
       />
+
+      {showSubtaskModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-6">
+              <h3 className="text-lg font-black text-slate-800">Bagi Tugas Asesmen</h3>
+              <p className="text-sm text-slate-500 mt-1">Pilih anggota tim untuk mengerjakan evaluasi spesifik.</p>
+              
+              <form onSubmit={handleCreateSubtask} className="space-y-4 mt-6">
+                <div className="space-y-3 max-h-64 overflow-y-auto px-1">
+                  {getFileTasks().map((taskName, idx) => (
+                    <div key={idx}>
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">{taskName}</label>
+                      <select 
+                        value={subtaskAssignees[taskName] || ''} 
+                        onChange={e => setSubtaskAssignees({...subtaskAssignees, [taskName]: e.target.value})} 
+                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      >
+                        <option value="">-- Pilih Anggota --</option>
+                        {Array.from(new Set((teams || [])
+                           .filter(t => t.leader === (user?.full_name || user?.name) || user?.role === 'ADMIN')
+                           .flatMap(t => t.members || [])))
+                           .filter(m => m !== (user?.full_name || user?.name))
+                           .map(m => (
+                             <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+                
+                <div className="flex gap-3 pt-4 border-t border-slate-100">
+                  <button type="button" onClick={() => setShowSubtaskModal(false)} className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-bold transition-all">Batal</button>
+                  <button type="submit" className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-all shadow-md">Bagikan Tugas</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
 
       <RefillTicketModal
         isOpen={showRefillModal}
@@ -1249,6 +1440,42 @@ export const TicketHistory = ({ mode = 'active' }) => {
         cancelText={modalConfig.cancelText}
         onConfirm={modalConfig.onConfirm}
       />
+
+      {showRejectSubtaskModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-6">
+              <h3 className="text-lg font-black text-rose-700">Tugas Tidak Sesuai (Revisi)</h3>
+              <p className="text-sm text-slate-500 mt-1">Silakan berikan alasan mengapa dokumen/tugas ini butuh revisi.</p>
+              
+              <div className="space-y-4 mt-6">
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Catatan Penolakan</label>
+                  <textarea 
+                    required 
+                    value={rejectSubtaskReason} 
+                    onChange={e => setRejectSubtaskReason(e.target.value)} 
+                    placeholder="Tuliskan kekurangan dokumen atau alasan penolakan..." 
+                    className="w-full h-24 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 resize-none" 
+                  />
+                </div>
+                
+                <div className="flex gap-3 pt-4 border-t border-slate-100">
+                  <button type="button" onClick={() => {
+                    setShowRejectSubtaskModal(false);
+                    setRejectSubtaskReason('');
+                    setRejectSubtaskId(null);
+                  }} className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-bold transition-all cursor-pointer">Batal</button>
+                  <button onClick={() => {
+                    if(!rejectSubtaskReason.trim()) return alert("Catatan wajib diisi!");
+                    handleUpdateSubtaskStatus(rejectSubtaskId, 'REJECTED', rejectSubtaskReason);
+                  }} className="flex-1 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-sm font-bold transition-all shadow-md cursor-pointer">Kirim Revisi</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
