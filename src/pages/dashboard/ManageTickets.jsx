@@ -1027,10 +1027,30 @@ export const TicketHistory = ({ mode = 'active' }) => {
                          <div key={idx} className="p-3 bg-white border border-slate-200 rounded-xl flex flex-col justify-between gap-3 shadow-sm hover:border-indigo-200 transition-colors">
                            <div>
                              <p className="text-xs font-bold text-slate-800">{sub.task_name || 'Evaluasi Dokumen'}</p>
-                             <p className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
+                             <p className="text-[10px] text-slate-500 mt-1 flex items-center gap-1 mb-2">
                                 <User className="w-3 h-3 text-slate-400" />
                                 Ditugaskan ke: <span className="font-bold text-indigo-700">{sub.assigned_to_name}</span>
                              </p>
+
+                             {(() => {
+                                const tName = sub.task_name || '';
+                                if (tName.startsWith('Asesmen ') && selectedTicket?.form_data) {
+                                  const key = tName.substring(8);
+                                  const fUrl = selectedTicket.form_data[key];
+                                  const fName = selectedTicket.form_data[`${key}_name`];
+                                  if (fUrl && fName) {
+                                    return (
+                                      <div className="flex items-center justify-between p-2 bg-slate-50 rounded-lg border border-slate-100">
+                                        <span className="text-[10px] font-bold text-slate-600 truncate mr-2" title={fName}>{fName}</span>
+                                        <a href={fUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 px-2 py-1 bg-sky-100 text-sky-700 hover:bg-sky-200 rounded text-[10px] font-bold transition-all shrink-0 cursor-pointer">
+                                          <Eye className="w-3 h-3" /> Lihat
+                                        </a>
+                                      </div>
+                                    );
+                                  }
+                                }
+                                return null;
+                             })()}
                            </div>
                            <div className="flex items-center justify-between border-t border-slate-100 pt-2">
                              {sub.status === 'APPROVED' ? (
