@@ -231,6 +231,12 @@ exports.updateTicketData = async (req, res) => {
       UPDATE tickets SET status_id = $1, updated_at = NOW() WHERE id = $2
     `, [newStatusId, actualTicketId]);
 
+    // Reset rejected subtasks for re-evaluation
+    await client.query(`
+      UPDATE subtasks SET status = 'PENDING', notes = NULL 
+      WHERE ticket_id = $1 AND status = 'REJECTED'
+    `, [actualTicketId]);
+
     // Insert history
     await createHistory(client, actualTicketId, req.user.id, 3, newStatusId, finalLogMessage);
 
@@ -680,6 +686,39 @@ exports.rejectTicket = async (req, res) => {
 
     await client.query('COMMIT');
     res.json({ success: true, message: 'Ticket rejected' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    client.release();
+  }
+};
+
+exports.updateSubtaskStatus = async (req, res) => {
+  const { id, subtaskId } = req.params;
+  const { status, comment } = req.body;
+  const client = await db.pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    await client.query(`
+      UPDATE subtasks SET status = $1, notes = $2, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $3 AND ticket_id = $4
+    `, [status, comment, subtaskId, id]);
+
+    if (status === 'REJECTED') {
+      await client.query('UPDATE tickets SET status_id = 3, updated_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
+      const historyText = `Dokumen ditolak oleh evaluator. Alasan: "${comment || 'Tidak Sesuai'}". Menunggu revisi pemohon.`;
+      await createHistory(client, id, req.user.id, null, 3, historyText);
+
+      
+      const tRes = await client.query('SELECT user_id FROM tickets WHERE id = $1', [id]);
+      await createNotification(client, tRes.rows[0].user_id, id, 'ACTION_REQUIRED', 'Dokumen Ditolak', 'Salah satu dokumen Anda ditolak dan memerlukan revisi.');
+    }
+    
+    await client.query('COMMIT');
+    res.json({ success: true, message: 'Subtask updated' });
   } catch (err) {
     await client.query('ROLLBACK');
     res.status(500).json({ success: false, message: err.message });

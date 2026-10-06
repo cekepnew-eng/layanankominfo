@@ -270,6 +270,14 @@ export const api = {
     });
     return handleResponse(res);
   },
+  updateSubtaskStatus: async (ticketId, subtaskId, payload) => {
+    const res = await fetch(`${BASE_URL}/tickets/${ticketId}/subtasks/${subtaskId}/status`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify(payload)
+    });
+    return handleResponse(res);
+  },
 
   // HELPDESK
   getHelpdeskTickets: async () => {

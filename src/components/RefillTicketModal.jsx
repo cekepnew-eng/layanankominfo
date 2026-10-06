@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, FileText, Upload, AlertCircle, FileCheck, Clock, Eye, Download } from 'lucide-react';
+import { X, FileText, Upload, AlertCircle, FileCheck, Clock, Eye, Download, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getCurrentLogTimeFormatted } from '../utils/dateUtils';
 import { SopModal } from './SopModal';
@@ -14,6 +14,30 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
   const reqDocs = srv?.requiredDocs || ticket.required_docs || ticket.requiredDocs || 'Surat Permohonan Resmi OPD, KAK / Dokumen Pendukung';
   const sopFile = srv?.sop || ticket.sop || 'sop-layanan.pdf';
   const slaText = srv?.sla || (ticket.slaDuration ? `${ticket.slaDuration} Hari` : '7 Hari');
+
+  let globalSchema = srv?.form_schema || [];
+  if (typeof globalSchema === 'string') {
+    try { globalSchema = JSON.parse(globalSchema); } catch (e) { globalSchema = []; }
+  }
+
+  const getFieldLabel = (fieldName) => {
+    let foundLabel = fieldName;
+    const traverse = (fields) => {
+      for (const f of fields) {
+        if (f.type === 'group') traverse(f.subFields || []);
+        else if (f.name === fieldName || f.label === fieldName) foundLabel = f.label || f.name;
+      }
+    };
+    traverse(globalSchema);
+    return foundLabel;
+  };
+
+  const formatTaskName = (taskName) => {
+    if (taskName?.startsWith('Asesmen ')) {
+      return `Asesmen ${getFieldLabel(taskName.substring(8))}`;
+    }
+    return taskName;
+  };
 
   const [formData, setFormData] = useState(ticket?.form_data || {});
   const [showSopModal, setShowSopModal] = useState(false);
@@ -63,6 +87,9 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
     onClose();
   };
 
+  const rejectedSubtasks = ticket?.subtasks?.filter(s => s.status === 'REJECTED') || [];
+  const rejectedFieldLabels = rejectedSubtasks.map(s => s.task_name?.startsWith('Asesmen ') ? s.task_name.substring(8) : s.task_name);
+
   const pendingLog = ticket.logs?.find(l => 
     l.text.toLowerCase().includes('helpdesk') || 
     l.text.toLowerCase().includes('ditangguhkan') || 
@@ -108,7 +135,7 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
         </div>
 
         <form onSubmit={handlePreSubmit} className="p-6 sm:p-7 space-y-6 max-h-[75vh] overflow-y-auto">
-          {pendingLog && (
+          {pendingLog && rejectedSubtasks.length === 0 && (
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs space-y-1">
               <div className="flex items-center gap-1.5 text-slate-700 font-bold uppercase tracking-wider">
                 <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
@@ -117,6 +144,21 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
               <p className="text-slate-600 italic font-medium leading-relaxed pl-5.5">
                 "{pendingLog.text}"
               </p>
+            </div>
+          )}
+
+          {rejectedSubtasks.length > 0 && (
+            <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-xs space-y-2">
+              <div className="flex items-center gap-1.5 text-rose-700 font-bold uppercase tracking-wider mb-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>Dokumen yang Harus Direvisi:</span>
+              </div>
+              {rejectedSubtasks.map((rs, idx) => (
+                <div key={idx} className="bg-white p-3 rounded-xl border border-rose-100 shadow-sm">
+                  <span className="font-bold text-slate-800 block">{formatTaskName(rs.task_name)}</span>
+                  <span className="text-slate-600 italic block mt-1">Catatan Evaluator: "{rs.notes || rs.comment || 'Harap perbaiki dokumen ini'}"</span>
+                </div>
+              ))}
             </div>
           )}
 
@@ -170,11 +212,8 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
           </div>
 
           {(() => {
-            let schema = srv?.form_schema || [];
+            let schema = globalSchema;
             
-            if (typeof schema === 'string') {
-              try { schema = JSON.parse(schema); } catch (e) { schema = []; }
-            }
             if (!Array.isArray(schema)) schema = [];
 
             if (schema.length === 0) {
@@ -198,6 +237,21 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
               }
 
               const fieldKey = field.label || field.name;
+
+              if (rejectedSubtasks.length > 0) {
+                 const isRejected = rejectedFieldLabels.includes(fieldKey) || 
+                                    (field.name && rejectedFieldLabels.includes(field.name)) || 
+                                    (field.label && rejectedFieldLabels.includes(field.label));
+
+                 if (field.type !== 'group' && !isRejected) {
+                   return (
+                     <div key={field.id || fieldKey} className="flex justify-between items-center p-3 bg-emerald-50 border border-emerald-100 rounded-xl mb-3 shadow-sm">
+                       <span className="text-xs font-bold text-slate-700 truncate mr-2">{field.label}</span>
+                       <span className="text-[10px] font-black text-emerald-700 uppercase bg-emerald-100/50 px-2.5 py-1 rounded-md flex items-center gap-1 shrink-0"><CheckCircle2 className="w-3 h-3" /> Disetujui</span>
+                     </div>
+                   );
+                 }
+              }
 
               if (field.type === 'file') {
                 return (

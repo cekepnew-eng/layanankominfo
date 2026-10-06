@@ -479,8 +479,11 @@ export const CreateTicket = () => {
                               {isSelected && <span className="w-2 h-2 rounded-full bg-white"></span>}
                             </div>
                             <div className="min-w-0">
-                              <p className={`text-base font-extrabold ${isSelected ? 'text-sky-950 font-black' : 'text-slate-850'}`}>
-                                {sub}
+                              <p className={`text-base font-extrabold ${isSelected ? 'text-sky-950 font-black' : 'text-slate-850'} flex items-center gap-2 flex-wrap`}>
+                                <span>{sub}</span>
+                                {srv && (srv.verification_type?.toLowerCase() === 'asesmen' || srv.verificationType?.toLowerCase() === 'asesmen') && (
+                                  <span className="text-[10px] font-black text-indigo-700 bg-indigo-100 uppercase tracking-wider px-2 py-0.5 rounded border border-indigo-200">Asesmen</span>
+                                )}
                               </p>
                               {srv && (
                                 <p className="text-xs text-slate-500 flex items-center gap-2 mt-1">

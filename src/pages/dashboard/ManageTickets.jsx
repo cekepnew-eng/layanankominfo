@@ -77,7 +77,7 @@ const getTargetShortDate = (targetDateStr) => {
 };
 
 export const TicketHistory = ({ mode = 'active' }) => {
-  const { user } = useAuth();
+  const { user, services } = useAuth();
   const [tickets, setTickets] = useState([]);
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -185,6 +185,28 @@ export const TicketHistory = ({ mode = 'active' }) => {
   const [rejectSubtaskReason, setRejectSubtaskReason] = useState('');
   const [showRejectSubtaskModal, setShowRejectSubtaskModal] = useState(false);
 
+  const handleFinalizeAssessment = async () => {
+    try {
+      await api.updateProgress(selectedTicket.uuid || selectedTicket.id, {
+        progress: 100,
+        note: 'Seluruh dokumen telah diverifikasi dan disetujui (ACC Final).',
+        statusAction: 'DONE'
+      });
+      loadTickets();
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: 'Asesmen Selesai',
+        message: 'Seluruh tugas asesmen telah disetujui dan tiket telah selesai dikerjakan.',
+        confirmText: 'Tutup',
+        cancelText: '',
+        onConfirm: closeModal
+      });
+    } catch (err) {
+      alert("Gagal menyelesaikan asesmen: " + err.message);
+    }
+  };
+
   const handleUpdateSubtaskStatus = async (subtaskId, status, comment = '') => {
     try {
       await api.updateSubtaskStatus(selectedTicket.uuid || selectedTicket.id, subtaskId, { status, comment });
@@ -232,6 +254,65 @@ export const TicketHistory = ({ mode = 'active' }) => {
     }
   };
 
+  const handleViewFile = (url) => {
+    if (!url) return;
+    if (url.startsWith('data:')) {
+      try {
+        const arr = url.split(',');
+        const mime = arr[0].match(/:(.*?);/)[1];
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while(n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+        }
+        const blob = new Blob([u8arr], {type: mime});
+        const objectUrl = URL.createObjectURL(blob);
+        
+        const newWindow = window.open('', '_blank');
+        if (newWindow) {
+          newWindow.document.write(`
+            <html>
+              <head>
+                <title>Dokumen Pelayanan - Diskominfo</title>
+                <style>
+                  body { margin: 0; padding: 0; overflow: hidden; background-color: #525659; }
+                  iframe { border: none; width: 100vw; height: 100vh; }
+                </style>
+              </head>
+              <body>
+                <iframe src="${objectUrl}"></iframe>
+              </body>
+            </html>
+          `);
+          newWindow.document.close();
+        }
+      } catch (err) {
+        console.error("Gagal membuka file base64", err);
+        const newWindow = window.open('', '_blank');
+        if (newWindow) {
+          newWindow.document.write(`
+            <html>
+              <head>
+                <title>Dokumen Pelayanan - Diskominfo</title>
+                <style>
+                  body { margin: 0; padding: 0; overflow: hidden; background-color: #525659; }
+                  iframe { border: none; width: 100vw; height: 100vh; }
+                </style>
+              </head>
+              <body>
+                <iframe src="${url}"></iframe>
+              </body>
+            </html>
+          `);
+          newWindow.document.close();
+        }
+      }
+    } else {
+      window.open(url, '_blank');
+    }
+  };
+
   const getFileTasks = () => {
     if (!selectedTicket || !selectedTicket.form_data) return ['Evaluasi Dokumen Pemohon'];
     
@@ -246,6 +327,35 @@ export const TicketHistory = ({ mode = 'active' }) => {
     return fileFields.length > 0 ? fileFields : ['Evaluasi Dokumen Pemohon'];
   };
 
+  const getFieldLabel = (ticket, fieldName) => {
+    const subServiceName = (ticket?.requestType && ticket.requestType !== 'Baru') ? ticket.requestType : (ticket?.service || ticket?.service_name || '');
+    const srv = (services || []).find(s => s.name === subServiceName || s.service_name === subServiceName);
+    let schema = srv?.form_schema || [];
+    if (typeof schema === 'string') {
+      try { schema = JSON.parse(schema); } catch(e) { schema = []; }
+    }
+    
+    let foundLabel = fieldName;
+    const traverse = (fields) => {
+      for (const f of fields) {
+        if (f.type === 'group') {
+          traverse(f.subFields || []);
+        } else if (f.name === fieldName || f.label === fieldName) {
+          foundLabel = f.label || f.name;
+        }
+      }
+    };
+    traverse(schema);
+    return foundLabel;
+  };
+
+  const formatTaskName = (taskName) => {
+    if (taskName?.startsWith('Asesmen ')) {
+      const key = taskName.substring(8);
+      return `Asesmen ${getFieldLabel(selectedTicket, key)}`;
+    }
+    return taskName;
+  };
 
   const handleDisputeSubmit = async () => {
     if (!disputeReason.trim()) return;
@@ -810,14 +920,13 @@ export const TicketHistory = ({ mode = 'active' }) => {
                           <FileText className="w-4 h-4 text-sky-600 shrink-0" />
                           <span className="truncate">{file}</span>
                         </div>
-                        <a
-                          href={selectedTicket.fileUrl || '/dokumen_permohonan.pdf'}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs font-bold text-sky-600 hover:underline px-2.5 py-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-all shrink-0"
+                        <button
+                          type="button"
+                          onClick={() => handleViewFile(selectedTicket.fileUrl || '/dokumen_permohonan.pdf')}
+                          className="text-xs font-bold text-sky-600 hover:underline px-2.5 py-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-all shrink-0 cursor-pointer"
                         >
                           Buka PDF
-                        </a>
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -834,15 +943,13 @@ export const TicketHistory = ({ mode = 'active' }) => {
                         {selectedTicket.bastFile || `Dokumen_${selectedTicket.id}.pdf`}
                       </span>
                     </div>
-                    <a
-                      href={selectedTicket.bastFileUrl || '/bast_selesai.pdf'}
-                      download={selectedTicket.bastFile || `Dokumen_${selectedTicket.id}.pdf`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs font-bold text-sky-600 hover:underline px-2.5 py-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-all shrink-0"
+                    <button
+                      type="button"
+                      onClick={() => handleViewFile(selectedTicket.bastFileUrl || '/bast_selesai.pdf')}
+                      className="text-xs font-bold text-sky-600 hover:underline px-2.5 py-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-all shrink-0 cursor-pointer"
                     >
                       Unduh Dokumen (PDF)
-                    </a>
+                    </button>
                   </div>
                 </div>
               )}
@@ -1026,7 +1133,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
                        selectedTicket.subtasks.map((sub, idx) => (
                          <div key={idx} className="p-3 bg-white border border-slate-200 rounded-xl flex flex-col justify-between gap-3 shadow-sm hover:border-indigo-200 transition-colors">
                            <div>
-                             <p className="text-xs font-bold text-slate-800">{sub.task_name || 'Evaluasi Dokumen'}</p>
+                             <p className="text-xs font-bold text-slate-800">{formatTaskName(sub.task_name) || 'Evaluasi Dokumen'}</p>
                              <p className="text-[10px] text-slate-500 mt-1 flex items-center gap-1 mb-2">
                                 <User className="w-3 h-3 text-slate-400" />
                                 Ditugaskan ke: <span className="font-bold text-indigo-700">{sub.assigned_to_name}</span>
@@ -1042,9 +1149,9 @@ export const TicketHistory = ({ mode = 'active' }) => {
                                     return (
                                       <div className="flex items-center justify-between p-2 bg-slate-50 rounded-lg border border-slate-100">
                                         <span className="text-[10px] font-bold text-slate-600 truncate mr-2" title={fName}>{fName}</span>
-                                        <a href={fUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 px-2 py-1 bg-sky-100 text-sky-700 hover:bg-sky-200 rounded text-[10px] font-bold transition-all shrink-0 cursor-pointer">
+                                        <button type="button" onClick={() => handleViewFile(fUrl)} className="flex items-center gap-1 px-2 py-1 bg-sky-100 text-sky-700 hover:bg-sky-200 rounded text-[10px] font-bold transition-all shrink-0 cursor-pointer">
                                           <Eye className="w-3 h-3" /> Lihat
-                                        </a>
+                                        </button>
                                       </div>
                                     );
                                   }
@@ -1083,10 +1190,26 @@ export const TicketHistory = ({ mode = 'active' }) => {
                        ))
                     )}
                   </div>
+                  
+                  {/* ACC FINAL KETUA TIM */}
+                  {selectedTicket.subtasks && selectedTicket.subtasks.length > 0 && selectedTicket.subtasks.every(s => s.status === 'APPROVED') && (user?.role === 'KETUA TIM' || user?.role === 'ADMIN' || teams?.some(t => t.leader === (user?.full_name || user?.name))) && (selectedTicket.status === 'Diproses' || selectedTicket.status_name === 'IN_PROGRESS') && (
+                    <div className="mt-4 pt-4 border-t border-indigo-100">
+                      <div className="bg-indigo-50/80 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 border border-indigo-200 shadow-sm">
+                        <div className="text-left">
+                          <h5 className="text-xs font-black text-indigo-800 uppercase tracking-wider flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> Semua Dokumen Disetujui</h5>
+                          <p className="text-[10px] text-indigo-600 mt-1 font-semibold leading-relaxed">Seluruh anggota tim telah mengevaluasi dan menyetujui bagian mereka. Silakan berikan persetujuan akhir (ACC).</p>
+                        </div>
+                        <button onClick={handleFinalizeAssessment} className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-black rounded-xl uppercase tracking-wider transition-all shadow-md shadow-indigo-500/20 shrink-0 cursor-pointer">
+                          ACC & Selesaikan
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {user?.role === 'PEGAWAI' && (selectedTicket.status === 'Diproses' || selectedTicket.status_name === 'IN_PROGRESS') && (
+              {/* JIKA BUKAN ASESMEN: TAMPILKAN FORM PEGAWAI BIASA */}
+              {user?.role === 'PEGAWAI' && (selectedTicket.status === 'Diproses' || selectedTicket.status_name === 'IN_PROGRESS') && (!selectedTicket?.requires_helpdesk?.toLowerCase().includes('asesmen')) && (!selectedTicket?.requiresHelpdesk?.toLowerCase().includes('asesmen')) && (
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4 text-left">
                   <h4 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider">Perbarui Status Pekerjaan</h4>
 
@@ -1393,7 +1516,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
                 <div className="space-y-3 max-h-64 overflow-y-auto px-1">
                   {getFileTasks().map((taskName, idx) => (
                     <div key={idx}>
-                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">{taskName}</label>
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">{formatTaskName(taskName)}</label>
                       <select 
                         value={subtaskAssignees[taskName] || ''} 
                         onChange={e => setSubtaskAssignees({...subtaskAssignees, [taskName]: e.target.value})} 
