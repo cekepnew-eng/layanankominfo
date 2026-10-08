@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getCurrentLogTimeFormatted, formatLogDateDisplay } from '../../utils/dateUtils';
 import { TicketDetailModal } from '../../components/TicketDetailModal';
 import { SkmModal } from '../../components/SkmModal';
+import { TruncatedText } from '../../components/TruncatedText';
 import { RefillTicketModal } from '../../components/RefillTicketModal';
 import { api } from '../../services/api';
 import { ActionModal } from '../../components/ActionModal';
@@ -77,6 +79,7 @@ const getTargetShortDate = (targetDateStr) => {
 };
 
 export const TicketHistory = ({ mode = 'active' }) => {
+  const navigate = useNavigate();
   const { user, services } = useAuth();
   const [tickets, setTickets] = useState([]);
   const [teams, setTeams] = useState([]);
@@ -134,6 +137,27 @@ export const TicketHistory = ({ mode = 'active' }) => {
   useEffect(() => {
     loadTickets();
   }, [user]);
+
+  useEffect(() => {
+    const savedId = sessionStorage.getItem('activeTicketId');
+    if (savedId && tickets.length > 0 && !selectedTicket) {
+      const found = tickets.find(t => (t.uuid || t.id) === savedId || t.id === savedId || t.ticket_number === savedId);
+      if (found) {
+        handleSelectTicket(found);
+        sessionStorage.removeItem('redirectedForTicket');
+      } else {
+        const triedRedirect = sessionStorage.getItem('redirectedForTicket');
+        if (triedRedirect !== savedId) {
+          sessionStorage.setItem('redirectedForTicket', savedId);
+          if (mode === 'active') {
+             navigate('/dashboard/ticket-history');
+          } else {
+             navigate('/dashboard/history');
+          }
+        }
+      }
+    }
+  }, [tickets]);
 
   useEffect(() => {
     const fetchTeams = async () => {
@@ -441,6 +465,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
       console.error('Failed to fetch history', err);
     }
     setSelectedTicket(ticketWithLogs);
+    sessionStorage.setItem('activeTicketId', t.uuid || t.id);
     document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -762,6 +787,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
               onClick={() => {
                 setActiveTab(tab.id);
                 setSelectedTicket(null);
+                sessionStorage.removeItem('activeTicketId');
               }}
               className={`px-5 py-3 border-b-2 font-bold text-sm transition-all whitespace-nowrap -mb-px flex items-center gap-2 ${isActive
                   ? 'border-sky-600 text-sky-600 bg-sky-50/50 rounded-t-lg'
@@ -1479,7 +1505,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
                             : 'bg-slate-300'
                           }`}></div>
                         <span className="text-xs text-slate-400 font-bold block">{formatLogDateDisplay(log.date)} - {log.author || 'Sistem'}</span>
-                        <p className={`text-base mt-0.5 leading-relaxed ${isNewest ? 'font-bold text-slate-800' : 'text-slate-500'}`}>{log.text}</p>
+                        <TruncatedText text={log.text} className={`text-base mt-0.5 leading-relaxed ${isNewest ? 'font-bold text-slate-800' : 'text-slate-500'}`} />
                       </div>
                     );
                   })}

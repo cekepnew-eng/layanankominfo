@@ -62,6 +62,7 @@ export const DashboardLayout = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [liveToast, setLiveToast] = useState(null);
+  const [showSidebar, setShowSidebar] = useState(false);
 
   React.useEffect(() => {
     if ("Notification" in window && Notification.permission === "default") {
@@ -83,7 +84,8 @@ export const DashboardLayout = () => {
             message: n.message,
             time: n.created_at,
             isRead: n.is_read,
-            type: n.type ? n.type.toLowerCase() : 'info'
+            type: n.type ? n.type.toLowerCase() : 'info',
+            ticket_id: n.ticket_id || n.ticket_uuid || null
           }));
 
           setNotifications(prevNotifs => {
@@ -248,7 +250,15 @@ export const DashboardLayout = () => {
 
   return (
     <div className="h-screen w-screen theme-premium-bg flex font-sans overflow-hidden">
-      <aside className="w-64 h-full glass-sidebar flex flex-col z-20 shrink-0">
+      {/* Mobile Sidebar Overlay */}
+      {showSidebar && (
+        <div 
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-30 md:hidden" 
+          onClick={() => setShowSidebar(false)}
+        />
+      )}
+
+      <aside className={`fixed md:relative top-0 left-0 w-64 h-full glass-sidebar flex flex-col z-40 shrink-0 transition-transform duration-300 ${showSidebar ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="p-6 border-b border-slate-100/50 flex items-center gap-3">
           <img src="/logo-bogor.png" alt="Logo Bogor" className="h-9 w-auto" />
           <div className="text-left">
@@ -286,6 +296,7 @@ export const DashboardLayout = () => {
         <nav className="flex-1 overflow-y-auto px-4 py-6 space-y-1.5">
           <Link
             to="/"
+            onClick={() => setShowSidebar(false)}
             className="flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-all text-slate-550 hover:bg-slate-50 hover:text-slate-800 mb-3 border border-slate-200/60 bg-slate-50/40"
           >
             <Home className="w-5 h-5 text-slate-400" />
@@ -315,6 +326,7 @@ export const DashboardLayout = () => {
               <Link
                 key={link.path}
                 to={link.path}
+                onClick={() => setShowSidebar(false)}
                 className={`flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-all ${isActive
                     ? 'bg-sky-600 text-white shadow-md shadow-sky-500/30 translate-x-1 border border-sky-500'
                     : 'text-slate-550 hover:bg-slate-50 hover:text-slate-800'
@@ -339,11 +351,17 @@ export const DashboardLayout = () => {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
-        <header className="h-20 shrink-0 glass-panel border-b-0 flex items-center justify-between px-8 z-10 sticky top-0">
+        <header className="h-20 shrink-0 glass-panel border-b-0 flex items-center justify-between px-4 sm:px-8 z-10 sticky top-0">
           <div className="flex items-center gap-2">
-            <Link to="/" className="text-xs text-slate-400 font-bold uppercase tracking-widest hover:text-sky-600 transition-colors">Portal</Link>
-            <span className="text-slate-300 text-base">/</span>
-            <span className="text-sm font-bold text-slate-850">{getBreadcrumb()}</span>
+            <button 
+              onClick={() => setShowSidebar(!showSidebar)}
+              className="md:hidden p-2 -ml-2 text-slate-500 hover:text-sky-600 focus:outline-none"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            </button>
+            <Link to="/" className="text-xs text-slate-400 font-bold uppercase tracking-widest hover:text-sky-600 transition-colors hidden sm:block">Portal</Link>
+            <span className="text-slate-300 text-base hidden sm:block">/</span>
+            <span className="text-sm font-bold text-slate-850 truncate max-w-[150px] sm:max-w-none">{getBreadcrumb()}</span>
           </div>
 
           <div className="flex items-center gap-4">
@@ -385,7 +403,13 @@ export const DashboardLayout = () => {
                       </div>
                     ) : (
                       notifications.map((n, i) => (
-                        <div key={i} className="p-3.5 rounded-2xl hover:bg-white/80 transition-all cursor-pointer group flex items-start gap-3 border border-transparent hover:border-slate-100 shadow-xs hover:shadow-md">
+                        <div key={i} onClick={() => {
+                          setShowNotifications(false);
+                          if (n.ticket_id) {
+                            sessionStorage.setItem('activeTicketId', n.ticket_id);
+                            navigate('/dashboard/history');
+                          }
+                        }} className="p-3.5 rounded-2xl hover:bg-white/80 transition-all cursor-pointer group flex items-start gap-3 border border-transparent hover:border-slate-100 shadow-xs hover:shadow-md">
                           <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border shadow-xs transition-colors ${n.type === 'warning' ? 'bg-amber-50 border-amber-100 text-amber-600 group-hover:bg-amber-100' :
                               n.type === 'success' ? 'bg-emerald-50 border-emerald-100 text-emerald-600 group-hover:bg-emerald-100' :
                                 n.type === 'processing' ? 'bg-sky-50 border-sky-100 text-sky-600 group-hover:bg-sky-100' :
@@ -447,7 +471,7 @@ export const DashboardLayout = () => {
           </div>
         </header>
 
-        <main className="flex-1 p-8 overflow-y-auto">
+        <main className="flex-1 p-4 sm:p-8 overflow-y-auto w-full">
           <ErrorBoundary>
             <Outlet />
           </ErrorBoundary>

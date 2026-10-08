@@ -452,7 +452,7 @@ export const Login = () => {
                   </div>
                   <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight leading-tight">Verifikasi 2FA</h3>
                   <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
-                    Buka <strong className="text-slate-800">Google Authenticator</strong> dan masukkan 6-digit kode yang tampil untuk akun <strong className="text-slate-800">SPBE Diskominfo</strong>.
+                    Buka <strong className="text-slate-800">Google Authenticator</strong> dan masukkan 6-digit kode yang tampil untuk akun <strong className="text-slate-800">HELPDESK DISKOMINFO</strong>.
                   </p>
                 </div>
 

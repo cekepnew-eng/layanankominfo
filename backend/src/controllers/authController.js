@@ -290,7 +290,7 @@ exports.login = async (req, res) => {
 exports.register = async (req, res) => {
   const { email, password, fullName, phone } = req.body;
   try {
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d]{8,}$/;
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
     if (!passwordRegex.test(password)) {
       return res.status(400).json({ success: false, message: 'Password harus minimal 8 karakter, mengandung huruf besar, huruf kecil, dan angka.' });
     }

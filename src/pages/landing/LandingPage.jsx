@@ -34,6 +34,7 @@ export const LandingPage = () => {
   const [liveTickets, setLiveTickets] = useState([]);
   const [activeFaqId, setActiveFaqId] = useState(null);
   const [dbCategories, setDbCategories] = useState([]);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const { ratings, tickets } = useAuth();
   const displayTestimonials = ratings ? ratings.filter(r => r.selectedForLanding) : [];
@@ -344,7 +345,7 @@ export const LandingPage = () => {
             <a href="#faq" className={`text-base font-bold tracking-wider ${activeSection === 'faq' ? 'text-sky-600' : 'text-slate-600 hover:text-sky-600'}`}>FAQ</a>
           </nav>
 
-          <div className="flex items-center gap-4">
+          <div className="hidden md:flex items-center gap-4">
             {user ? (
               <Link 
                 to="/dashboard" 
@@ -369,7 +370,35 @@ export const LandingPage = () => {
               </>
             )}
           </div>
+
+          <button 
+            className="md:hidden p-2 text-slate-600 focus:outline-none"
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          >
+            {isMobileMenuOpen ? <X className="w-6 h-6" /> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>}
+          </button>
         </div>
+
+        {isMobileMenuOpen && (
+          <div className="md:hidden bg-white border-t border-slate-200 px-8 py-6 flex flex-col gap-4 shadow-lg absolute w-full">
+            <a href="#" onClick={() => setIsMobileMenuOpen(false)} className={`text-base font-bold ${activeSection === 'beranda' ? 'text-sky-600' : 'text-slate-600'}`}>Beranda</a>
+            <a href="#statistik" onClick={() => setIsMobileMenuOpen(false)} className={`text-base font-bold ${activeSection === 'statistik' ? 'text-sky-600' : 'text-slate-600'}`}>Statistik</a>
+            <a href="#alur" onClick={() => setIsMobileMenuOpen(false)} className={`text-base font-bold ${activeSection === 'alur' ? 'text-sky-600' : 'text-slate-600'}`}>Alur</a>
+            <a href="#layanan" onClick={() => setIsMobileMenuOpen(false)} className={`text-base font-bold ${activeSection === 'layanan' ? 'text-sky-600' : 'text-slate-600'}`}>Layanan SPBE</a>
+            <a href="#faq" onClick={() => setIsMobileMenuOpen(false)} className={`text-base font-bold ${activeSection === 'faq' ? 'text-sky-600' : 'text-slate-600'}`}>FAQ</a>
+            
+            <div className="h-px bg-slate-200 my-2"></div>
+            
+            {user ? (
+              <Link to="/dashboard" onClick={() => setIsMobileMenuOpen(false)} className="py-3 bg-slate-900 text-white rounded-lg text-base font-bold text-center">Dashboard</Link>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <Link to="/auth/login" onClick={() => setIsMobileMenuOpen(false)} className="py-3 border border-slate-300 text-slate-700 rounded-lg text-base font-bold text-center">Masuk</Link>
+                <Link to="/auth/register" onClick={() => setIsMobileMenuOpen(false)} className="py-3 bg-sky-600 text-white rounded-lg text-base font-bold text-center">Daftar</Link>
+              </div>
+            )}
+          </div>
+        )}
       </header>
 
       <section id="beranda" className="relative overflow-hidden bg-slate-950 text-white min-h-[calc(100vh-112px)] flex flex-col justify-center py-16 px-8">

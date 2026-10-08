@@ -80,7 +80,7 @@ export const Register = () => {
     const emailLower = email.toLowerCase().trim();
 
     // Password Validation
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d]{8,}$/;
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
     if (!passwordRegex.test(password)) {
       setModalConfig({ isOpen: true, type: 'warning', title: 'Perhatian', message: 'Password harus minimal 8 karakter, mengandung huruf besar, huruf kecil, dan angka.', confirmText: 'Mengerti' });
       return;

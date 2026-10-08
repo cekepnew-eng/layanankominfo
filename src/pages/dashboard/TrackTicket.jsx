@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Search, Ticket, Activity, CheckCircle2, Clock, AlertTriangle, FileText } from 'lucide-react';
 import { api } from '../../services/api';
+import { TruncatedText } from '../../components/TruncatedText';
 
 export const TrackTicket = () => {
   const [ticketNumber, setTicketNumber] = useState('');
@@ -31,12 +32,12 @@ export const TrackTicket = () => {
           }
           setTicketData(found);
         } else {
-          setError('Tiket dengan nomor referensi tersebut tidak ditemukan.');
+          setError('Tiket tidak ditemukan.');
         }
       }
     } catch (err) {
       console.error(err);
-      setError('Terjadi kesalahan saat melacak tiket.');
+      setError('Gagal melacak tiket.');
     } finally {
       setLoading(false);
     }
@@ -49,7 +50,7 @@ export const TrackTicket = () => {
           <Search className="w-8 h-8" />
         </div>
         <h2 className="text-3xl font-black text-slate-900 tracking-tight">Lacak Tiket Layanan</h2>
-        <p className="text-slate-500 max-w-lg">Masukkan nomor referensi tiket untuk melihat tahapan progres secara detail.</p>
+        <p className="text-slate-500 max-w-lg">Masukkan nomor referensi untuk melacak status tiket Anda.</p>
       </div>
 
       <div className="glass-card p-6 sm:p-8 rounded-3xl border border-white/60 shadow-md bg-white/50">
@@ -112,9 +113,7 @@ export const TrackTicket = () => {
                         <span className="text-slate-300">•</span>
                         <span className="text-slate-600 bg-white px-2 py-0.5 rounded-md border border-slate-200 shadow-2xs">{log.user_name || 'Sistem'}</span>
                       </div>
-                      <p className="text-sm font-bold text-slate-700 leading-relaxed">
-                        {log.log_description || log.text}
-                      </p>
+                      <TruncatedText text={log.log_description || log.text} className="text-sm font-bold text-slate-700 leading-relaxed" />
                     </div>
                   </div>
                 ))}
@@ -122,7 +121,7 @@ export const TrackTicket = () => {
             ) : (
               <div className="text-center py-8 text-slate-500">
                 <FileText className="w-8 h-8 mx-auto mb-3 text-slate-300" />
-                <p className="font-semibold">Belum ada catatan riwayat untuk tiket ini.</p>
+                <p className="font-semibold">Riwayat tiket kosong.</p>
               </div>
             )}
           </div>
