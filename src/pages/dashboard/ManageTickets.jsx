@@ -458,7 +458,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
         ticketWithLogs.logs = res.data.reverse().map(log => ({
           date: log.created_at,
           text: log.log_description,
-          author: log.user_name || 'Sistem'
+          author: log.user_name ? `${log.user_name} (${!log.user_role ? 'Sistem' : ['ADMIN', 'PEGAWAI', 'KETUA TIM'].includes(log.user_role.toUpperCase()) ? 'Pegawai' : ['USER', 'MASYARAKAT'].includes(log.user_role.toUpperCase()) ? 'Pemohon' : 'Helpdesk'})` : 'Sistem'
         }));
       }
     } catch (err) {
@@ -840,7 +840,9 @@ export const TicketHistory = ({ mode = 'active' }) => {
                         <Clock className="w-3.5 h-3.5 text-slate-400" />
                         <span>SLA Standar: {t.slaDuration || 7} Hari</span>
                         <span className="text-slate-300">|</span>
-                        {t.status === 'Verifikasi' ? (
+                        {t.status.includes('Selesai') ? (
+                          <span className="text-emerald-600 font-extrabold">Selesai</span>
+                        ) : t.status === 'Verifikasi' ? (
                           <span className="text-slate-400 font-semibold">Belum Berjalan (Menunggu Verifikasi)</span>
                         ) : t.status === 'Pending' ? (
                           <span className="text-amber-600 font-semibold">Tertangguh (Menunggu Revisi)</span>
@@ -873,9 +875,15 @@ export const TicketHistory = ({ mode = 'active' }) => {
           )}
         </div>
 
-        <div className="lg:col-span-5">
+        <div className={`lg:col-span-5 ${selectedTicket ? 'fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 lg:relative lg:inset-auto lg:bg-transparent lg:backdrop-blur-none lg:p-0 lg:z-auto lg:block' : 'hidden lg:block'}`}>
           {selectedTicket ? (
-            <div className="glass-card rounded-3xl border border-white/60 p-6 space-y-6 sticky top-24 shadow-sm">
+            <div className="w-full max-w-lg lg:max-w-none bg-white lg:bg-transparent lg:glass-card rounded-3xl border border-slate-200 lg:border-white/60 p-6 space-y-6 lg:sticky lg:top-24 shadow-2xl lg:shadow-sm max-h-[90vh] overflow-y-auto lg:max-h-none lg:overflow-visible relative">
+              <button 
+                onClick={(e) => { e.stopPropagation(); setSelectedTicket(null); }}
+                className="absolute right-4 top-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 lg:hidden cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-2">
@@ -925,7 +933,9 @@ export const TicketHistory = ({ mode = 'active' }) => {
                 <div>
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Status SLA</span>
                   <p className={`text-sm font-black mt-0.5 ${(selectedTicket.status === 'Diproses' && selectedTicket.slaRemainingDays < 0) ? 'text-rose-600' : 'text-slate-700'}`}>
-                    {selectedTicket.status === 'Verifikasi'
+                    {selectedTicket.status.includes('Selesai')
+                      ? 'Selesai'
+                      : selectedTicket.status === 'Verifikasi'
                       ? 'Belum Berjalan (Menunggu Verifikasi)'
                       : selectedTicket.status === 'Pending'
                         ? 'Tertangguh (Menunggu Revisi)'

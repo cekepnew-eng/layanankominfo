@@ -331,8 +331,8 @@ export const TaskList = () => {
                         <Clock className="w-3.5 h-3.5 text-slate-400" />
                         <span>SLA Standar: {t.slaDuration || 7} Hari</span>
                         <span className="text-slate-300">|</span>
-                        <span className={t.slaRemainingDays < 0 ? 'text-rose-600 font-extrabold' : 'text-emerald-600 font-extrabold'}>
-                          {t.slaRemainingDays < 0 ? `Terlewat ${Math.abs(t.slaRemainingDays)} Hari` : `Sisa ${t.slaRemainingDays} Hari`}
+                        <span className={t.status?.includes('Selesai') ? 'text-emerald-600 font-extrabold' : t.slaRemainingDays < 0 ? 'text-rose-600 font-extrabold' : 'text-emerald-600 font-extrabold'}>
+                          {t.status?.includes('Selesai') ? 'Selesai' : t.slaRemainingDays < 0 ? `Terlewat ${Math.abs(t.slaRemainingDays)} Hari` : `Sisa ${t.slaRemainingDays} Hari`}
                         </span>
                       </div>
                     </div>
@@ -357,8 +357,8 @@ export const TaskList = () => {
                 <p className="text-base text-slate-500 leading-relaxed">{selectedTask.desc || selectedTask.description}</p>
                 <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-500 flex items-center justify-between">
                   <span>SLA Standar: {selectedTask.slaDuration || 7} Hari</span>
-                  <span className={selectedTask.slaRemainingDays < 0 ? 'text-rose-600' : 'text-emerald-600'}>
-                    {selectedTask.slaRemainingDays < 0 ? `Terlewat ${Math.abs(selectedTask.slaRemainingDays)} Hari` : `Sisa SLA: ${selectedTask.slaRemainingDays} Hari`}
+                  <span className={selectedTask.status?.includes('Selesai') ? 'text-emerald-600 font-extrabold' : selectedTask.slaRemainingDays < 0 ? 'text-rose-600' : 'text-emerald-600'}>
+                    {selectedTask.status?.includes('Selesai') ? 'Selesai' : selectedTask.slaRemainingDays < 0 ? `Terlewat ${Math.abs(selectedTask.slaRemainingDays)} Hari` : `Sisa SLA: ${selectedTask.slaRemainingDays} Hari`}
                   </span>
                 </div>
                 <button

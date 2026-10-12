@@ -111,7 +111,11 @@ export const TrackTicket = () => {
                         <Clock className="w-3.5 h-3.5" />
                         <span>{log.date || new Date(log.created_at).toLocaleString('id-ID')}</span>
                         <span className="text-slate-300">•</span>
-                        <span className="text-slate-600 bg-white px-2 py-0.5 rounded-md border border-slate-200 shadow-2xs">{log.user_name || 'Sistem'}</span>
+                        <span className="text-slate-600 bg-white px-2 py-0.5 rounded-md border border-slate-200 shadow-2xs">
+                          {log.user_name 
+                            ? `${log.user_name} (${!log.user_role ? 'Sistem' : ['ADMIN', 'PEGAWAI', 'KETUA TIM'].includes(log.user_role.toUpperCase()) ? 'Pegawai' : ['USER', 'MASYARAKAT'].includes(log.user_role.toUpperCase()) ? 'Pemohon' : 'Helpdesk'})` 
+                            : 'Sistem'}
+                        </span>
                       </div>
                       <TruncatedText text={log.log_description || log.text} className="text-sm font-bold text-slate-700 leading-relaxed" />
                     </div>

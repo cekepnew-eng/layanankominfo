@@ -11,7 +11,7 @@ import { api } from '../../services/api';
 const LogItem = ({ log }) => {
   const [expanded, setExpanded] = useState(false);
   const dateStr = log.date || (log.created_at ? new Date(log.created_at).toLocaleString('id-ID') : '');
-  const author = log.user_name || 'Sistem';
+  const author = log.user_name ? `${log.user_name} (${!log.user_role ? 'Sistem' : ['ADMIN', 'PEGAWAI', 'KETUA TIM'].includes(log.user_role.toUpperCase()) ? 'Pegawai' : ['USER', 'MASYARAKAT'].includes(log.user_role.toUpperCase()) ? 'Pemohon' : 'Helpdesk'})` : 'Sistem';
   const text = log.text || log.log_description || '';
   
   const words = text.split(' ');

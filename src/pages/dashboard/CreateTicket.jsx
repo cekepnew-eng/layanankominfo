@@ -320,19 +320,19 @@ export const CreateTicket = () => {
         <p className="text-slate-500 text-base leading-relaxed mt-1.5">Ikuti langkah mudah untuk mengajukan permohonan digitalisasi layanan Anda.</p>
       </div>
 
-      <div className="flex items-center justify-between bg-white p-5 rounded-xl border border-slate-200 shadow-sm text-base font-bold text-slate-400 uppercase tracking-wider">
-        <div className={`flex items-center gap-2.5 ${step >= 1 ? 'text-sky-600' : ''}`}>
-          <span className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${step >= 1 ? 'border-sky-600 bg-sky-50 font-bold' : 'border-slate-300'}`}>1</span>
+      <div className="flex items-center justify-between bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-sm text-[10px] sm:text-base font-bold text-slate-400 uppercase tracking-wider overflow-x-auto hide-scrollbar gap-2 sm:gap-0">
+        <div className={`flex items-center gap-1.5 sm:gap-2.5 whitespace-nowrap ${step >= 1 ? 'text-sky-600' : ''}`}>
+          <span className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border-2 ${step >= 1 ? 'border-sky-600 bg-sky-50 font-bold' : 'border-slate-300'}`}>1</span>
           <span>Pilih Kategori</span>
         </div>
-        <div className="w-12 h-0.5 bg-slate-200"></div>
-        <div className={`flex items-center gap-2.5 ${step >= 2 ? 'text-sky-600' : ''}`}>
-          <span className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${step >= 2 ? 'border-sky-600 bg-sky-50 font-bold' : 'border-slate-300'}`}>2</span>
+        <div className="w-4 sm:w-12 h-0.5 bg-slate-200 shrink-0"></div>
+        <div className={`flex items-center gap-1.5 sm:gap-2.5 whitespace-nowrap ${step >= 2 ? 'text-sky-600' : ''}`}>
+          <span className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border-2 ${step >= 2 ? 'border-sky-600 bg-sky-50 font-bold' : 'border-slate-300'}`}>2</span>
           <span>Pilih Sub-layanan</span>
         </div>
-        <div className="w-12 h-0.5 bg-slate-200"></div>
-        <div className={`flex items-center gap-2.5 ${step >= 3 ? 'text-sky-600' : ''}`}>
-          <span className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${step >= 3 ? 'border-sky-600 bg-sky-50 font-bold' : 'border-slate-300'}`}>3</span>
+        <div className="w-4 sm:w-12 h-0.5 bg-slate-200 shrink-0"></div>
+        <div className={`flex items-center gap-1.5 sm:gap-2.5 whitespace-nowrap ${step >= 3 ? 'text-sky-600' : ''}`}>
+          <span className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border-2 ${step >= 3 ? 'border-sky-600 bg-sky-50 font-bold' : 'border-slate-300'}`}>3</span>
           <span>Detail Formulir</span>
         </div>
       </div>

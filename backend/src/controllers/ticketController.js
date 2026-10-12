@@ -113,7 +113,11 @@ exports.createTicket = async (req, res) => {
     if (isAutoAssigned) {
       historyTextCreate = 'Tiket diajukan dan langsung ditugaskan.';
     } else if (initialStatusId === 2) {
-      historyTextCreate = 'Tiket otomatis terverifikasi, menunggu penugasan.';
+      if (isHelpdeskOrAdmin) {
+        historyTextCreate = 'Tiket diajukan dan diverifikasi (Bypass Administrator/Helpdesk). Menunggu penugasan tim.';
+      } else {
+        historyTextCreate = 'Tiket otomatis terverifikasi, menunggu penugasan.';
+      }
     }
 
     await createHistory(client, ticketId, req.user.id, null, initialStatusId, historyTextCreate);

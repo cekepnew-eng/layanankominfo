@@ -6,8 +6,8 @@ import { ActionModal } from '../../components/ActionModal';
 export const Profile = () => {
   const { user, setUser, users, setUsers, teams } = useAuth();
 
-  const isMasyarakat = user?.role === 'masyarakat' || user?.roles?.includes('masyarakat');
-  const isPegawai = user?.role === 'pegawai' || user?.roles?.includes('pegawai');
+  const isMasyarakat = user?.role?.toLowerCase() === 'masyarakat' || user?.roles?.some(r => r.toLowerCase() === 'masyarakat');
+  const isPegawai = user?.role?.toLowerCase() === 'pegawai' || user?.roles?.some(r => r.toLowerCase() === 'pegawai');
   const myTeams = (teams || []).filter(t => (t.members && t.members.includes(user?.name)) || t.leader === user?.name);
 
   const [nameVal, setNameVal] = useState(user?.name || '');
