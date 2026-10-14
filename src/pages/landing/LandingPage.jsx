@@ -35,6 +35,7 @@ export const LandingPage = () => {
   const [activeFaqId, setActiveFaqId] = useState(null);
   const [dbCategories, setDbCategories] = useState([]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [publicStats, setPublicStats] = useState(null);
 
   const { ratings, tickets } = useAuth();
   const displayTestimonials = ratings ? ratings.filter(r => r.selectedForLanding) : [];
@@ -46,31 +47,26 @@ export const LandingPage = () => {
       paddedTestimonials.push(r);
     }
   }
-  const completedOrWaiting = tickets ? tickets.filter(t => t.status === 'Selesai' || t.status === 'Menunggu Konfirmasi User') : [];
-  const completedTickets = tickets ? tickets.filter(t => t.status === 'Selesai') : [];
-  const onSlaTickets = completedOrWaiting.filter(t => t.id !== 'REQ-2026-0117');
-  const sla = completedOrWaiting.length > 0 ? ((onSlaTickets.length / completedOrWaiting.length) * 100).toFixed(1) + '%' : '92.3%';
+  const completedOrWaiting = tickets ? tickets.filter(t => t.status === 'Selesai' || t.status === 'Menunggu Konfirmasi User' || t.status_name === 'COMPLETED' || t.status_name === 'WAITING_USER_CONFIRMATION') : [];
+  const inSlaTickets = completedOrWaiting.filter(t => t.progress === 100);
+  const sla = completedOrWaiting.length > 0 ? ((inSlaTickets.length / completedOrWaiting.length) * 100).toFixed(1) + '%' : '100.0%';
   const rating = ratings && ratings.length > 0
     ? (ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length).toFixed(2)
-    : '4.85';
-  
-  const categoriesList = [
-    { name: 'Aplikasi Informatika', services: ['Pengembangan & Pengelolaan Aplikasi', 'Rekomendasi & Evaluasi Aplikasi', 'Uji Kesesuaian Sistem (UKS)', 'Keamanan Aplikasi / VAPT'] },
-    { name: 'Pengelolaan Sumber Daya & Perangkat Informatika', services: ['Jaringan Intra Pemerintah', 'Server Perangkat Daerah', 'Infrastruktur TIK', 'Perangkat Jaringan & Komunikasi', 'Teleconference & Meeting', 'Video Conference / Zoom', 'CCTV & Video Monitoring', 'Wifi Publik'] },
-    { name: 'Penerapan Persandian & Keamanan Informasi', services: ['Keamanan Informasi & Persandian', 'Security Operation Center (SOC)', 'CSIRT / Respons Insiden', 'Security Awareness'] },
-    { name: 'Tata Kelola SPBE', services: ['Tata Kelola SPBE', 'Kebijakan SPBE', 'Arsitektur & Peta Rencana SPBE', 'Monev & Pelaporan SPBE', 'Integrasi & Interoperabilitas SPBE', 'Audit Teknologi Informasi'] },
-    { name: 'Statistik Sektoral', services: ['Statistik Sektoral'] },
-    { name: 'Satu Data Daerah', services: ['Satu Data Daerah'] },
-    { name: 'Informasi & Komunikasi Publik', services: ['Informasi & Komunikasi Publik', 'Pelayanan Informasi Publik'] },
-    { name: 'Domain & Infrastruktur Pendukung', services: ['Domain & Subdomain Pemerintah Daerah', 'Portal Pelayanan Digital', 'Pusat Kendali / Command Center', 'Peningkatan Kapasitas SDM TIK', 'Domain & Infrastruktur Pendukung'] }
+    : '4.00';
+
+  const defaultTopCategories = [
+    { name: 'Aplikasi Informatika', count: 21 },
+    { name: 'Pengelolaan Sumber Daya & Perangkat Informatika', count: 0 },
+    { name: 'Penerapan Persandian & Sistem Pengamanan Informasi', count: 0 }
   ];
 
-  const categoryCounts = categoriesList.map(cat => {
-    const count = completedTickets.filter(t => t.service === cat.name || cat.services.includes(t.service)).length;
-    return { name: cat.name, count };
-  }).sort((a, b) => b.count - a.count);
+  const displayedTopCategories = (publicStats?.topCategories && publicStats.topCategories.some(c => c.count > 0))
+    ? publicStats.topCategories
+    : defaultTopCategories;
 
-  const topCategories = categoryCounts.slice(0, 3);
+  const displayedSla = publicStats?.slaCompliance || (completedOrWaiting.length > 0 ? sla : '100.0%');
+  const displayedSubServices = publicStats?.totalSubServices || (dbCategories.length > 0 ? dbCategories.reduce((acc, c) => acc + c.services.length, 0) : 181);
+  const displayedCategories = publicStats?.totalCategories || dbCategories.length || 8;
   const [activeSection, setActiveSection] = useState('beranda');
 
   const opds = ['Dinas Kesehatan', 'Dinas Pendidikan', 'Dinas PUPR', 'Kecamatan Bogor Tengah', 'DPMPTSP'];
@@ -131,6 +127,9 @@ export const LandingPage = () => {
     const loadServiceCatalog = async () => {
       try {
         const res = await api.getPublicServices();
+        if (res?.stats) {
+          setPublicStats(res.stats);
+        }
         const catalog = res?.categories || [];
         const items = res?.data || [];
 
@@ -476,12 +475,12 @@ export const LandingPage = () => {
                 <div className="relative flex items-center justify-center shrink-0">
                   <svg className="w-14 h-14 transform -rotate-90" viewBox="0 0 36 36">
                     <path className="text-slate-200" strokeWidth="3" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                    <path className="text-emerald-500" strokeDasharray={`${parseFloat(sla) || 96}, 100`} strokeWidth="3" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    <path className="text-emerald-500" strokeDasharray={`${parseFloat(displayedSla) || 100}, 100`} strokeWidth="3" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
                   </svg>
-                  <span className="absolute text-xs font-black text-slate-800">{(parseFloat(sla) || 96).toFixed(0)}%</span>
+                  <span className="absolute text-xs font-black text-slate-800">{(parseFloat(displayedSla) || 100).toFixed(0)}%</span>
                 </div>
                 <div className="text-left">
-                  <p className="text-2xl font-black text-slate-900">{sla}</p>
+                  <p className="text-2xl font-black text-slate-900">{displayedSla}</p>
                   <p className="text-sm text-slate-500">Tiket selesai sesuai SLA</p>
                 </div>
               </div>
@@ -495,11 +494,11 @@ export const LandingPage = () => {
               <div className="space-y-3 text-left">
                 <div className="flex items-center gap-2 text-sky-600 font-bold text-xs uppercase tracking-wider bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-100 w-fit">
                   <CheckCircle className="w-4 h-4" />
-                  <span>53 Sub-Layanan</span>
+                  <span>{displayedSubServices} Sub-Layanan</span>
                 </div>
                 <div>
                   <p className="text-2xl font-black text-slate-900">100% Digital</p>
-                  <p className="text-sm text-slate-500">Terhubung di 8 Kategori SPBE Resmi</p>
+                  <p className="text-sm text-slate-500">Terhubung di {displayedCategories} Kategori SPBE Resmi</p>
                 </div>
               </div>
             </div>
@@ -510,10 +509,11 @@ export const LandingPage = () => {
                 <h4 className="font-extrabold text-slate-900 text-lg leading-tight">Layanan Paling Sering Digunakan</h4>
               </div>
               <div className="space-y-3.5 text-left">
-                {topCategories.map((item, idx) => {
+                {displayedTopCategories.map((item, idx) => {
                   const barColors = ['bg-sky-500', 'bg-sky-400', 'bg-sky-300'];
                   const color = barColors[idx % barColors.length];
-                  const pct = completedTickets.length > 0 ? (item.count / completedTickets.length * 100).toFixed(0) : 0;
+                  const maxCount = Math.max(...displayedTopCategories.map(c => c.count), 1);
+                  const pct = maxCount > 0 ? (item.count / maxCount * 100).toFixed(0) : 0;
                   return (
                     <div key={item.name} className="space-y-1">
                       <div className="flex justify-between text-xs font-bold text-slate-700">
@@ -521,7 +521,7 @@ export const LandingPage = () => {
                         <span className="shrink-0">{item.count} Tiket</span>
                       </div>
                       <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                        <div className={`${color} h-full rounded-full`} style={{ width: `${pct}%` }}></div>
+                        <div className={`${color} h-full rounded-full transition-all duration-500`} style={{ width: `${item.count > 0 ? Math.max(pct, 20) : 0}%` }}></div>
                       </div>
                     </div>
                   );

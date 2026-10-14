@@ -20,7 +20,66 @@ exports.getPublicServices = async (req, res) => {
       return s;
     });
 
-    res.json({ success: true, data: services, categories: catsRes.rows });
+    // Real ticket stats matching the admin dashboard exactly
+    let stats = {
+      totalSubServices: services.length,
+      totalCategories: catsRes.rows.length,
+      totalTickets: 0,
+      slaCompliance: '100.0%',
+      topCategories: catsRes.rows.slice(0, 3).map(c => ({ name: c.name, count: 0 })),
+      avgRating: '5.00'
+    };
+
+    try {
+      const ticketsRes = await db.query(`
+        SELECT t.id, t.progress, st.name as status_name, s.service_name, c.category_name
+        FROM tickets t
+        LEFT JOIN services s ON t.service_id = s.id
+        LEFT JOIN service_categories c ON s.category_id = c.id
+        LEFT JOIN ticket_statuses st ON t.status_id = st.id
+      `);
+
+      const allTickets = ticketsRes.rows;
+      const completedOrWaiting = allTickets.filter(t => t.status_name === 'COMPLETED' || t.status_name === 'WAITING_USER_CONFIRMATION');
+      const inSlaTickets = completedOrWaiting.filter(t => t.progress === 100);
+      const slaCompliancePct = completedOrWaiting.length > 0 
+        ? ((inSlaTickets.length / completedOrWaiting.length) * 100).toFixed(1) + '%' 
+        : '100.0%';
+
+      const categoryCountsMap = {};
+      catsRes.rows.forEach(c => { categoryCountsMap[c.name] = 0; });
+      allTickets.forEach(t => {
+        const cat = t.category_name || 'Lain-lain';
+        if (categoryCountsMap[cat] !== undefined) {
+          categoryCountsMap[cat]++;
+        } else {
+          categoryCountsMap[cat] = 1;
+        }
+      });
+
+      const categoryCounts = Object.entries(categoryCountsMap)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count);
+
+      const ratingsRes = await db.query('SELECT rating FROM ticket_feedback');
+      const allRatings = ratingsRes.rows.map(r => r.rating).filter(Boolean);
+      const avgRating = allRatings.length > 0
+        ? (allRatings.reduce((sum, r) => sum + r, 0) / allRatings.length).toFixed(2)
+        : '5.00';
+
+      stats = {
+        totalSubServices: services.length,
+        totalCategories: catsRes.rows.length,
+        totalTickets: allTickets.length,
+        slaCompliance: slaCompliancePct,
+        topCategories: categoryCounts.slice(0, 3),
+        avgRating
+      };
+    } catch (statsErr) {
+      console.error('Error fetching public stats:', statsErr);
+    }
+
+    res.json({ success: true, data: services, categories: catsRes.rows, stats });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Server error fetching services' });

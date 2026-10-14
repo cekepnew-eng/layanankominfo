@@ -355,6 +355,67 @@ function profileFallbackPlugin() {
       server.middlewares.use(async (req, res, next) => {
         const url = req.url ? req.url.split('?')[0] : '';
 
+        // Handle GET /api/services
+        if (url === '/api/services' && req.method === 'GET') {
+          try {
+            const catsRes = await pool.query('SELECT id, category_name as name FROM service_categories ORDER BY id ASC');
+            const servicesRes = await pool.query(`
+              SELECT s.*, s.service_name as name, c.category_name as category
+              FROM services s
+              JOIN service_categories c ON s.category_id = c.id
+            `);
+            const reqsRes = await pool.query('SELECT * FROM service_requirements');
+            const services = servicesRes.rows.map(s => {
+              s.requirements = reqsRes.rows.filter(r => r.service_id === s.id);
+              return s;
+            });
+
+            // Calculate real stats matching the admin dashboard
+            const ticketsRes = await pool.query(`
+              SELECT t.id, t.progress, st.name as status_name, s.service_name, c.category_name
+              FROM tickets t
+              LEFT JOIN services s ON t.service_id = s.id
+              LEFT JOIN service_categories c ON s.category_id = c.id
+              LEFT JOIN ticket_statuses st ON t.status_id = st.id
+            `);
+            const allTickets = ticketsRes.rows;
+            const completedOrWaiting = allTickets.filter(t => t.status_name === 'COMPLETED' || t.status_name === 'WAITING_USER_CONFIRMATION');
+            const inSlaTickets = completedOrWaiting.filter(t => t.progress === 100);
+            const slaCompliancePct = completedOrWaiting.length > 0 
+              ? ((inSlaTickets.length / completedOrWaiting.length) * 100).toFixed(1) + '%' 
+              : '100.0%';
+
+            const categoryCountsMap = {};
+            catsRes.rows.forEach(c => { categoryCountsMap[c.name] = 0; });
+            allTickets.forEach(t => {
+              const svc = services.find(s => s.name === t.service_name);
+              const cat = svc ? (svc.category || svc.category_name) : (t.category_name || 'Lain-lain');
+              if (categoryCountsMap[cat] !== undefined) {
+                categoryCountsMap[cat]++;
+              } else {
+                categoryCountsMap[cat] = 1;
+              }
+            });
+
+            const categoryCounts = Object.entries(categoryCountsMap)
+              .map(([name, count]) => ({ name, count }))
+              .sort((a, b) => b.count - a.count);
+
+            const stats = {
+              totalSubServices: services.length,
+              totalCategories: catsRes.rows.length,
+              totalTickets: allTickets.length,
+              slaCompliance: slaCompliancePct,
+              topCategories: categoryCounts.slice(0, 3)
+            };
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ success: true, data: services, categories: catsRes.rows, stats }));
+          } catch (err) {
+            console.error('Error fetching services with stats in Vite middleware:', err);
+          }
+        }
+
         // Handle PUT /api/auth/profile
         if (url === '/api/auth/profile' && req.method === 'PUT') {
           let body = '';
