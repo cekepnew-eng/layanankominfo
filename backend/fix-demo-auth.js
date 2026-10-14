@@ -1,7 +1,8 @@
-require('dotenv').config({ path: 'C:/layanankominfo/backend/.env' });
-const { Pool } = require('pg');
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
+const db = require('./src/config/database');
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = db.pool;
 
 (async () => {
   const roleRows = await pool.query('SELECT id, name FROM roles');

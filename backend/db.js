@@ -1,15 +1,9 @@
-const { Pool } = require('pg');
-require('dotenv').config();
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
-});
-
-pool.on('error', (err, client) => {
-  console.error('Unexpected error on idle client', err);
-  process.exit(-1);
-});
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
+const db = require('./src/config/database');
 
 module.exports = {
-  query: (text, params) => pool.query(text, params),
+  query: (text, params) => db.query(text, params),
+  pool: db.pool,
+  runAutoMigrations: db.runAutoMigrations
 };

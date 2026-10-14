@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const { generateSecret, generateURI, verifySync } = require('otplib');
 const qrcode = require('qrcode');
 const crypto = require('crypto');
+const { sendResetOtpEmail } = require('../services/emailService');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret-key-kominfo-2026';
 
@@ -84,6 +85,63 @@ function getPrimaryRole(roles = []) {
   return normalized[0];
 }
 
+let colsEnsured = false;
+async function ensurePasswordCols() {
+  if (colsEnsured) return;
+  try {
+    await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS previous_password_hash VARCHAR(255);');
+    await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMP;');
+    await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS nip VARCHAR(50);');
+    await db.query('CREATE INDEX IF NOT EXISTS idx_users_nip ON users(nip);');
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS password_reset_otps (
+        id SERIAL PRIMARY KEY,
+        email VARCHAR(255) NOT NULL,
+        otp_hash VARCHAR(255) NOT NULL,
+        attempts INT DEFAULT 0,
+        is_used BOOLEAN DEFAULT false,
+        expires_at TIMESTAMP NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_reset_otps_email ON password_reset_otps(email);
+    `);
+    colsEnsured = true;
+  } catch (err) {
+    console.error('ensurePasswordCols error:', err.message);
+  }
+}
+
+async function verifyPassword(inputPassword, storedHash) {
+  if (!storedHash || !inputPassword) return false;
+  try {
+    if (storedHash.startsWith('$2a$') || storedHash.startsWith('$2b$') || storedHash.startsWith('$2y$')) {
+      return await bcrypt.compare(inputPassword, storedHash);
+    }
+  } catch (err) {
+    // ignore
+  }
+  return inputPassword === storedHash;
+}
+
+function formatTimeElapsed(changedAt) {
+  if (!changedAt) return 'beberapa saat yang lalu';
+  const diffMs = Math.max(0, Date.now() - new Date(changedAt).getTime());
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHour = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHour / 24);
+
+  if (diffDay > 0) {
+    return `${diffDay} hari yang lalu`;
+  } else if (diffHour > 0) {
+    return `${diffHour} jam yang lalu`;
+  } else if (diffMin > 0) {
+    return `${diffMin} menit yang lalu`;
+  } else {
+    return 'beberapa saat yang lalu';
+  }
+}
+
 exports.getCaptcha = (req, res) => {
   const num1 = Math.floor(Math.random() * 10) + 1;
   const num2 = Math.floor(Math.random() * 10) + 1;
@@ -99,6 +157,8 @@ exports.getCaptcha = (req, res) => {
 exports.login = async (req, res) => {
   const { email, password, captchaToken, captchaAnswer, trustedDeviceToken } = req.body;
   try {
+    await ensurePasswordCols();
+
     // Validate Captcha
     if (!captchaToken || !captchaAnswer) {
       return res.status(400).json({ success: false, message: 'Captcha wajib diisi.' });
@@ -113,9 +173,20 @@ exports.login = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Captcha kadaluarsa atau tidak valid.' });
     }
 
+    const loginIdentifier = (email || '').trim();
+
+    // 1. Cari pengguna secara lokal: cek email ATAU nip
     let userRes = await db.query(
-      `SELECT * FROM users WHERE email = $1 AND is_active = true`,
-      [email]
+      `SELECT * FROM users 
+       WHERE is_active = true 
+         AND (
+           LOWER(email) = LOWER($1) 
+           OR nip = $1 
+           OR (nip IS NULL AND email = $1)
+         )
+       ORDER BY created_at ASC 
+       LIMIT 1`,
+      [loginIdentifier]
     );
 
     let user = null;
@@ -125,21 +196,32 @@ exports.login = async (req, res) => {
       user = userRes.rows[0];
       user.roles = await resolveUserRoles(user.id);
 
-      if (password === 'admin123' || password === 'password123') {
-        isMatch = true;
-      } else {
-        isMatch = await bcrypt.compare(password, user.password_hash);
+      // Verifikasi password terhadap hash aktif
+      isMatch = await verifyPassword(password, user.password_hash);
+
+      // Jika password tidak cocok, periksa apakah pengguna memasukkan password lama
+      if (!isMatch && user.previous_password_hash) {
+        const isOldMatch = await verifyPassword(password, user.previous_password_hash);
+        if (isOldMatch) {
+          const timeText = formatTimeElapsed(user.password_changed_at);
+          return res.status(400).json({
+            success: false,
+            isOldPassword: true,
+            message: `Sandi Anda sudah diubah ${timeText}.`
+          });
+        }
       }
     }
 
-    // Cek apakah akun ini butuh sinkronisasi data (jika namanya masih berupa NIP atau Unit Kerjanya 'TND User')
-    const needsSync = user && (user.full_name === user.email || user.department === 'TND User');
+    const isMasyarakat = user && user.roles && user.roles.some(r => String(r).toUpperCase() === 'MASYARAKAT');
 
-    // Hybrid SSO: Jika gagal login lokal, ATAU butuh sinkronisasi profil, coba validasi lewat API TND
-    if (!isMatch || needsSync) {
+    // Cek apakah akun butuh sinkronisasi data (jika nama masih sama dengan email/NIP, department 'TND User', atau kolom nip belum terisi)
+    const needsSync = !isMasyarakat && user && (user.full_name === user.email || user.department === 'TND User' || !user.nip);
+
+    // Hybrid SSO: Jika gagal login lokal, ATAU butuh sinkronisasi profil, coba validasi lewat API TND (hanya untuk non-masyarakat)
+    if (!isMasyarakat && (!isMatch || needsSync)) {
       try {
-        // Jangan potong inputan user. API TND bisa menerima NIP, Gmail, maupun @bogor
-        const tndUsername = email;
+        const tndUsername = loginIdentifier;
 
         const ssoUrl = process.env.SSO_API_URL || 'https://dev-tnd.kotabogor.go.id/api-baru/api/v1/login';
         const tndResponse = await fetch(ssoUrl, {
@@ -152,26 +234,89 @@ exports.login = async (req, res) => {
           const tndData = await tndResponse.json();
           isMatch = true; // Kredensial valid menurut TND
 
-          if (!user) {
-            // User belum ada di database lokal, otomatis insert
+          const tndUser = tndData?.data?.user || {};
+          const tndNip = tndUser.nip || (loginIdentifier.match(/^\d{10,}$/) ? loginIdentifier : null);
+          const tndEmail = tndUser.email || (loginIdentifier.includes('@') ? loginIdentifier : null);
+          const fullName = tndUser.nama || tndData?.data?.nama_lengkap || tndUser.name || loginIdentifier;
+          const department = tndUser.nama_pd || tndUser.unit_kerja || tndData?.data?.opd_name || 'Dinas Kota Bogor';
+          const phone = tndUser.no_hp || tndUser.no_telepon || user?.phone_number || '0000000000';
+
+          const salt = await bcrypt.genSalt(10);
+          const hash = await bcrypt.hash(password, salt);
+
+          // Cek seluruh akun yang cocok dengan NIP atau Email dari TND untuk memastikan 1 Akun Tunggal
+          const lookupRes = await db.query(
+            `SELECT * FROM users 
+             WHERE is_active = true AND (
+               (nip IS NOT NULL AND nip = $1)
+               OR ($1 IS NOT NULL AND email = $1)
+               OR ($2 IS NOT NULL AND LOWER(email) = LOWER($2))
+               OR ($3 IS NOT NULL AND (email = $3 OR nip = $3))
+             )
+             ORDER BY created_at ASC`,
+            [tndNip, tndEmail, loginIdentifier]
+          );
+
+          if (lookupRes.rows.length > 0) {
+            // User sudah ada (jika sebelumnya ada 2 akun terpisah NIP dan Gmail, satukan ke 1 akun utama)
+            const primaryUser = lookupRes.rows[0];
+            const duplicateUsers = lookupRes.rows.slice(1);
+
+            // Auto-merge tiket dan data jika sebelumnya terpecah menjadi 2 akun
+            for (const dup of duplicateUsers) {
+              await db.query('UPDATE tickets SET user_id = $1 WHERE user_id = $2', [primaryUser.id, dup.id]);
+              await db.query('UPDATE ticket_assignments SET assigned_to_user_id = $1 WHERE assigned_to_user_id = $2', [primaryUser.id, dup.id]);
+              await db.query('UPDATE notifications SET user_id = $1 WHERE user_id = $2', [primaryUser.id, dup.id]);
+              await db.query('UPDATE ticket_histories SET changed_by_user_id = $1 WHERE changed_by_user_id = $2', [primaryUser.id, dup.id]);
+              await db.query('DELETE FROM user_roles WHERE user_id = $1', [dup.id]);
+              await db.query('DELETE FROM users WHERE id = $1', [dup.id]);
+            }
+
+            user = primaryUser;
+
+            // Tentukan email terbaik (jika sebelumnya email berupa angka NIP, ganti ke email asli dari TND)
+            let finalEmail = user.email;
+            if (/^\d+$/.test(finalEmail) && tndEmail && tndEmail.includes('@')) {
+              finalEmail = tndEmail;
+            } else if (loginIdentifier.includes('@')) {
+              finalEmail = loginIdentifier;
+            } else if (tndEmail && tndEmail.includes('@')) {
+              finalEmail = tndEmail;
+            }
+
+            const finalNip = tndNip || user.nip || (loginIdentifier.match(/^\d{10,}$/) ? loginIdentifier : null);
+
+            // Perbarui akun utama dengan NIP, email, password hash, dan profil terbaru
+            await db.query(
+              `UPDATE users 
+               SET password_hash = $1, email = $2, nip = $3, full_name = $4, department = $5, phone_number = $6 
+               WHERE id = $7`,
+              [hash, finalEmail, finalNip, fullName, department, phone, user.id]
+            );
+
+            user.email = finalEmail;
+            user.nip = finalNip;
+            user.full_name = fullName;
+            user.department = department;
+            user.phone_number = phone;
+          } else {
+            // User baru pertama kali masuk, buat 1 akun tunggal yang langsung menyimpan NIP dan Email
             const roleRes = await db.query("SELECT id FROM roles WHERE name = 'USER'");
             const roleId = roleRes.rows[0].id;
 
-            const salt = await bcrypt.genSalt(10);
-            const hash = await bcrypt.hash(password, salt); // Simpan hash agar bisa login lokal kelak
+            const finalEmail = (tndEmail && tndEmail.includes('@')) 
+              ? tndEmail 
+              : (loginIdentifier.includes('@') ? loginIdentifier : `${tndNip || loginIdentifier}@kotabogor.go.id`);
 
-            // Ambil data asli dari TND. Tambahkan banyak kemungkinan kunci (key) API TND
-            const fullName = tndData?.data?.user?.nama || tndData?.data?.nama_lengkap || tndData?.data?.nama || tndData?.data?.name || tndUsername;
-            const department = tndData?.data?.user?.nama_pd || tndData?.data?.unit_kerja || tndData?.data?.opd_name || 'Dinas Kota Bogor';
-            const phone = tndData?.data?.user?.email || tndData?.data?.no_hp || '0000000000';
+            const finalNip = tndNip || (loginIdentifier.match(/^\d{10,}$/) ? loginIdentifier : null);
 
             const client = await db.pool.connect();
             try {
               await client.query('BEGIN');
               const insertRes = await client.query(
-                `INSERT INTO users (email, password_hash, full_name, phone_number, department) 
-                 VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-                [email, hash, fullName, phone, department]
+                `INSERT INTO users (email, nip, password_hash, full_name, phone_number, department) 
+                 VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+                [finalEmail, finalNip, hash, fullName, phone, department]
               );
               user = insertRes.rows[0];
 
@@ -186,25 +331,6 @@ exports.login = async (req, res) => {
             } finally {
               client.release();
             }
-          } else {
-            // User sudah ada, lakukan sinkronisasi data dari TND (Auto-Update)
-            const salt = await bcrypt.genSalt(10);
-            const hash = await bcrypt.hash(password, salt);
-
-            // Ambil data terbaru dari TND untuk memperbaiki jika sebelumnya NIP dijadikan nama
-            const fullName = tndData?.data?.user?.nama || tndData?.data?.nama_lengkap || tndData?.data?.nama || tndData?.data?.name || tndUsername;
-            const department = tndData?.data?.user?.nama_pd || tndData?.data?.unit_kerja || tndData?.data?.opd_name || 'Dinas Kota Bogor';
-            const phone = tndData?.data?.user?.email || tndData?.data?.no_hp || user.phone_number || '0000000000';
-
-            // Timpa nama/department lama dengan data asli
-            await db.query(
-              `UPDATE users SET password_hash = $1, full_name = $2, department = $3, phone_number = $4 WHERE id = $5`,
-              [hash, fullName, department, phone, user.id]
-            );
-
-            // Update state user di memori agar token memuat data terbaru
-            user.full_name = fullName;
-            user.department = department;
           }
 
           if (!user.roles) {
@@ -213,7 +339,6 @@ exports.login = async (req, res) => {
         }
       } catch (err) {
         console.error('TND SSO Error:', err.message);
-        // Error koneksi ke API TND, abaikan dan biarkan mengembalikan 401
       }
     }
 
@@ -222,7 +347,7 @@ exports.login = async (req, res) => {
     }
 
     if (!isMatch) {
-      return res.status(401).json({ success: false, message: 'Email atau password salah.' });
+      return res.status(401).json({ success: false, message: 'Email, NIP, atau password salah.' });
     }
 
     if (user.is_two_factor_enabled) {
@@ -243,7 +368,7 @@ exports.login = async (req, res) => {
       if (isTrustedDevice) {
         const primaryRole = getPrimaryRole(user.roles);
         const token = jwt.sign(
-          { id: user.id, email: user.email, role: primaryRole, roles: user.roles, name: user.full_name, department: user.department },
+          { id: user.id, email: user.email, nip: user.nip, role: primaryRole, roles: user.roles, name: user.full_name, department: user.department },
           JWT_SECRET,
           { expiresIn: '24h' }
         );
@@ -251,7 +376,7 @@ exports.login = async (req, res) => {
           success: true,
           token,
           user: {
-            id: user.id, email: user.email, name: user.full_name, role: primaryRole,
+            id: user.id, email: user.email, nip: user.nip, name: user.full_name, role: primaryRole,
             roles: user.roles, department: user.department, teams: await getUserTeams(user.id)
           }
         });
@@ -352,6 +477,85 @@ exports.getMe = async (req, res) => {
   }
 };
 
+exports.updateProfile = async (req, res) => {
+  const { fullName, newPassword } = req.body;
+  const userId = req.user?.id;
+
+  if (!userId) {
+    return res.status(401).json({ success: false, message: 'Tidak terotentikasi' });
+  }
+
+  try {
+    await ensurePasswordCols();
+
+    const currentUserRes = await db.query('SELECT * FROM users WHERE id = $1', [userId]);
+    if (currentUserRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Pengguna tidak ditemukan' });
+    }
+    const currentUser = currentUserRes.rows[0];
+
+    const trimmedName = fullName !== undefined ? String(fullName).trim() : currentUser.full_name;
+    if (!trimmedName) {
+      return res.status(400).json({ success: false, message: 'Nama lengkap tidak boleh kosong' });
+    }
+
+    if (newPassword) {
+      if (!oldPassword) {
+        return res.status(400).json({ success: false, message: 'Kata sandi lama wajib diisi sebelum mengubah kata sandi baru.' });
+      }
+
+      const isOldValid = await verifyPassword(oldPassword, currentUser.password_hash);
+      if (!isOldValid) {
+        return res.status(400).json({ success: false, message: 'Kata sandi lama yang Anda masukkan salah.' });
+      }
+
+      if (typeof newPassword !== 'string' || newPassword.length < 6) {
+        return res.status(400).json({ success: false, message: 'Kata sandi baru minimal 6 karakter' });
+      }
+
+      const salt = await bcrypt.genSalt(10);
+      const newHash = await bcrypt.hash(newPassword, salt);
+
+      await db.query(
+        `UPDATE users 
+         SET full_name = $1, 
+             previous_password_hash = $2, 
+             password_hash = $3, 
+             password_changed_at = CURRENT_TIMESTAMP 
+         WHERE id = $4`,
+        [trimmedName, currentUser.password_hash, newHash, userId]
+      );
+    } else {
+      await db.query(
+        `UPDATE users SET full_name = $1 WHERE id = $2`,
+        [trimmedName, userId]
+      );
+    }
+
+    const updatedRes = await db.query('SELECT * FROM users WHERE id = $1', [userId]);
+    const updatedUser = updatedRes.rows[0];
+    updatedUser.roles = await resolveUserRoles(updatedUser.id);
+    const primaryRole = getPrimaryRole(updatedUser.roles);
+
+    return res.json({
+      success: true,
+      message: 'Profil berhasil diperbarui',
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        name: updatedUser.full_name,
+        role: primaryRole,
+        roles: updatedUser.roles,
+        department: updatedUser.department,
+        teams: await getUserTeams(updatedUser.id)
+      }
+    });
+  } catch (err) {
+    console.error('updateProfile error:', err);
+    return res.status(500).json({ success: false, message: 'Terjadi kesalahan pada server saat memperbarui profil' });
+  }
+};
+
 exports.logout = async (req, res) => {
   // Stateless JWT doesn't need strict logout unless handling refresh tokens or blacklisting.
   // Returning success is enough for client to drop the token.
@@ -437,6 +641,7 @@ exports.verifySetup2FA = async (req, res) => {
       user: {
         id: updatedUser.id,
         email: updatedUser.email,
+        nip: updatedUser.nip,
         name: updatedUser.full_name,
         role: primaryRole,
         roles: updatedUser.roles,
@@ -541,6 +746,7 @@ exports.login2FA = async (req, res) => {
       user: {
         id: user.id,
         email: user.email,
+        nip: user.nip,
         name: user.full_name,
         role: primaryRole,
         roles: user.roles,
@@ -556,3 +762,319 @@ exports.login2FA = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error during 2FA login' });
   }
 };
+
+function maskEmail(email) {
+  if (!email || !email.includes('@')) return email;
+  const [localPart, domain] = email.split('@');
+  if (localPart.length <= 2) return `${localPart[0]}*@${domain}`;
+  const visibleStart = localPart.slice(0, 2);
+  const visibleEnd = localPart.slice(-2);
+  const maskedMiddle = '*'.repeat(Math.max(3, localPart.length - 4));
+  return `${visibleStart}${maskedMiddle}${visibleEnd}@${domain}`;
+}
+
+exports.requestResetOtp = async (req, res) => {
+  const identifier = (req.body.identifier || req.body.email || '').trim();
+  if (!identifier) {
+    return res.status(400).json({ success: false, message: 'Email atau NIP wajib diisi.' });
+  }
+
+  try {
+    await ensurePasswordCols();
+
+    // Cari user aktif berdasarkan email ATAU nip
+    const userRes = await db.query(
+      `SELECT id, full_name, email, nip, is_active FROM users 
+       WHERE is_active = true 
+         AND (LOWER(email) = LOWER($1) OR nip = $1)
+       LIMIT 1`,
+      [identifier]
+    );
+
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Akun dengan Email atau NIP tersebut tidak ditemukan di sistem Helpdesk SPBE.'
+      });
+    }
+
+    const user = userRes.rows[0];
+
+    if (!user.email || !user.email.includes('@')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Akun ini belum memiliki alamat email yang valid untuk menerima kode verifikasi OTP. Silakan hubungi Administrator.'
+      });
+    }
+
+    const targetEmail = user.email.toLowerCase().trim();
+
+    // Cooldown 60 detik antar permintaan OTP untuk email yang sama
+    const cooldownRes = await db.query(
+      `SELECT created_at FROM password_reset_otps 
+       WHERE email = $1 AND is_used = false AND created_at > NOW() - INTERVAL '60 seconds'
+       ORDER BY created_at DESC 
+       LIMIT 1`,
+      [targetEmail]
+    );
+
+    if (cooldownRes.rows.length > 0) {
+      const waitRemaining = Math.max(1, 60 - Math.floor((Date.now() - new Date(cooldownRes.rows[0].created_at).getTime()) / 1000));
+      return res.status(429).json({
+        success: false,
+        message: `Mohon tunggu ${waitRemaining} detik lagi sebelum meminta kode OTP baru.`
+      });
+    }
+
+    // Nonaktifkan OTP lama yang belum terpakai untuk email ini
+    await db.query(
+      `UPDATE password_reset_otps SET is_used = true WHERE email = $1 AND is_used = false`,
+      [targetEmail]
+    );
+
+    // Buat kode OTP 6-digit acak
+    const rawOtp = crypto.randomInt(100000, 999999).toString();
+    const otpHash = crypto.createHash('sha256').update(rawOtp).digest('hex');
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 menit
+
+    // Simpan hash ke database
+    await db.query(
+      `INSERT INTO password_reset_otps (email, otp_hash, attempts, is_used, expires_at)
+       VALUES ($1, $2, 0, false, $3)`,
+      [targetEmail, otpHash, expiresAt]
+    );
+
+    // Kirim email notifikasi OTP
+    await sendResetOtpEmail({
+      to: targetEmail,
+      name: user.full_name,
+      otp: rawOtp
+    });
+
+    const masked = maskEmail(targetEmail);
+
+    return res.json({
+      success: true,
+      email: targetEmail,
+      maskedEmail: masked,
+      message: `Kode verifikasi OTP 6 digit telah dikirimkan ke email ${masked}. Kode berlaku selama 10 menit.`
+    });
+  } catch (err) {
+    console.error('Error in requestResetOtp:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Terjadi kesalahan sistem saat memproses permintaan reset kata sandi.'
+    });
+  }
+};
+
+exports.validateResetOtp = async (req, res) => {
+  const { email, otp } = req.body;
+  const cleanEmail = (email || '').toLowerCase().trim();
+  const cleanOtp = String(otp || '').trim();
+
+  if (!cleanEmail || !cleanOtp) {
+    return res.status(400).json({ success: false, message: 'Email dan kode OTP wajib diisi.' });
+  }
+
+  if (cleanOtp.length !== 6 || !/^\d{6}$/.test(cleanOtp)) {
+    return res.status(400).json({ success: false, isOtpError: true, message: 'Kode OTP harus berupa 6 digit angka.' });
+  }
+
+  try {
+    await ensurePasswordCols();
+
+    const otpRes = await db.query(
+      `SELECT * FROM password_reset_otps 
+       WHERE email = $1 AND is_used = false AND expires_at > NOW()
+       ORDER BY created_at DESC 
+       LIMIT 1`,
+      [cleanEmail]
+    );
+
+    if (otpRes.rows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        isOtpError: true,
+        message: 'Kode OTP yang Anda masukkan sudah kedaluwarsa atau tidak valid. Silakan minta kode OTP baru.'
+      });
+    }
+
+    const otpRecord = otpRes.rows[0];
+
+    if (otpRecord.attempts >= 5) {
+      await db.query(`UPDATE password_reset_otps SET is_used = true WHERE id = $1`, [otpRecord.id]);
+      return res.status(400).json({
+        success: false,
+        isOtpError: true,
+        message: 'Batas percobaan kode OTP telah habis (maksimal 5 kali). Silakan minta kode baru.'
+      });
+    }
+
+    const inputHash = crypto.createHash('sha256').update(cleanOtp).digest('hex');
+    if (inputHash !== otpRecord.otp_hash) {
+      const nextAttempts = otpRecord.attempts + 1;
+      await db.query(`UPDATE password_reset_otps SET attempts = $1 WHERE id = $2`, [nextAttempts, otpRecord.id]);
+      const remaining = Math.max(0, 5 - nextAttempts);
+      return res.status(400).json({
+        success: false,
+        isOtpError: true,
+        message: `Kode OTP yang kamu masukkan salah. Sisa kesempatan: ${remaining} kali. Silakan coba lagi!`
+      });
+    }
+
+    const resetToken = jwt.sign(
+      { email: cleanEmail, otpRecordId: otpRecord.id, purpose: 'reset_password_allowed' },
+      JWT_SECRET,
+      { expiresIn: '15m' }
+    );
+
+    return res.json({
+      success: true,
+      message: 'Kode OTP berhasil diverifikasi!',
+      resetToken
+    });
+  } catch (err) {
+    console.error('Error in validateResetOtp:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Terjadi kesalahan sistem saat memvalidasi kode OTP.'
+    });
+  }
+};
+
+exports.verifyResetOtp = async (req, res) => {
+  const { email, otp, newPassword, confirmPassword, resetToken } = req.body;
+
+  if (!newPassword) {
+    return res.status(400).json({
+      success: false,
+      message: 'Kata sandi baru wajib diisi.'
+    });
+  }
+
+  let cleanEmail = (email || '').toLowerCase().trim();
+  let otpRecordId = null;
+
+  if (resetToken) {
+    try {
+      const decoded = jwt.verify(resetToken, JWT_SECRET);
+      if (decoded.purpose === 'reset_password_allowed') {
+        cleanEmail = decoded.email;
+        otpRecordId = decoded.otpRecordId;
+      }
+    } catch (e) {
+      return res.status(400).json({
+        success: false,
+        message: 'Sesi reset kata sandi telah kedaluwarsa. Silakan ulangi verifikasi OTP.'
+      });
+    }
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({
+      success: false,
+      message: 'Kata sandi baru minimal harus 6 karakter.'
+    });
+  }
+
+  if (confirmPassword && newPassword !== confirmPassword) {
+    return res.status(400).json({
+      success: false,
+      message: 'Konfirmasi kata sandi tidak cocok dengan kata sandi baru.'
+    });
+  }
+
+  try {
+    await ensurePasswordCols();
+
+    if (!resetToken) {
+      const cleanOtp = String(otp || '').trim();
+      const otpRes = await db.query(
+        `SELECT * FROM password_reset_otps 
+         WHERE email = $1 AND is_used = false AND expires_at > NOW()
+         ORDER BY created_at DESC 
+         LIMIT 1`,
+        [cleanEmail]
+      );
+
+      if (otpRes.rows.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Kode OTP tidak valid atau sudah kedaluwarsa. Silakan minta kode OTP baru.'
+        });
+      }
+
+      const otpRecord = otpRes.rows[0];
+      otpRecordId = otpRecord.id;
+
+      const inputHash = crypto.createHash('sha256').update(cleanOtp).digest('hex');
+      if (inputHash !== otpRecord.otp_hash) {
+        return res.status(400).json({
+          success: false,
+          isOtpError: true,
+          message: 'Kode OTP yang kamu masukkan salah. Silakan coba lagi!'
+        });
+      }
+    }
+
+    // Ambil data user
+    const userRes = await db.query(
+      `SELECT id, full_name, password_hash, previous_password_hash FROM users 
+       WHERE LOWER(email) = LOWER($1) AND is_active = true 
+       LIMIT 1`,
+      [cleanEmail]
+    );
+
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Pengguna dengan email ini tidak ditemukan atau sudah tidak aktif.'
+      });
+    }
+
+    const user = userRes.rows[0];
+
+    // Pastikan kata sandi baru tidak sama dengan kata sandi saat ini
+    const isSameAsCurrent = await verifyPassword(newPassword, user.password_hash);
+    if (isSameAsCurrent) {
+      return res.status(400).json({
+        success: false,
+        message: 'Kata sandi baru tidak boleh sama dengan kata sandi yang sedang Anda gunakan saat ini.'
+      });
+    }
+
+    // Hash kata sandi baru menggunakan bcrypt
+    const salt = await bcrypt.genSalt(10);
+    const newHash = await bcrypt.hash(newPassword, salt);
+
+    // Update password dan simpan riwayat password sebelumnya
+    await db.query(
+      `UPDATE users 
+       SET password_hash = $1, 
+           previous_password_hash = $2, 
+           password_changed_at = CURRENT_TIMESTAMP 
+       WHERE id = $3`,
+      [newHash, user.password_hash, user.id]
+    );
+
+    // Tandai OTP telah digunakan
+    if (otpRecordId) {
+      await db.query(`UPDATE password_reset_otps SET is_used = true WHERE id = $1`, [otpRecordId]);
+    } else {
+      await db.query(`UPDATE password_reset_otps SET is_used = true WHERE email = $1 AND is_used = false`, [cleanEmail]);
+    }
+
+    return res.json({
+      success: true,
+      message: 'Kata sandi Anda berhasil diperbarui! Silakan masuk dengan kata sandi baru Anda.'
+    });
+  } catch (err) {
+    console.error('Error in verifyResetOtp:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Terjadi kesalahan sistem saat memperbarui kata sandi.'
+    });
+  }
+};
+

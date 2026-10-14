@@ -1,4 +1,4 @@
-﻿import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { api } from '../services/api';
 
 const AuthContext = createContext();
@@ -73,7 +73,11 @@ export const AuthProvider = ({ children }) => {
         return { success: true, token, user: userData };
       }
     } catch (err) {
-      return { success: false, message: err.message };
+      return { 
+        success: false, 
+        message: err.message, 
+        isOldPassword: Boolean(err.isOldPassword || err.data?.isOldPassword) 
+      };
     }
   };
 

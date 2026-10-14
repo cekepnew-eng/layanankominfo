@@ -63,6 +63,23 @@ export const DashboardLayout = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [liveToast, setLiveToast] = useState(null);
   const [showSidebar, setShowSidebar] = useState(false);
+  const notifRef = React.useRef(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (notifRef.current && !notifRef.current.contains(event.target)) {
+        setShowNotifications(false);
+      }
+    };
+    if (showNotifications) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [showNotifications]);
 
   React.useEffect(() => {
     if ("Notification" in window && Notification.permission === "default") {
@@ -78,26 +95,34 @@ export const DashboardLayout = () => {
         const res = await api.getNotifications();
 
         if (res.data) {
-          const notifs = res.data.map(n => ({
+          const allNotifs = res.data.map(n => ({
             id: n.id,
             title: n.title || 'Update Tiket',
             message: n.message,
             time: n.created_at,
             isRead: n.is_read,
             type: n.type ? n.type.toLowerCase() : 'info',
-            ticket_id: n.ticket_id || n.ticket_uuid || null
+            ticket_id: n.ticket_id || n.ticket_uuid || null,
+            ticket_status_id: n.ticket_status_id,
+            ticket_status_name: n.ticket_status_name
           }));
+
+          const unreadNotifs = allNotifs.filter(n => !n.isRead);
 
           setNotifications(prevNotifs => {
             if (prevNotifs.length > 0) {
               const prevIds = prevNotifs.map(n => n.id);
-              const newNotifs = notifs.filter(n => !prevIds.includes(n.id));
+              const newNotifs = unreadNotifs.filter(n => !prevIds.includes(n.id));
               if (newNotifs.length > 0) {
                 const newest = newNotifs[0];
                 setLiveToast({
+                  id: newest.id,
                   title: newest.title,
                   message: newest.message,
-                  type: newest.type
+                  type: newest.type,
+                  ticket_id: newest.ticket_id,
+                  ticket_status_id: newest.ticket_status_id,
+                  ticket_status_name: newest.ticket_status_name
                 });
                 setTimeout(() => setLiveToast(null), 5000);
 
@@ -110,9 +135,9 @@ export const DashboardLayout = () => {
                 }
               }
             }
-            return notifs;
+            return unreadNotifs;
           });
-          setUnreadCount(notifs.filter(n => !n.isRead).length);
+          setUnreadCount(unreadNotifs.length);
         }
       } catch (e) {
         console.error("Failed to fetch notifications:", e);
@@ -123,6 +148,42 @@ export const DashboardLayout = () => {
     const interval = setInterval(fetchNotifications, 15000);
     return () => clearInterval(interval);
   }, [user]);
+
+  const handleNotificationClick = async (n) => {
+    setShowNotifications(false);
+
+    // 1. Seketika hilangkan notifikasi dari dropdown list & kurangi counter
+    setNotifications(prev => prev.filter(item => item.id !== n.id));
+    setUnreadCount(prev => Math.max(0, prev - 1));
+
+    // 2. Tandai sudah dibaca di backend
+    try {
+      const { api } = await import('../services/api');
+      await api.markNotificationRead(n.id);
+    } catch (err) {
+      console.error('Failed to mark notification as read:', err);
+    }
+
+    // 3. Langsung arahkan ke tiket yang sesuai (Tiket Selesai vs Tiket Proses)
+    if (n.ticket_id) {
+      sessionStorage.setItem('fromNotificationTicketId', String(n.ticket_id));
+
+      const isCompleted = 
+        n.ticket_status_id === 6 || 
+        n.ticket_status_id === 7 || 
+        n.ticket_status_name === 'WAITING_USER_CONFIRMATION' || 
+        n.ticket_status_name === 'COMPLETED' ||
+        (n.title && n.title.toLowerCase().includes('selesai')) ||
+        (n.message && n.message.toLowerCase().includes('selesai')) ||
+        (n.message && n.message.toLowerCase().includes('rating'));
+
+      if (isCompleted) {
+        navigate('/dashboard/ticket-history');
+      } else {
+        navigate('/dashboard/history');
+      }
+    }
+  };
 
   const handleLogout = () => {
     setShowLogoutConfirm(true);
@@ -326,7 +387,12 @@ export const DashboardLayout = () => {
               <Link
                 key={link.path}
                 to={link.path}
-                onClick={() => setShowSidebar(false)}
+                onClick={() => {
+                  setShowSidebar(false);
+                  sessionStorage.removeItem('fromNotificationTicketId');
+                  sessionStorage.removeItem('redirectedForTicket');
+                  sessionStorage.removeItem('activeTicketId');
+                }}
                 className={`flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-all ${isActive
                     ? 'bg-sky-600 text-white shadow-md shadow-sky-500/30 translate-x-1 border border-sky-500'
                     : 'text-slate-550 hover:bg-slate-50 hover:text-slate-800'
@@ -369,11 +435,14 @@ export const DashboardLayout = () => {
             {/* NOTIFICATIONS */}
             <div className="relative">
               <button
+                type="button"
                 onClick={() => {
                   setShowNotifications(!showNotifications);
                   setUnreadCount(0);
                 }}
-                className="relative p-2.5 glass-card border border-white/50 hover:border-sky-300 rounded-xl text-slate-500 hover:text-sky-600 transition-all shadow-xs"
+                className="relative p-2.5 bg-white hover:bg-slate-50 border border-slate-200 hover:border-sky-300 rounded-xl text-slate-500 hover:text-sky-600 transition-all shadow-none cursor-pointer"
+                style={{ boxShadow: 'none' }}
+                aria-label="Notifikasi"
               >
                 <Bell className="w-5 h-5" />
                 {unreadCount > 0 && (
@@ -381,52 +450,79 @@ export const DashboardLayout = () => {
                 )}
               </button>
 
+              {/* Backdrop to close notification on outside click - transparent without dark shadow overlay */}
               {showNotifications && (
-                <div className="absolute right-0 mt-3 w-96 glass-panel rounded-3xl shadow-2xl border border-white/60 overflow-hidden z-50 animate-in slide-in-from-top-2 duration-200">
-                  <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-white/70 backdrop-blur-md">
-                    <h3 className="font-black text-slate-800 text-sm uppercase tracking-wider flex items-center gap-2">
-                      <Bell className="w-4 h-4 text-sky-600" />
-                      Notifikasi
-                    </h3>
-                    {notifications.length > 0 && (
-                      <span className="text-xs font-bold bg-sky-100 text-sky-700 px-2 py-0.5 rounded-lg">{notifications.length} Baru</span>
-                    )}
+                <div 
+                  className="fixed inset-0 z-40 bg-transparent"
+                  style={{ boxShadow: 'none' }}
+                  onClick={() => setShowNotifications(false)}
+                  aria-hidden="true"
+                />
+              )}
+
+              {showNotifications && (
+                <div 
+                  ref={notifRef}
+                  className="fixed inset-x-3 top-20 sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-3 sm:w-96 max-w-[calc(100vw-1.5rem)] bg-white rounded-2xl sm:rounded-3xl shadow-none border border-slate-200 overflow-hidden z-50 animate-in slide-in-from-top-2 duration-200"
+                  style={{ boxShadow: 'none', filter: 'none' }}
+                >
+                  <div className="px-4 sm:px-5 py-3.5 border-b border-slate-100 flex justify-between items-center bg-white shrink-0" style={{ boxShadow: 'none' }}>
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-sky-100 text-sky-600 flex items-center justify-center shrink-0">
+                        <Bell className="w-4 h-4" />
+                      </div>
+                      <h3 className="font-black text-slate-800 text-sm uppercase tracking-wider">
+                        Notifikasi
+                      </h3>
+                      {unreadCount > 0 && (
+                        <span className="text-[11px] font-bold bg-sky-100 text-sky-700 px-2 py-0.5 rounded-lg">
+                          {unreadCount} Baru
+                        </span>
+                      )}
+                    </div>
+                    <button 
+                      type="button" 
+                      onClick={() => setShowNotifications(false)}
+                      className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                      aria-label="Tutup Notifikasi"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
-                  <div className="max-h-[26rem] overflow-y-auto p-2 space-y-1 bg-white/40">
+                  <div className="max-h-[60vh] sm:max-h-[26rem] overflow-y-auto overflow-x-hidden p-2 space-y-1 bg-slate-50/50">
                     {notifications.length === 0 ? (
                       <div className="p-8 flex flex-col items-center justify-center text-center">
-                        <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mb-3 border border-slate-100 shadow-sm">
+                        <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mb-3 border border-slate-100">
                           <Bell className="w-5 h-5 text-slate-300" />
                         </div>
-                        <p className="text-slate-500 text-sm font-bold">Belum ada notifikasi.</p>
+                        <p className="text-slate-600 text-sm font-bold">Belum ada notifikasi.</p>
                         <p className="text-slate-400 text-xs font-medium mt-1">Anda sudah melihat semuanya.</p>
                       </div>
                     ) : (
                       notifications.map((n, i) => (
-                        <div key={i} onClick={() => {
-                          setShowNotifications(false);
-                          if (n.ticket_id) {
-                            sessionStorage.setItem('activeTicketId', n.ticket_id);
-                            navigate('/dashboard/history');
-                          }
-                        }} className="p-3.5 rounded-2xl hover:bg-white/80 transition-all cursor-pointer group flex items-start gap-3 border border-transparent hover:border-slate-100 shadow-xs hover:shadow-md">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border shadow-xs transition-colors ${n.type === 'warning' ? 'bg-amber-50 border-amber-100 text-amber-600 group-hover:bg-amber-100' :
+                        <div 
+                          key={n.id || i} 
+                          onClick={() => handleNotificationClick(n)} 
+                          className="p-3 sm:p-3.5 rounded-2xl hover:bg-white transition-all cursor-pointer group flex items-start gap-3 border border-transparent hover:border-slate-200 shadow-none"
+                          style={{ boxShadow: 'none' }}
+                        >
+                          <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center shrink-0 border transition-colors ${n.type === 'warning' ? 'bg-amber-50 border-amber-100 text-amber-600 group-hover:bg-amber-100' :
                               n.type === 'success' ? 'bg-emerald-50 border-emerald-100 text-emerald-600 group-hover:bg-emerald-100' :
                                 n.type === 'processing' ? 'bg-sky-50 border-sky-100 text-sky-600 group-hover:bg-sky-100' :
                                   'bg-slate-50 border-slate-200 text-slate-600 group-hover:bg-slate-100'
                             }`}>
-                            {n.type === 'warning' ? <ShieldCheck className="w-5 h-5" /> :
-                              n.type === 'success' ? <CheckSquare className="w-5 h-5" /> :
-                                n.type === 'processing' ? <Briefcase className="w-5 h-5" /> :
-                                  <FileText className="w-5 h-5" />}
+                            {n.type === 'warning' ? <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" /> :
+                              n.type === 'success' ? <CheckSquare className="w-4 h-4 sm:w-5 sm:h-5" /> :
+                                n.type === 'processing' ? <Briefcase className="w-4 h-4 sm:w-5 sm:h-5" /> :
+                                  <FileText className="w-4 h-4 sm:w-5 sm:h-5" />}
                           </div>
                           <div className="flex-1 min-w-0 pt-0.5">
                             <div className="flex items-center justify-between gap-2">
-                              <h4 className={`text-sm font-black truncate ${n.isRead ? 'text-slate-500' : 'text-slate-800'}`}>{n.title}</h4>
-                              {!n.isRead && <span className="w-2 h-2 rounded-full bg-sky-500 shrink-0 shadow-sm"></span>}
+                              <h4 className={`text-xs sm:text-sm font-black truncate ${n.isRead ? 'text-slate-500' : 'text-slate-800'}`}>{n.title}</h4>
+                              {!n.isRead && <span className="w-2 h-2 rounded-full bg-sky-500 shrink-0"></span>}
                             </div>
-                            <p className="text-xs font-semibold text-slate-600 mt-1 leading-relaxed line-clamp-2">{n.message}</p>
-                            <div className="flex items-center gap-1.5 mt-2 text-[10px] font-bold text-slate-400">
+                            <p className="text-xs font-semibold text-slate-600 mt-0.5 leading-relaxed line-clamp-2 break-words break-all">{n.message}</p>
+                            <div className="flex items-center gap-1.5 mt-1.5 text-[10px] font-bold text-slate-400">
                               <Clock className="w-3 h-3" />
                               <span>{new Date(n.time).toLocaleString('id-ID', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}</span>
                             </div>
@@ -435,9 +531,9 @@ export const DashboardLayout = () => {
                       ))
                     )}
                   </div>
-                  <div className="p-3 bg-slate-50/80 backdrop-blur-md border-t border-slate-100 text-center rounded-b-3xl">
+                  <div className="p-3 bg-slate-50/90 backdrop-blur-md border-t border-slate-100 text-center rounded-b-2xl sm:rounded-b-3xl shrink-0">
                     <Link to="/dashboard/history" onClick={() => setShowNotifications(false)} className="text-xs font-bold text-sky-600 hover:text-sky-700 hover:underline flex items-center justify-center gap-1">
-                      Lihat Semua Riwayat
+                      <span>Lihat Semua Riwayat</span>
                       <ChevronRight className="w-3.5 h-3.5" />
                     </Link>
                   </div>
@@ -471,7 +567,7 @@ export const DashboardLayout = () => {
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-8 overflow-y-auto w-full">
+        <main className="flex-1 p-4 sm:p-8 overflow-y-auto overflow-x-hidden w-full">
           <ErrorBoundary>
             <Outlet />
           </ErrorBoundary>
@@ -491,9 +587,15 @@ export const DashboardLayout = () => {
 
       {/* Global Real-time Notification Toast (WhatsApp-like) */}
       {liveToast && (
-        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300">
-          <div className="glass-panel bg-white/90 shadow-2xl rounded-2xl p-4 flex items-start gap-4 border border-sky-100 max-w-sm">
-            <div className="w-10 h-10 rounded-full bg-sky-100 flex items-center justify-center shrink-0 border border-sky-200">
+        <div 
+          onClick={() => {
+            handleNotificationClick(liveToast);
+            setLiveToast(null);
+          }}
+          className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300 cursor-pointer"
+        >
+          <div className="bg-white rounded-2xl p-4 flex items-start gap-4 border border-slate-200 max-w-sm shadow-none hover:border-sky-300 transition-colors" style={{ boxShadow: 'none' }}>
+            <div className="w-10 h-10 rounded-full bg-sky-100 flex items-center justify-center shrink-0 border border-sky-200" style={{ boxShadow: 'none' }}>
               <Bell className="w-5 h-5 text-sky-600 animate-pulse" />
             </div>
             <div className="flex-1 min-w-0 pr-2 pt-0.5">
@@ -503,8 +605,12 @@ export const DashboardLayout = () => {
               </p>
             </div>
             <button
-              onClick={() => setLiveToast(null)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setLiveToast(null);
+              }}
               className="text-slate-400 hover:text-slate-600 transition-colors shrink-0"
+              aria-label="Tutup notifikasi"
             >
               <X className="w-4 h-4" />
             </button>

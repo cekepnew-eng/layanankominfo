@@ -90,7 +90,7 @@ export const TaskList = () => {
     setIsFinished(task.status === 'Selesai');
     setLogText('');
     setFileName(task.bastFile || '');
-    setBastFileUrl(task.bastFileUrl || '/bast_selesai.pdf');
+    setBastFileUrl(task.bastFileUrl || '');
   };
 
   const [bastFileBase64, setBastFileBase64] = useState('');
@@ -108,7 +108,7 @@ export const TaskList = () => {
         const url = URL.createObjectURL(file);
         setBastFileUrl(url);
       } catch (err) {
-        setBastFileUrl('/bast_selesai.pdf');
+        setBastFileUrl('');
       }
     }
   };
@@ -116,15 +116,16 @@ export const TaskList = () => {
   const executeUpdateProgress = async () => {
     if (!selectedTask) return;
 
+    const hasBast = Boolean(fileName && bastFileBase64 && bastFileBase64.trim() !== '');
     const autoLogText = isFinished
-      ? (logText.trim() || (fileName ? 'Pekerjaan teknis telah selesai dilaksanakan. Berkas dokumen Berita Acara Serah Terima (BAST) telah siap untuk diunduh dan dikonfirmasi.' : 'Pekerjaan teknis telah selesai dilaksanakan.'))
+      ? (logText.trim() || (hasBast ? 'Pekerjaan teknis telah selesai dilaksanakan. Berkas dokumen Berita Acara Serah Terima (BAST) telah siap untuk diunduh dan dikonfirmasi.' : 'Pekerjaan teknis telah selesai dilaksanakan.'))
       : (logText.trim() || 'Proses pengerjaan teknis atas tiket layanan ini telah dimulai oleh tim pelaksana.');
 
     try {
       await api.updateProgress(selectedTask.id, {
         progress: isFinished ? 100 : selectedTask.progress,
         note: autoLogText,
-        ...(isFinished && fileName ? { bastFileName: fileName, bastFileBase64: bastFileBase64 } : {})
+        ...(isFinished && hasBast ? { bastFileName: fileName, bastFileBase64: bastFileBase64 } : {})
       });
 
       const res = await api.getEmployeeTickets();
@@ -438,25 +439,27 @@ export const TaskList = () => {
                     />
 
                     {fileName ? (
-                      <div className="flex justify-between items-center p-3 bg-white border border-slate-200 rounded-xl text-sm">
-                        <div className="flex items-center gap-2 overflow-hidden">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-2 p-3 bg-white border border-slate-200 rounded-xl text-sm overflow-hidden">
+                        <div className="flex items-center gap-2 min-w-0 flex-1 w-full overflow-hidden">
                           <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-                          <span className="font-bold text-slate-700 truncate">{fileName}</span>
+                          <span className="font-bold text-slate-700 truncate block min-w-0" title={fileName}>{fileName}</span>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0 ml-2">
-                          <a
-                            href={bastFileUrl || '/bast_selesai.pdf'}
-                            download={fileName || 'BAST.pdf'}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-xs font-bold text-sky-600 hover:underline px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-all"
-                          >
-                            Buka
-                          </a>
+                        <div className="flex items-center justify-end gap-2 shrink-0 w-full sm:w-auto">
+                          {bastFileUrl && (
+                            <a
+                              href={bastFileUrl}
+                              download={fileName || 'Dokumen_Pendukung.pdf'}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs font-bold text-sky-600 hover:underline px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-all w-full sm:w-auto text-center"
+                            >
+                              Buka
+                            </a>
+                          )}
                           <button
                             type="button"
                             onClick={() => bastInputRef.current?.click()}
-                            className="text-xs font-bold text-slate-600 hover:underline px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-all"
+                            className="text-xs font-bold text-slate-600 hover:underline px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-all w-full sm:w-auto text-center"
                           >
                             Ganti
                           </button>

@@ -19,7 +19,10 @@ export const SkmModal = ({ isOpen, onClose, ticket, onConfirm }) => {
   }, [isOpen]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/65 backdrop-blur-xs flex items-center justify-center p-4 overflow-hidden animate-in fade-in duration-200 font-sans">
+    <div 
+      className="fixed inset-0 z-[80] bg-slate-900/65 backdrop-blur-xs flex items-center justify-center p-4 overflow-hidden animate-in fade-in duration-200 font-sans"
+      onClick={onClose}
+    >
       <div 
         className="relative w-full max-w-md sm:max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden text-center animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}

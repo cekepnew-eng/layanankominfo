@@ -158,8 +158,8 @@ exports.getMyTickets = async (req, res) => {
              u.full_name as pemohon, (CASE WHEN u.department IN ('Masyarakat Umum', 'TND', 'TND User', 'MASYARAKAT', 'Masyarakat') OR u.department IS NULL THEN u.full_name ELSE u.department END) as opd,
              s.service_name as service_name, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
              tf.rating,
-             (SELECT file_name FROM ticket_attachments WHERE ticket_id = t.id ORDER BY uploaded_at DESC LIMIT 1) as bast_file_name,
-             (SELECT file_url FROM ticket_attachments WHERE ticket_id = t.id ORDER BY uploaded_at DESC LIMIT 1) as bast_file_url,
+             (SELECT file_name FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_name,
+             (SELECT file_url FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_url,
              (SELECT COALESCE(json_agg(json_build_object('id', sub.id, 'task_name', sub.task_name, 'assigned_to_name', su.full_name, 'status', sub.status)), '[]'::json) FROM subtasks sub LEFT JOIN users su ON sub.assigned_to = su.id WHERE sub.ticket_id = t.id) as subtasks
       FROM tickets t
       JOIN users u ON t.user_id = u.id
@@ -389,8 +389,8 @@ exports.getHelpdeskTickets = async (req, res) => {
       SELECT t.id, t.ticket_number, t.progress, t.created_at, u.full_name as pemohon, (CASE WHEN u.department IN ('Masyarakat Umum', 'TND', 'TND User', 'MASYARAKAT', 'Masyarakat') OR u.department IS NULL THEN u.full_name ELSE u.department END) as opd,
              s.service_name as service_name, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
              tf.rating,
-             (SELECT file_name FROM ticket_attachments WHERE ticket_id = t.id ORDER BY uploaded_at DESC LIMIT 1) as bast_file_name,
-             (SELECT file_url FROM ticket_attachments WHERE ticket_id = t.id ORDER BY uploaded_at DESC LIMIT 1) as bast_file_url,
+             (SELECT file_name FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_name,
+             (SELECT file_url FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_url,
              (SELECT COALESCE(json_agg(json_build_object('id', sub.id, 'task_name', sub.task_name, 'assigned_to_name', su.full_name, 'status', sub.status)), '[]'::json) FROM subtasks sub LEFT JOIN users su ON sub.assigned_to = su.id WHERE sub.ticket_id = t.id) as subtasks
       FROM tickets t
       JOIN users u ON t.user_id = u.id
@@ -477,8 +477,8 @@ exports.getEmployeeTickets = async (req, res) => {
       SELECT DISTINCT ON (t.id) t.id, t.ticket_number, t.progress, t.created_at, u.full_name as pemohon, (CASE WHEN u.department IN ('Masyarakat Umum', 'TND', 'TND User', 'MASYARAKAT', 'Masyarakat') OR u.department IS NULL THEN u.full_name ELSE u.department END) as opd,
              s.service_name as service_name, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
              tf.rating,
-             (SELECT file_name FROM ticket_attachments WHERE ticket_id = t.id ORDER BY uploaded_at DESC LIMIT 1) as bast_file_name,
-             (SELECT file_url FROM ticket_attachments WHERE ticket_id = t.id ORDER BY uploaded_at DESC LIMIT 1) as bast_file_url,
+             (SELECT file_name FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_name,
+             (SELECT file_url FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_url,
              (SELECT COALESCE(json_agg(json_build_object('id', sub.id, 'task_name', sub.task_name, 'assigned_to_name', su.full_name, 'status', sub.status)), '[]'::json) FROM subtasks sub LEFT JOIN users su ON sub.assigned_to = su.id WHERE sub.ticket_id = t.id) as subtasks
       FROM tickets t
       JOIN ticket_assignments a ON a.ticket_id = t.id
@@ -526,18 +526,24 @@ exports.updateProgress = async (req, res) => {
 
     await client.query('UPDATE tickets SET progress = $1, status_id = $2 WHERE id = $3', [progress, newStatus, id]);
 
+    const hasBast = Boolean(bastFileName && bastFileBase64 && bastFileBase64.trim() !== '' && bastFileBase64 !== '/bast_selesai.pdf');
     let finalNote = note;
     if (!finalNote && newStatus !== oldStatus) {
       if (newStatus === 5) finalNote = "Mulai dikerjakan oleh Tim.";
-      if (newStatus === 6) finalNote = "Selesai dikerjakan. BAST siap.";
+      if (newStatus === 6) finalNote = hasBast ? "Selesai dikerjakan. Dokumen BAST siap." : "Selesai dikerjakan.";
       if (newStatus === 3) finalNote = "Dikembalikan ke pemohon untuk revisi.";
+    }
+
+    if (!hasBast && finalNote) {
+      finalNote = finalNote.replace(/Selesai dikerjakan\.\s*BAST siap\.?/gi, 'Selesai dikerjakan.');
+      finalNote = finalNote.replace(/\.?\s*BAST siap\.?/gi, '');
     }
 
     if (finalNote) {
       await createHistory(client, id, req.user.id, oldStatus, newStatus, finalNote);
     }
 
-    if (bastFileName) {
+    if (bastFileName && bastFileBase64 && bastFileBase64.trim() !== '' && bastFileBase64 !== '/bast_selesai.pdf') {
       // Ensure the table exists before inserting
       await client.query(`
         CREATE TABLE IF NOT EXISTS ticket_attachments (
@@ -553,7 +559,7 @@ exports.updateProgress = async (req, res) => {
       await client.query(`
         INSERT INTO ticket_attachments (ticket_id, file_name, file_url)
         VALUES ($1, $2, $3)
-      `, [id, bastFileName, bastFileBase64 || '/bast_selesai.pdf']);
+      `, [id, bastFileName, bastFileBase64]);
     }
 
     if (progress === 100) {
@@ -581,8 +587,8 @@ exports.getAdminTickets = async (req, res) => {
       SELECT t.id, t.ticket_number, t.progress, t.created_at, u.full_name as pemohon, (CASE WHEN u.department IN ('Masyarakat Umum', 'TND', 'TND User', 'MASYARAKAT', 'Masyarakat') OR u.department IS NULL THEN u.full_name ELSE u.department END) as opd,
              s.service_name as service_name, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
              tf.rating,
-             (SELECT file_name FROM ticket_attachments WHERE ticket_id = t.id ORDER BY uploaded_at DESC LIMIT 1) as bast_file_name,
-             (SELECT file_url FROM ticket_attachments WHERE ticket_id = t.id ORDER BY uploaded_at DESC LIMIT 1) as bast_file_url,
+             (SELECT file_name FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_name,
+             (SELECT file_url FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_url,
              (SELECT COALESCE(json_agg(json_build_object('id', sub.id, 'task_name', sub.task_name, 'assigned_to_name', su.full_name, 'status', sub.status)), '[]'::json) FROM subtasks sub LEFT JOIN users su ON sub.assigned_to = su.id WHERE sub.ticket_id = t.id) as subtasks
       FROM tickets t
       JOIN users u ON t.user_id = u.id
@@ -646,7 +652,24 @@ exports.getHistory = async (req, res) => {
       }
     }
 
-    const formattedData = Array.from(uniqueLogsMap.values());
+    const attachRes = await db.query(
+      `SELECT id FROM ticket_attachments WHERE ticket_id = $1 AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' LIMIT 1`,
+      [req.params.id]
+    );
+    const hasBast = attachRes.rows.length > 0;
+
+    const formattedData = Array.from(uniqueLogsMap.values()).map(log => {
+      let desc = log.log_description || '';
+      if (!hasBast) {
+        desc = desc.replace(/Selesai dikerjakan\.\s*BAST siap\.?/gi, 'Selesai dikerjakan.');
+        desc = desc.replace(/\.?\s*Berkas dokumen Berita Acara Serah Terima \(BAST\) telah siap untuk diunduh dan dikonfirmasi\.?/gi, '');
+        desc = desc.replace(/\.?\s*BAST siap\.?/gi, '');
+      }
+      return {
+        ...log,
+        log_description: desc
+      };
+    });
 
     res.json({ success: true, data: formattedData });
   } catch (err) {

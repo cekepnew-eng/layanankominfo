@@ -296,18 +296,33 @@ export const LandingPage = () => {
   const faqs = [
     {
       id: 'faq1',
-      question: 'Apakah masyarakat umum dapat mengajukan permohonan di portal ini?',
-      answer: 'Secara umum tidak. Portal ini dikhususkan bagi OPD (Organisasi Perangkat Daerah) internal Pemerintah Kota Bogor untuk meminta layanan infrastruktur, jaringan, dan sistem informatika. Layanan publik untuk masyarakat memiliki jalurnya sendiri seperti SIBADRA atau PPID Kota Bogor.'
+      question: 'Apakah pengajuan layanan di portal Helpdesk ini berbayar?',
+      answer: 'Tidak, seluruh layanan yang disediakan oleh Diskominfo Kota Bogor melalui portal Helpdesk SPBE ini 100% GRATIS dan tidak dipungut biaya apa pun bagi Perangkat Daerah maupun masyarakat.'
     },
     {
       id: 'faq2',
-      question: 'Bagaimana jika berkas administrasi/syarat permohonan saya ditolak?',
-      answer: 'Jika ditolak oleh petugas Helpdesk, Anda akan menerima notifikasi email beserta alasan detail penolakan. Anda dapat merevisi berkas yang kurang atau salah melalui menu \'Tiket Saya\' di dashboard, lalu mengajukannya kembali tanpa perlu membuat tiket baru.'
+      question: 'Bagaimana cara masuk (login) ke dalam sistem?',
+      answer: 'Bagi pegawai Perangkat Daerah (OPD), silakan masuk menggunakan akun kedinasan yang telah terdaftar. Bagi masyarakat umum, Anda dapat membuat akun mandiri secara gratis melalui tombol "Daftar Akun" di pojok kanan atas, lalu masuk menggunakan email dan kata sandi yang telah didaftarkan.'
     },
     {
       id: 'faq3',
-      question: 'Berapa lama target waktu penyelesaian (SLA) per jenis layanan?',
-      answer: 'Target waktu penyelesaian (SLA) bervariasi bergantung pada kompleksitas layanan yang diajukan. Contohnya, gangguan jaringan minor diselesaikan dalam waktu 1-3 hari kerja, sedangkan permohonan pengembangan aplikasi baru berskala besar memiliki target 30-90 hari kerja.'
+      question: 'Siapa saja yang dapat mengajukan layanan di Helpdesk ini?',
+      answer: 'Portal ini dapat digunakan oleh seluruh Organisasi Perangkat Daerah (OPD) di lingkungan Pemerintah Kota Bogor untuk kebutuhan TIK kedinasan, serta oleh Masyarakat Umum yang memerlukan fasilitasi layanan SPBE, persandian, dan data sesuai kategori permohonan yang tersedia.'
+    },
+    {
+      id: 'faq4',
+      question: 'Bagaimana cara melacak dan memantau progres tiket layanan saya?',
+      answer: 'Setelah mengajukan permohonan, Anda dapat memantau status pengerjaan secara real-time di menu "Tiket Proses" pada dashboard, atau menggunakan fitur "Lacak Tiket" di portal dengan memasukkan nomor tiket Anda (contoh: REQ-2026-0001).'
+    },
+    {
+      id: 'faq5',
+      question: 'Berapa lama waktu penyelesaian (SLA) untuk setiap permohonan?',
+      answer: 'Waktu penyelesaian bergantung pada kompleksitas dan jenis layanan yang diajukan. Verifikasi awal oleh petugas Helpdesk dilakukan maksimal 1x24 jam kerja, sedangkan estimasi pengerjaan teknis berkisar antara 1 hingga 7 hari kerja.'
+    },
+    {
+      id: 'faq6',
+      question: 'Apa yang harus dilakukan jika berkas permohonan saya ditangguhkan/perlu perbaikan?',
+      answer: 'Jika permohonan membutuhkan perbaikan berkas, Anda akan menerima pemberitahuan di dashboard. Anda cukup membuka tiket tersebut di menu "Tiket Proses", membaca catatan dari tim verifikator, lalu mengunggah berkas perbaikan tanpa perlu membuat tiket baru dari awal.'
     }
   ];
 

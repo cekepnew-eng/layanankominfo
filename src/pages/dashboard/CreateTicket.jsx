@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PlusCircle, FileText, FileCheck, Upload, ChevronRight, ArrowLeft, Clock, AlertTriangle, Search, CheckCircle2, Eye, Download } from 'lucide-react';
+import { PlusCircle, FileText, FileCheck, Upload, ChevronRight, ArrowLeft, Clock, AlertTriangle, Search, CheckCircle2, Eye, Download, CheckSquare } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getCurrentDateFormatted, getCurrentLogTimeFormatted } from '../../utils/dateUtils';
 import { SkmModal } from '../../components/SkmModal';
@@ -189,27 +189,21 @@ export const CreateTicket = () => {
     ? tickets.find(t => t.status_name !== 'COMPLETED' && t.status_name !== 'REJECTED')
     : null;
 
-  const handleCompleteSkm = (t) => {
-    setTickets(prev => prev.map(ticket => {
-      if (ticket.id === t.id) {
-        return {
-          ...ticket,
-          rating: {
-            speed: 5,
-            result: 5,
-            communication: 5,
-            quality: 5,
-            comment: 'Survei SKM MenPAN-RB telah diisi oleh pemohon.',
-            skm: { completed: true }
-          },
-          logs: [
-            { date: getCurrentLogTimeFormatted(0), text: 'Pemohon telah mengisi dan menyelesaikan Survei Kepuasan Masyarakat (SKM) MenPAN-RB.' },
-            ...(ticket.logs || [])
-          ]
-        };
+  const handleCompleteSkm = async (t) => {
+    try {
+      const target = t || activeTicket;
+      if (target) {
+        await api.submitFeedback(target.id || target.uuid, {
+          rating: 5,
+          comment: 'Survei SKM MenPAN-RB telah diisi oleh pemohon.',
+          aspects: { speed: 5, result: 5, communication: 5, quality: 5 }
+        });
       }
-      return ticket;
-    }));
+      const tktRes = await api.getMyTickets();
+      setTickets(tktRes.data || []);
+    } catch (err) {
+      console.error('Failed to submit feedback / SKM:', err);
+    }
     setShowSkmModal(false);
   };
 
@@ -290,25 +284,76 @@ export const CreateTicket = () => {
   };
 
   if (activeTicket) {
+    const isWaitingSkm = 
+      activeTicket.status_name === 'WAITING_USER_CONFIRMATION' || 
+      activeTicket.status === 'Selesai' || 
+      activeTicket.status === 'Menunggu Konfirmasi User';
+
     return (
       <div className="max-w-xl mx-auto bg-white p-8 rounded-3xl border border-slate-200 shadow-xl text-center space-y-6 mt-8 font-sans">
-        <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center border border-amber-100 mx-auto">
-          <AlertTriangle className="w-8 h-8" />
+        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center border mx-auto ${
+          isWaitingSkm ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'
+        }`}>
+          {isWaitingSkm ? <CheckCircle2 className="w-8 h-8" /> : <AlertTriangle className="w-8 h-8" />}
         </div>
         <div className="space-y-2">
-          <h3 className="text-2xl font-black text-slate-900 tracking-tight">Tiket Sedang Berjalan</h3>
+          <h3 className="text-2xl font-black text-slate-900 tracking-tight">
+            {isWaitingSkm ? 'Tiket Selesai - Mohon Isi Survei SKM' : 'Tiket Sedang Berjalan'}
+          </h3>
           <p className="text-slate-500 text-base leading-relaxed">
-            Anda masih memiliki tiket yang belum selesai (<strong>{activeTicket.ticket_number || activeTicket.id} - {activeTicket.service_name}</strong>). Harap tunggu atau selesaikan tiket tersebut (SKM/Rating) sebelum mengajukan tiket baru.
+            {isWaitingSkm ? (
+              <>
+                Pekerjaan untuk tiket (<strong>{activeTicket.ticket_number || activeTicket.id} - {activeTicket.service_name}</strong>) telah 100% selesai dikerjakan! Silakan isi Survei Kepuasan Masyarakat (SKM) MenPAN-RB untuk menyelesaikan tiket ini agar Anda dapat mengajukan permohonan baru.
+              </>
+            ) : (
+              <>
+                Anda masih memiliki permohonan yang sedang berjalan (<strong>{activeTicket.ticket_number || activeTicket.id} - {activeTicket.service_name}</strong>). Harap tunggu hingga permohonan tersebut selesai sebelum mengajukan tiket baru.
+              </>
+            )}
           </p>
         </div>
         <div className="pt-2 flex flex-col gap-3">
-          <button 
-            onClick={() => navigate('/dashboard/history')}
-            className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-md shadow-sky-200"
-          >
-            Lihat Tiket Saya
-          </button>
+          {isWaitingSkm ? (
+            <>
+              <button 
+                type="button"
+                onClick={() => setShowSkmModal(true)}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 px-4 rounded-xl transition-all shadow-md shadow-emerald-200 flex items-center justify-center gap-2 cursor-pointer text-base"
+              >
+                <CheckSquare className="w-5 h-5" />
+                <span>Isi Survei SKM Sekarang</span>
+              </button>
+              <button 
+                type="button"
+                onClick={() => {
+                  sessionStorage.setItem('fromNotificationTicketId', String(activeTicket.id || activeTicket.uuid || activeTicket.ticket_number));
+                  navigate('/dashboard/ticket-history');
+                }}
+                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-xl transition-all text-sm flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <span>Lihat Detail Tiket di Riwayat</span>
+              </button>
+            </>
+          ) : (
+            <button 
+              type="button"
+              onClick={() => {
+                sessionStorage.setItem('fromNotificationTicketId', String(activeTicket.id || activeTicket.uuid || activeTicket.ticket_number));
+                navigate('/dashboard/history');
+              }}
+              className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-md shadow-sky-200 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Pantau Progres Tiket</span>
+            </button>
+          )}
         </div>
+
+        <SkmModal
+          isOpen={showSkmModal}
+          onClose={() => setShowSkmModal(false)}
+          ticket={activeTicket}
+          onConfirm={handleCompleteSkm}
+        />
       </div>
     );
   }
@@ -506,28 +551,38 @@ export const CreateTicket = () => {
                           </div>
                         </div>
 
-                        <div className="mt-3 pt-2.5 border-t border-slate-100 space-y-1.5 pl-8 text-xs">
-                          <div className="flex items-start gap-2 text-slate-650">
+                        <div className="mt-3 pt-2.5 border-t border-slate-100 space-y-2 pl-0 sm:pl-8 text-xs overflow-hidden">
+                          <div className="flex items-start gap-2 text-slate-650 min-w-0">
                             <FileText className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
-                            <div>
-                              <strong className="text-slate-850 font-extrabold">Dokumen yang harus disiapkan: </strong>
-                              <span className="text-slate-650 font-medium">
+                            <div className="min-w-0 flex-1 overflow-hidden">
+                              <strong className="text-slate-850 font-extrabold block sm:inline">Dokumen yang harus disiapkan: </strong>
+                              <span className="text-slate-650 font-medium break-words break-all">
                                 {(() => {
                                   const reqParsed = parseFileValue(srv?.requiredDocs);
                                   const isDataUrl = reqParsed.data && reqParsed.data.startsWith('data:');
                                   if (isDataUrl) {
-                                    return <a href={reqParsed.data} download={reqParsed.name || "Template_Persyaratan.pdf"} className="text-sky-600 hover:underline font-bold" onClick={e => e.stopPropagation()}>Unduh: {reqParsed.name}</a>;
+                                    return (
+                                      <a 
+                                        href={reqParsed.data} 
+                                        download={reqParsed.name || "Template_Persyaratan.pdf"} 
+                                        className="inline-flex items-center gap-1 text-sky-600 hover:underline font-bold max-w-full overflow-hidden" 
+                                        onClick={e => e.stopPropagation()}
+                                      >
+                                        <Download className="w-3 h-3 shrink-0" />
+                                        <span className="truncate min-w-0">Unduh: {reqParsed.name}</span>
+                                      </a>
+                                    );
                                   }
                                   return reqParsed.name || 'Surat Permohonan Resmi OPD, KAK / TOR, Dokumen Pendukung';
                                 })()}
                               </span>
                             </div>
                           </div>
-                          <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
-                            <div className="flex items-center gap-2">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 overflow-hidden">
+                            <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
                               <FileCheck className="w-3.5 h-3.5 text-sky-600 shrink-0" />
-                              <strong className="text-slate-850 font-extrabold font-sans">SOP Layanan: </strong>
-                              <span className="font-mono font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-100">
+                              <strong className="text-slate-850 font-extrabold font-sans shrink-0">SOP Layanan: </strong>
+                              <span className="font-mono font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-100 truncate max-w-[160px] sm:max-w-xs block min-w-0">
                                 {parseFileValue(srv?.sop).name || 'sop_layanan.pdf'}
                               </span>
                             </div>
@@ -537,7 +592,7 @@ export const CreateTicket = () => {
                                 e.stopPropagation();
                                 setViewingSop({ name: sub, sop: srv?.sop || 'sop_layanan.pdf' });
                               }}
-                              className="inline-flex items-center gap-1.5 px-3 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 hover:text-sky-900 border border-sky-200 rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                              className="inline-flex items-center justify-center gap-1.5 px-3 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 hover:text-sky-900 border border-sky-200 rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer w-full sm:w-auto text-center shrink-0"
                             >
                               <Eye className="w-3.5 h-3.5" />
                               <span>Lihat Isi SOP</span>
@@ -587,50 +642,50 @@ export const CreateTicket = () => {
                 const reqDocs = srv?.requiredDocs || 'Surat Permohonan Resmi OPD, KAK / Dokumen Pendukung';
                 const sopFile = srv?.sop || 'sop-layanan.pdf';
                 return (
-                  <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-sky-50/70 via-indigo-50/40 to-slate-50 border border-sky-200 space-y-2.5 text-left">
-                    <div className="flex items-start gap-2.5">
+                  <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-sky-50/70 via-indigo-50/40 to-slate-50 border border-sky-200 space-y-2.5 text-left overflow-hidden">
+                    <div className="flex items-start gap-2.5 min-w-0">
                       <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 mt-0.5">
                         <FileText className="w-4 h-4" />
                       </div>
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1 overflow-hidden">
                         <span className="text-xs font-black text-amber-850 uppercase tracking-wider block">Dokumen yang Harus Disiapkan Pemohon:</span>
-                        <div className="text-sm font-bold text-slate-800 mt-0.5 leading-relaxed">
+                        <div className="text-sm font-bold text-slate-800 mt-0.5 leading-relaxed break-words break-all">
                           {(() => {
                             const reqParsed = parseFileValue(reqDocs);
                             const isDataUrl = reqParsed.data && reqParsed.data.startsWith('data:');
                             if (isDataUrl) {
                               return (
-                                <a href={reqParsed.data} download={reqParsed.name || "Template_Persyaratan.pdf"} className="inline-flex items-center gap-1.5 text-sky-600 hover:text-sky-700 bg-white border border-sky-200 px-3 py-1 rounded-lg">
-                                  <Download className="w-4 h-4" />
-                                  Unduh: {reqParsed.name}
+                                <a href={reqParsed.data} download={reqParsed.name || "Template_Persyaratan.pdf"} className="inline-flex items-center gap-1.5 text-sky-600 hover:text-sky-700 bg-white border border-sky-200 px-3 py-1.5 rounded-lg max-w-full overflow-hidden">
+                                  <Download className="w-4 h-4 shrink-0" />
+                                  <span className="truncate min-w-0">Unduh: {reqParsed.name}</span>
                                 </a>
                               );
                             }
-                            return reqParsed.name;
+                            return <span className="break-words break-all">{reqParsed.name}</span>;
                           })()}
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between gap-3 pt-2.5 border-t border-sky-100 flex-wrap text-xs">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <div className="flex items-center gap-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2.5 border-t border-sky-100 text-xs overflow-hidden">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 min-w-0 flex-1 w-full sm:w-auto">
+                        <div className="flex items-center gap-2 min-w-0">
                           <FileCheck className="w-4 h-4 text-sky-600 shrink-0" />
-                          <span className="font-extrabold text-slate-700">SOP Pelayanan:</span>
-                          <span className="font-mono font-bold text-sky-700 bg-white px-2 py-0.5 rounded border border-sky-200">
+                          <span className="font-extrabold text-slate-700 shrink-0">SOP Pelayanan:</span>
+                          <span className="font-mono font-bold text-sky-700 bg-white px-2 py-0.5 rounded border border-sky-200 truncate max-w-[150px] sm:max-w-xs block min-w-0">
                             {parseFileValue(sopFile).name}
                           </span>
                         </div>
                         <button
                           type="button"
                           onClick={() => setViewingSop({ name: selectedSubService, sop: sopFile })}
-                          className="inline-flex items-center gap-1.5 px-3 py-1 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer ml-1"
+                          className="inline-flex items-center justify-center gap-1.5 px-3 py-1 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer w-full sm:w-auto text-center"
                         >
                           <Eye className="w-3.5 h-3.5" />
                           <span>Lihat Isi Dokumen SOP</span>
                         </button>
                       </div>
                       {srv && (
-                        <span className="font-bold text-slate-500 flex items-center gap-1">
+                        <span className="font-bold text-slate-500 flex items-center gap-1 shrink-0">
                           <Clock className="w-3.5 h-3.5 text-slate-400" />
                           Target Waktu SLA: <strong className="text-slate-800">{srv.sla || srv.target_sla || '1-3 Hari'}</strong>
                         </span>
@@ -703,7 +758,7 @@ export const CreateTicket = () => {
                         className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100 cursor-pointer"
                       />
                       {formData[`${fieldKey}_name`] && (
-                        <p className="mt-3 text-xs font-bold text-emerald-600 bg-emerald-50 py-1.5 px-3 rounded-lg inline-block border border-emerald-100">
+                        <p className="mt-3 text-xs font-bold text-emerald-600 bg-emerald-50 py-1.5 px-3 rounded-lg block sm:inline-block border border-emerald-100 max-w-full truncate overflow-hidden" title={formData[`${fieldKey}_name`]}>
                           ✓ File terpilih: {formData[`${fieldKey}_name`]}
                         </p>
                       )}

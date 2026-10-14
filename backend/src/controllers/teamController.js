@@ -2,29 +2,43 @@ const db = require('../config/database');
 
 exports.getAllTeams = async (req, res) => {
   try {
-    const result = await db.pool.query(`
-      SELECT t.*, u.full_name as leader_name 
-      FROM teams t 
-      LEFT JOIN users u ON u.id = t.leader_id 
-      ORDER BY t.id ASC
-    `);
+    let teamsRows = [];
+    try {
+      const result = await db.pool.query(`
+        SELECT t.*, u.full_name as leader_name 
+        FROM teams t 
+        LEFT JOIN users u ON u.id::text = t.leader_id::text 
+        ORDER BY t.id ASC
+      `);
+      teamsRows = result.rows;
+    } catch (e1) {
+      console.warn('getAllTeams leader join warning:', e1.message);
+      const fallback = await db.pool.query('SELECT * FROM teams ORDER BY id ASC');
+      teamsRows = fallback.rows;
+    }
 
-    const membersRes = await db.pool.query(`
-      SELECT tm.team_id, u.id as user_id, u.full_name
-      FROM team_members tm
-      JOIN users u ON u.id = tm.user_id
-      ORDER BY tm.user_id ASC
-    `);
+    let membersRows = [];
+    try {
+      const membersRes = await db.pool.query(`
+        SELECT tm.team_id, u.id as user_id, u.full_name
+        FROM team_members tm
+        JOIN users u ON u.id::text = tm.user_id::text
+        ORDER BY tm.user_id ASC
+      `);
+      membersRows = membersRes.rows;
+    } catch (e2) {
+      console.warn('getAllTeams members query warning:', e2.message);
+    }
 
-    const teams = result.rows.map(team => {
-      const members = membersRes.rows
+    const teams = teamsRows.map(team => {
+      const members = membersRows
         .filter(m => m.team_id === team.id)
         .map(m => m.full_name);
 
       return {
         id: team.id,
-        name: team.team_name,
-        description: team.description,
+        name: team.team_name || team.name || `Tim ${team.id}`,
+        description: team.description || '',
         members: members,
         leader: team.leader_name || members[0] || ''
       };

@@ -22,7 +22,10 @@ const handleResponse = async (res) => {
         window.location.href = '/auth/login';
       }
     }
-    throw new Error(data.message || `HTTP Error ${res.status}`);
+    const err = new Error(data.message || `HTTP Error ${res.status}`);
+    err.data = data;
+    err.isOldPassword = Boolean(data.isOldPassword);
+    throw err;
   }
   return data;
 };
@@ -145,6 +148,38 @@ export const api = {
   },
   getMe: async () => {
     const res = await fetch(`${BASE_URL}/auth/me`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+  updateProfile: async (payload) => {
+    const res = await fetch(`${BASE_URL}/auth/profile`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(payload)
+    });
+    return handleResponse(res);
+  },
+  requestResetOtp: async (identifier) => {
+    const res = await fetch(`${BASE_URL}/auth/forgot-password/request-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier })
+    });
+    return handleResponse(res);
+  },
+  validateResetOtp: async (email, otp) => {
+    const res = await fetch(`${BASE_URL}/auth/forgot-password/validate-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp })
+    });
+    return handleResponse(res);
+  },
+  verifyResetOtp: async (payload) => {
+    const res = await fetch(`${BASE_URL}/auth/forgot-password/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
     return handleResponse(res);
   },
 

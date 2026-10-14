@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
 
-export const TruncatedText = ({ text, className }) => {
+export const TruncatedText = ({ text, className, maxWords = 15 }) => {
   const [expanded, setExpanded] = useState(false);
   if (!text) return null;
-  const words = text.split(' ');
-  const isLong = words.length > 20;
+  const words = text.trim().split(/\s+/);
+  const isLong = words.length >= maxWords;
   
-  const displayText = isLong && !expanded ? words.slice(0, 20).join(' ') + '...' : text;
+  const displayText = isLong && !expanded ? words.slice(0, maxWords).join(' ') + '...' : text;
 
   return (
-    <div className={className}>
+    <div className={`break-words break-all ${className || ''}`}>
       {displayText}
       {isLong && (
         <button 

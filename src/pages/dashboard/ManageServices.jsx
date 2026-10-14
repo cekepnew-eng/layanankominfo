@@ -82,16 +82,25 @@ export const ManageServices = () => {
         console.error('Failed to fetch teams:', err);
       }
 
-      const mappedData = servicesData.map(s => ({
-        ...s,
-        category: s.category_name || s.category,
-        status: s.status || (s.is_active ? 'Aktif' : 'Tahap Pengembangan'),
-        sla: s.target_sla || s.sla,
-        requiresHelpdesk: s.verification_type === 'Asesmen' ? 'asesmen' : (s.verification_type !== 'Otomatis' ? 'true' : 'false'),
-        sop: s.sop_link,
-        requiredDocs: s.required_docs,
-        defaultTeamId: s.default_team_id
-      }));
+      const mappedData = servicesData.map(s => {
+        const isAuto = s.verification_type === 'Otomatis' || s.requiresHelpdesk === 'false';
+        const isAsesmen = s.verification_type === 'Asesmen' || s.requiresHelpdesk === 'asesmen';
+        const teamIdStr = s.default_team_id ? String(s.default_team_id) : (s.defaultTeamId ? String(s.defaultTeamId) : '');
+        const teamObj = teamsData.find(t => String(t.id) === teamIdStr);
+        return {
+          ...s,
+          category: s.category_name || s.category,
+          status: s.status || (s.is_active ? 'Aktif' : 'Tahap Pengembangan'),
+          sla: s.target_sla || s.sla,
+          verification_type: isAsesmen ? 'Asesmen' : (isAuto ? 'Otomatis' : 'Wajib Verifikasi'),
+          requiresHelpdesk: isAsesmen ? 'asesmen' : (isAuto ? 'false' : 'true'),
+          sop: s.sop_link,
+          requiredDocs: s.required_docs,
+          defaultTeamId: teamIdStr,
+          default_team_id: teamIdStr,
+          default_team_name: s.default_team_name || teamObj?.name || ''
+        };
+      });
       setServices(mappedData);
       setTeams(teamsData);
     } catch (err) {
@@ -155,19 +164,22 @@ export const ManageServices = () => {
     if (!service) return;
     const nextStatus = service.status === 'Aktif' ? 'Tahap Pengembangan' : 'Aktif';
     const isActive = nextStatus === 'Aktif';
+    const verifType = service.requiresHelpdesk === 'asesmen' ? 'Asesmen' : (service.requiresHelpdesk === 'false' || service.verification_type === 'Otomatis' ? 'Otomatis' : 'Wajib Verifikasi');
+    const teamIdVal = verifType === 'Otomatis' && service.defaultTeamId ? Number(service.defaultTeamId) : null;
     try {
       await api.updateService(id, {
         category_name: service.category,
         name: service.name,
         target_sla: service.sla,
-        verification_type: service.requiresHelpdesk !== false ? 'Wajib Verifikasi' : 'Otomatis',
+        verification_type: verifType,
         is_active: isActive,
-        status: service.status,
+        status: nextStatus,
         sop_link: service.sop,
         required_docs: service.requiredDocs,
+        default_team_id: teamIdVal,
         form_schema: service.form_schema || []
       });
-      setServices(prev => prev.map(s => s.id === id ? { ...s, status: nextStatus } : s));
+      setServices(prev => prev.map(s => s.id === id ? { ...s, status: nextStatus, is_active: isActive } : s));
     } catch (err) {
       alert('Gagal update status: ' + err.message);
     }
@@ -176,21 +188,32 @@ export const ManageServices = () => {
   const toggleServiceVerification = async (id) => {
     const service = services.find(s => s.id === id);
     if (!service) return;
-    const currentReq = service.requiresHelpdesk !== false;
-    const nextReq = !currentReq;
+    const isCurrentlyAuto = service.requiresHelpdesk === 'false' || service.verification_type === 'Otomatis';
+    const nextReq = isCurrentlyAuto ? 'true' : 'false';
+    const nextVerif = isCurrentlyAuto ? 'Wajib Verifikasi' : 'Otomatis';
+    const chosenTeamId = nextVerif === 'Otomatis' ? (service.defaultTeamId || (teams[0]?.id ? String(teams[0].id) : '')) : '';
+    const teamObj = teams.find(t => String(t.id) === String(chosenTeamId));
     try {
       await api.updateService(id, {
         category_name: service.category,
         name: service.name,
         target_sla: service.sla,
-        verification_type: nextReq ? 'Wajib Verifikasi' : 'Otomatis',
+        verification_type: nextVerif,
         is_active: service.status === 'Aktif',
         status: service.status,
         sop_link: service.sop,
         required_docs: service.requiredDocs,
+        default_team_id: chosenTeamId ? Number(chosenTeamId) : null,
         form_schema: service.form_schema || []
       });
-      setServices(prev => prev.map(s => s.id === id ? { ...s, requiresHelpdesk: nextReq } : s));
+      setServices(prev => prev.map(s => s.id === id ? { 
+        ...s, 
+        requiresHelpdesk: nextReq,
+        verification_type: nextVerif,
+        defaultTeamId: chosenTeamId,
+        default_team_id: chosenTeamId,
+        default_team_name: teamObj?.name || s.default_team_name || ''
+      } : s));
     } catch (err) {
       alert('Gagal update verifikasi: ' + err.message);
     }
@@ -203,23 +226,26 @@ export const ManageServices = () => {
     const isActive = nextStatus === 'Aktif';
     
     try {
-      await Promise.all(catServices.map(s => 
-        api.updateService(s.id, {
+      await Promise.all(catServices.map(s => {
+        const verif = s.requiresHelpdesk === 'asesmen' ? 'Asesmen' : (s.requiresHelpdesk === 'false' || s.verification_type === 'Otomatis' ? 'Otomatis' : 'Wajib Verifikasi');
+        const teamIdVal = verif === 'Otomatis' && s.defaultTeamId ? Number(s.defaultTeamId) : null;
+        return api.updateService(s.id, {
           category_name: s.category,
           name: s.name,
           target_sla: s.sla,
-          verification_type: s.requiresHelpdesk !== false ? 'Wajib Verifikasi' : 'Otomatis',
+          verification_type: verif,
           is_active: isActive,
-          status: s.status,
+          status: nextStatus,
           sop_link: s.sop,
           required_docs: s.requiredDocs,
+          default_team_id: teamIdVal,
           form_schema: s.form_schema || []
-        })
-      ));
+        });
+      }));
       
       setServices(prev => prev.map(s => {
         if (s.category === catName) {
-          return { ...s, status: nextStatus };
+          return { ...s, status: nextStatus, is_active: isActive };
         }
         return s;
       }));
@@ -247,8 +273,8 @@ export const ManageServices = () => {
     setEditSopFile(null);
     setEditRequiredDocs(s.requiredDocs || '');
     setEditRequiredDocsFile(null);
-    setEditRequiresHelpdesk(s.requiresHelpdesk || 'true');
-    setEditDefaultTeamId(s.defaultTeamId || '');
+    setEditRequiresHelpdesk(s.requiresHelpdesk === 'asesmen' ? 'asesmen' : (s.requiresHelpdesk === 'false' || s.verification_type === 'Otomatis' ? 'false' : 'true'));
+    setEditDefaultTeamId(s.defaultTeamId ? String(s.defaultTeamId) : (s.default_team_id ? String(s.default_team_id) : ''));
     setEditStatus(s.status || 'Tahap Pengembangan');
   };
 
@@ -256,6 +282,7 @@ export const ManageServices = () => {
     e.preventDefault();
     const formattedSla = formatSlaString(editSlaMin, editSlaMax);
     const verificationType = editRequiresHelpdesk === 'asesmen' ? 'Asesmen' : (editRequiresHelpdesk === 'false' ? 'Otomatis' : 'Wajib Verifikasi');
+    const finalDefaultTeamId = editRequiresHelpdesk === 'false' && editDefaultTeamId ? Number(editDefaultTeamId) : null;
     try {
       let finalSop = editSop;
       if (editSopFile) {
@@ -279,7 +306,7 @@ export const ManageServices = () => {
         status: editStatus,
         sop_link: finalSop,
         required_docs: finalReqDocs,
-        default_team_id: editRequiresHelpdesk ? null : (editDefaultTeamId || null),
+        default_team_id: finalDefaultTeamId,
         form_schema
       });
       await fetchServices();
@@ -322,7 +349,8 @@ export const ManageServices = () => {
   const handleAddService = async (e) => {
     e.preventDefault();
     const formattedSla = formatSlaString(slaMin, slaMax);
-    const verificationType = requiresHelpdesk ? 'Wajib Verifikasi' : 'Otomatis';
+    const verificationType = requiresHelpdesk === 'asesmen' ? 'Asesmen' : (requiresHelpdesk === 'false' ? 'Otomatis' : 'Wajib Verifikasi');
+    const finalDefaultTeamId = requiresHelpdesk === 'false' && defaultTeamId ? Number(defaultTeamId) : null;
     try {
       let finalSop = sop;
       if (sopFile) {
@@ -345,7 +373,7 @@ export const ManageServices = () => {
         status: serviceStatus,
         sop_link: finalSop,
         required_docs: finalReqDocs,
-        default_team_id: requiresHelpdesk ? null : (defaultTeamId || null),
+        default_team_id: finalDefaultTeamId,
         form_schema
       });
       
@@ -360,7 +388,7 @@ export const ManageServices = () => {
       setSopFile(null);
       setRequiredDocs('');
       setRequiredDocsFile(null);
-      setRequiresHelpdesk(true);
+      setRequiresHelpdesk('true');
       setDefaultTeamId('');
       setServiceStatus('Aktif');
       setShowAddForm(false);
@@ -497,18 +525,27 @@ export const ManageServices = () => {
 
             {requiresHelpdesk === 'false' && (
               <div>
-                <label className="block text-xs font-bold text-emerald-600 uppercase tracking-wider mb-1">Tim Pelaksana Otomatis</label>
+                <label className="block text-xs font-bold text-emerald-600 uppercase tracking-wider mb-1">
+                  Tim Pelaksana Otomatis <span className="text-rose-500">*</span>
+                </label>
                 <select
                   required={requiresHelpdesk === 'false'}
-                  value={defaultTeamId ?? ""}
+                  value={defaultTeamId ? String(defaultTeamId) : ""}
                   onChange={(e) => setDefaultTeamId(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-emerald-300 bg-emerald-50 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 font-semibold"
+                  className="w-full px-4 py-2.5 border border-emerald-300 bg-emerald-50 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 font-semibold cursor-pointer"
                 >
-                  <option value="" disabled>Pilih Tim Teknis</option>
-                  {teams.map(t => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
+                  <option value="">-- Pilih Tim Teknis --</option>
+                  {teams.length === 0 ? (
+                    <option value="" disabled>Memuat daftar tim...</option>
+                  ) : (
+                    teams.map(t => (
+                      <option key={t.id} value={String(t.id)}>{t.name}</option>
+                    ))
+                  )}
                 </select>
+                <p className="text-[11px] text-emerald-700/80 mt-1 font-medium">
+                  Tiket dari pemohon akan langsung otomatis diteruskan ke tim ini tanpa verifikasi manual helpdesk.
+                </p>
               </div>
             )}
 
@@ -570,15 +607,15 @@ export const ManageServices = () => {
 
             <div className="col-span-2">
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Dokumen yang Harus Disiapkan Pemohon (Template)</label>
-              <div className="border border-slate-200 bg-slate-50/80 rounded-2xl p-3.5 space-y-2.5">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5 min-w-0">
+              <div className="border border-slate-200 bg-slate-50/80 rounded-2xl p-3.5 space-y-2.5 overflow-hidden">
+                <div className="flex items-center justify-between gap-3 overflow-hidden">
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1 overflow-hidden">
                     <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
                       <FileCheck className="w-4 h-4" />
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-xs sm:text-sm font-bold text-slate-800 truncate">{requiredDocsFile ? requiredDocsFile.name : (requiredDocs ? parseFileValue(requiredDocs).name : 'Belum Ada Dokumen')}</p>
-                      <span className="text-[11px] font-bold text-emerald-600">Template / Referensi Dokumen</span>
+                    <div className="min-w-0 flex-1 overflow-hidden">
+                      <p className="text-xs sm:text-sm font-bold text-slate-800 truncate block min-w-0">{requiredDocsFile ? requiredDocsFile.name : (requiredDocs ? parseFileValue(requiredDocs).name : 'Belum Ada Dokumen')}</p>
+                      <span className="text-[11px] font-bold text-emerald-600 block truncate">Template / Referensi Dokumen</span>
                     </div>
                   </div>
                 </div>
@@ -687,7 +724,7 @@ export const ManageServices = () => {
                     : 'bg-white text-slate-600 border-slate-200 hover:bg-sky-50 hover:text-sky-700 hover:border-sky-200'
                 }`}
               >
-                <span>Wajib Verifikasi Manual ({services.filter(s => s.requiresHelpdesk !== false).length})</span>
+                <span>Wajib Verifikasi Manual ({services.filter(s => s.requiresHelpdesk !== 'false').length})</span>
               </button>
               <button
                 type="button"
@@ -698,7 +735,7 @@ export const ManageServices = () => {
                     : 'bg-white text-slate-600 border-slate-200 hover:bg-sky-50 hover:text-sky-700 hover:border-sky-200'
                 }`}
               >
-                <span>Otomatis Diproses ({services.filter(s => s.requiresHelpdesk === false).length})</span>
+                <span>Otomatis Diproses ({services.filter(s => s.requiresHelpdesk === 'false').length})</span>
               </button>
             </div>
           </div>
@@ -711,9 +748,9 @@ export const ManageServices = () => {
               const matchesCategory = s.category === catName;
               const matchesVerif = 
                 selectedVerificationFilter === 'all' ||
-                (selectedVerificationFilter === 'manual' && s.requiresHelpdesk !== false) ||
-                (selectedVerificationFilter === 'auto' && s.requiresHelpdesk === false);
-              const reqLabel = s.requiresHelpdesk !== false ? 'wajib verifikasi manual helpdesk' : 'otomatis langsung diproses';
+                (selectedVerificationFilter === 'manual' && s.requiresHelpdesk !== 'false') ||
+                (selectedVerificationFilter === 'auto' && s.requiresHelpdesk === 'false');
+              const reqLabel = s.requiresHelpdesk === 'false' ? 'otomatis langsung diproses' : 'wajib verifikasi manual helpdesk';
               const matchesQuery = query === '' || 
                 s.name.toLowerCase().includes(query) || 
                 (s.sla && s.sla.toLowerCase().includes(query)) ||
@@ -810,15 +847,33 @@ export const ManageServices = () => {
                               type="button"
                               onClick={() => toggleServiceVerification(s.id)}
                               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer ${
-                                s.requiresHelpdesk !== false
-                                  ? 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 shadow-2xs'
-                                  : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 shadow-2xs'
+                                s.requiresHelpdesk === 'false'
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 shadow-2xs'
+                                  : s.requiresHelpdesk === 'asesmen'
+                                  ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 shadow-2xs'
+                                  : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 shadow-2xs'
                               }`}
-                              title={s.requiresHelpdesk !== false ? 'Klik untuk toggle: Otomatis Langsung Diproses' : 'Klik untuk toggle: Wajib Verifikasi Manual Helpdesk'}
+                              title={s.requiresHelpdesk === 'false' ? 'Otomatis langsung ke tim pelaksana. Klik untuk ganti ke Wajib Verifikasi.' : 'Wajib verifikasi Helpdesk. Klik untuk ganti ke Otomatis.'}
                             >
-                              <span className={`w-2 h-2 rounded-full ${s.requiresHelpdesk !== false ? 'bg-indigo-500' : 'bg-emerald-500'}`}></span>
-                              <span>{s.requiresHelpdesk !== false ? 'Wajib Verifikasi' : 'Otomatis Diproses'}</span>
+                              <span className={`w-2 h-2 rounded-full ${
+                                s.requiresHelpdesk === 'false' ? 'bg-emerald-500' : s.requiresHelpdesk === 'asesmen' ? 'bg-amber-500' : 'bg-indigo-500'
+                              }`}></span>
+                              <span>
+                                {s.requiresHelpdesk === 'false' 
+                                  ? 'Otomatis Diproses' 
+                                  : s.requiresHelpdesk === 'asesmen' 
+                                  ? 'Asesmen' 
+                                  : 'Wajib Verifikasi'}
+                              </span>
                             </button>
+                            {s.requiresHelpdesk === 'false' && (
+                              <div className="mt-1 text-[11px] font-semibold text-emerald-600 flex items-center justify-center gap-1">
+                                <span>&rarr;</span>
+                                <span className="truncate max-w-[130px]" title={teams.find(t => String(t.id) === String(s.defaultTeamId || s.default_team_id))?.name || s.default_team_name || 'Tim Teknis'}>
+                                  {teams.find(t => String(t.id) === String(s.defaultTeamId || s.default_team_id))?.name || s.default_team_name || 'Pilih Tim di Edit'}
+                                </span>
+                              </div>
+                            )}
                           </td>
                           <td className="px-5 py-4 text-center">
                             <button 
@@ -1052,18 +1107,27 @@ export const ManageServices = () => {
                 </div>
                 {editRequiresHelpdesk === 'false' && (
                   <div>
-                    <label className="block text-xs font-bold text-emerald-600 uppercase tracking-wider mb-1.5">Tim Pelaksana Otomatis</label>
+                    <label className="block text-xs font-bold text-emerald-600 uppercase tracking-wider mb-1.5">
+                      Tim Pelaksana Otomatis <span className="text-rose-500">*</span>
+                    </label>
                     <select
                       required={editRequiresHelpdesk === 'false'}
-                      value={editDefaultTeamId ?? ""}
+                      value={editDefaultTeamId ? String(editDefaultTeamId) : ""}
                       onChange={(e) => setEditDefaultTeamId(e.target.value)}
-                      className="w-full px-4 py-2.5 border border-emerald-300 bg-emerald-50 rounded-xl text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-semibold"
+                      className="w-full px-4 py-2.5 border border-emerald-300 bg-emerald-50 rounded-xl text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-semibold cursor-pointer"
                     >
-                      <option value="" disabled>Pilih Tim Teknis</option>
-                      {teams.map(t => (
-                        <option key={t.id} value={t.id}>{t.name}</option>
-                      ))}
+                      <option value="">-- Pilih Tim Teknis --</option>
+                      {teams.length === 0 ? (
+                        <option value="" disabled>Memuat daftar tim...</option>
+                      ) : (
+                        teams.map(t => (
+                          <option key={t.id} value={String(t.id)}>{t.name}</option>
+                        ))
+                      )}
                     </select>
+                    <p className="text-[11px] text-emerald-700/80 mt-1 font-medium">
+                      Tiket dari pemohon akan langsung otomatis diteruskan ke tim ini tanpa verifikasi manual helpdesk.
+                    </p>
                   </div>
                 )}
                 <div className={editRequiresHelpdesk !== 'false' ? "col-span-1 sm:col-span-2" : ""}>
@@ -1125,15 +1189,15 @@ export const ManageServices = () => {
 
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Dokumen yang Harus Disiapkan Pemohon (Template)</label>
-                <div className="border border-slate-200 bg-slate-50/80 rounded-2xl p-3.5 space-y-2.5">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5 min-w-0">
+                <div className="border border-slate-200 bg-slate-50/80 rounded-2xl p-3.5 space-y-2.5 overflow-hidden">
+                  <div className="flex items-center justify-between gap-3 overflow-hidden">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1 overflow-hidden">
                       <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
                         <FileCheck className="w-4 h-4" />
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-xs sm:text-sm font-bold text-slate-800 truncate">{editRequiredDocsFile ? editRequiredDocsFile.name : (editRequiredDocs ? parseFileValue(editRequiredDocs).name : 'Belum Ada Dokumen')}</p>
-                        <span className="text-[11px] font-bold text-emerald-600">Template / Referensi Dokumen</span>
+                      <div className="min-w-0 flex-1 overflow-hidden">
+                        <p className="text-xs sm:text-sm font-bold text-slate-800 truncate block min-w-0">{editRequiredDocsFile ? editRequiredDocsFile.name : (editRequiredDocs ? parseFileValue(editRequiredDocs).name : 'Belum Ada Dokumen')}</p>
+                        <span className="text-[11px] font-bold text-emerald-600 block truncate">Template / Referensi Dokumen</span>
                       </div>
                     </div>
                   </div>

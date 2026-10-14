@@ -82,7 +82,7 @@ export const AppRoutes = () => {
           path="history" 
           element={
             <ProtectedRoute allowedRoles={['ADMIN', 'HELPDESK', 'PEGAWAI', 'USER', 'MASYARAKAT']}>
-              <TicketHistory mode="active" />
+              <TicketHistory key="active" mode="active" />
             </ProtectedRoute>
           } 
         />
@@ -91,7 +91,7 @@ export const AppRoutes = () => {
           path="ticket-history" 
           element={
             <ProtectedRoute allowedRoles={['ADMIN', 'HELPDESK', 'PEGAWAI', 'USER', 'MASYARAKAT']}>
-              <TicketHistory mode="history" />
+              <TicketHistory key="history" mode="history" />
             </ProtectedRoute>
           } 
         />

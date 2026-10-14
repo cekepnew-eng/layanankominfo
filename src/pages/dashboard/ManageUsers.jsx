@@ -72,9 +72,21 @@ export const ManageUsers = () => {
     setEditingUser(u);
     setEditRoleVal((u.role || 'user').toLowerCase());
     
+    const isMasyarakat = Boolean(
+      u.department === 'Masyarakat Umum' ||
+      u.department === 'Masyarakat' ||
+      u.role?.toUpperCase() === 'MASYARAKAT' ||
+      u.roles?.some(r => String(r).toUpperCase() === 'MASYARAKAT')
+    );
+
     let initialRoles = (u.roles || [u.role || 'user']).map(r => r.toLowerCase());
-    if (initialRoles.some(r => r !== 'masyarakat' && r !== 'user')) {
-      if (!initialRoles.includes('user')) initialRoles.push('user');
+    if (isMasyarakat) {
+      initialRoles = ['masyarakat'];
+    } else {
+      initialRoles = initialRoles.filter(r => r !== 'masyarakat');
+      if (!initialRoles.includes('user')) {
+        initialRoles.push('user');
+      }
     }
     setEditRolesVal(initialRoles);
 
@@ -86,22 +98,37 @@ export const ManageUsers = () => {
   };
 
   const handleToggleRoleCheckbox = (roleKey) => {
+    const isMasyarakat = Boolean(
+      editingUser?.department === 'Masyarakat Umum' ||
+      editingUser?.department === 'Masyarakat' ||
+      editingUser?.role?.toUpperCase() === 'MASYARAKAT' ||
+      editingUser?.roles?.some(r => String(r).toUpperCase() === 'MASYARAKAT')
+    );
+
+    if (isMasyarakat) {
+      // Akun Masyarakat Umum tidak dapat diubah ke OPD/staf
+      return;
+    }
+
+    if (roleKey === 'masyarakat') {
+      // Akun OPD / Instansi tidak dapat diubah menjadi Masyarakat
+      return;
+    }
+
+    if (roleKey === 'user') {
+      // User (OPD / Dinas) adalah peran dasar instansi dan wajib aktif
+      return;
+    }
+
     setEditRolesVal(prev => {
       let newRoles = prev.includes(roleKey) 
         ? prev.filter(r => r !== roleKey) 
         : [...prev, roleKey];
-        
-      if (roleKey === 'masyarakat' && !prev.includes('masyarakat')) {
-        newRoles = ['masyarakat'];
-      } else if (roleKey !== 'masyarakat' && !prev.includes(roleKey)) {
-        newRoles = newRoles.filter(r => r !== 'masyarakat');
-      }
 
-      if (newRoles.some(r => r !== 'masyarakat' && r !== 'user')) {
-        if (!newRoles.includes('user')) newRoles.push('user');
+      newRoles = newRoles.filter(r => r !== 'masyarakat');
+      if (!newRoles.includes('user')) {
+        newRoles.push('user');
       }
-
-      if (newRoles.length === 0) newRoles = ['masyarakat']; // Fallback
 
       return newRoles;
     });
@@ -140,9 +167,21 @@ export const ManageUsers = () => {
   };
 
   const handleSaveEdit = async () => {
+    const isMasyarakat = Boolean(
+      editingUser?.department === 'Masyarakat Umum' ||
+      editingUser?.department === 'Masyarakat' ||
+      editingUser?.role?.toUpperCase() === 'MASYARAKAT' ||
+      editingUser?.roles?.some(r => String(r).toUpperCase() === 'MASYARAKAT')
+    );
+
+    let finalRoles = isMasyarakat ? ['masyarakat'] : editRolesVal.filter(r => r !== 'masyarakat');
+    if (!isMasyarakat && !finalRoles.includes('user')) {
+      finalRoles.push('user');
+    }
+
     const assignedTeamIds = Object.keys(editTeamAssignments).filter(id => editTeamAssignments[id]);
 
-    if (editRolesVal.includes('pegawai') && assignedTeamIds.length === 0) {
+    if (finalRoles.includes('pegawai') && assignedTeamIds.length === 0) {
       setModalConfig({
         isOpen: true,
         type: 'warning',
@@ -155,11 +194,11 @@ export const ManageUsers = () => {
       return;
     }
 
-    const primaryRole = editRolesVal[0] || 'user';
+    const primaryRole = finalRoles[0] || (isMasyarakat ? 'masyarakat' : 'user');
     const primaryTeamId = assignedTeamIds.length > 0 ? assignedTeamIds[0] : null;
 
     try {
-      await api.updateUserRole(editingUser.id, { roleNames: editRolesVal, team_id: primaryTeamId });
+      await api.updateUserRole(editingUser.id, { roleNames: finalRoles, team_id: primaryTeamId });
       await fetchUsers(); // Refresh from DB
       if (fetchTeams) {
         await fetchTeams();
@@ -286,6 +325,7 @@ export const ManageUsers = () => {
     return (
       (u.name || '').toLowerCase().includes(query) ||
       (u.email || '').toLowerCase().includes(query) ||
+      (u.nip || '').toLowerCase().includes(query) ||
       (u.department || '').toLowerCase().includes(query)
     );
   });
@@ -337,7 +377,7 @@ export const ManageUsers = () => {
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Cari nama, email, atau unit kerja..."
+          placeholder="Cari nama, email, NIP, atau unit kerja..."
           className="w-full pl-11 pr-4 py-3 glass-card rounded-2xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 transition-all shadow-sm"
         />
         {searchQuery && (
@@ -362,7 +402,7 @@ export const ManageUsers = () => {
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/70 text-xs font-bold text-slate-500 uppercase tracking-wider">
                   <th className="px-6 py-4">Nama</th>
-                  <th className="px-6 py-4">Email</th>
+                  <th className="px-6 py-4">Email / NIP</th>
                   <th className="px-6 py-4">Role</th>
                   <th className="px-6 py-4">Unit Kerja</th>
                   <th className="px-6 py-4 text-center">Aksi</th>
@@ -372,7 +412,22 @@ export const ManageUsers = () => {
                 {filteredUsers.map((u) => (
                   <tr key={u.id} className="hover:bg-slate-50/50 transition-all">
                     <td className="px-6 py-4 font-bold text-slate-800">{u.name}</td>
-                    <td className="px-6 py-4">{u.email}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-slate-800">
+                          {u.email && !/^\d{10,}$/.test(u.email) ? u.email : (u.email || '-')}
+                        </span>
+                        {u.nip && u.nip !== u.email ? (
+                          <span className="text-xs text-slate-500 font-mono mt-0.5">
+                            NIP: {u.nip}
+                          </span>
+                        ) : (/^\d{10,}$/.test(u.email || '') ? (
+                          <span className="text-xs text-slate-500 font-mono mt-0.5">
+                            NIP: {u.email}
+                          </span>
+                        ) : null)}
+                      </div>
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-wrap gap-1.5 text-left">
                         {u.roles?.map(r => {
@@ -452,8 +507,14 @@ export const ManageUsers = () => {
                   </div>
                   <div>
                     <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Email Akun</span>
-                    <p className="text-sm font-semibold text-slate-700">{editingUser.email}</p>
+                    <p className="text-sm font-semibold text-slate-700">{editingUser.email || '-'}</p>
                   </div>
+                  {editingUser.nip && (
+                    <div>
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">NIP</span>
+                      <p className="text-sm font-mono font-semibold text-slate-700">{editingUser.nip}</p>
+                    </div>
+                  )}
                   <div>
                     <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
                       {editingUser.role?.toUpperCase() === 'USER' || editingUser.roles?.some(r => r.toUpperCase() === 'USER') ? 'Kategori Pemohon' : 'Unit Kerja / Instansi'}
@@ -461,11 +522,23 @@ export const ManageUsers = () => {
                     <p className="text-sm font-extrabold text-sky-700">{editingUser.department}</p>
                   </div>
                 </div>
-                {!(editingUser.role?.toUpperCase() === 'USER' || editingUser.roles?.some(r => r.toUpperCase() === 'USER')) && (
-                  <p className="text-[11px] text-slate-400 italic pt-1 border-t border-slate-200/50 leading-relaxed">
-                    * Nama, email, dan unit kerja tersinkronisasi otomatis dari akun resmi instansi dan tidak dapat diubah manual oleh admin.
-                  </p>
-                )}
+                {(() => {
+                  const isMasyarakatUser = Boolean(
+                    editingUser.department === 'Masyarakat Umum' ||
+                    editingUser.department === 'Masyarakat' ||
+                    editingUser.role?.toUpperCase() === 'MASYARAKAT' ||
+                    editingUser.roles?.some(r => String(r).toUpperCase() === 'MASYARAKAT')
+                  );
+                  return isMasyarakatUser ? (
+                    <p className="text-[11px] text-amber-700 bg-amber-50 p-2.5 rounded-xl border border-amber-200 font-semibold leading-relaxed">
+                      * Akun Masyarakat Umum terdaftar secara mandiri dan tidak dapat diubah menjadi akun OPD atau dinas.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-slate-400 italic pt-1 border-t border-slate-200/50 leading-relaxed">
+                      * Nama, email, dan unit kerja tersinkronisasi otomatis dari akun resmi instansi dan tidak dapat diubah manual oleh admin.
+                    </p>
+                  );
+                })()}
               </div>
 
               <div className="space-y-2">
@@ -479,18 +552,23 @@ export const ManageUsers = () => {
                     { key: 'masyarakat', label: 'Masyarakat' }
                   ].map((item) => {
                     const isChecked = editRolesVal.includes(item.key);
+                    const isMasyarakatUser = Boolean(
+                      editingUser.department === 'Masyarakat Umum' ||
+                      editingUser.department === 'Masyarakat' ||
+                      editingUser.role?.toUpperCase() === 'MASYARAKAT' ||
+                      editingUser.roles?.some(r => String(r).toUpperCase() === 'MASYARAKAT')
+                    );
                     
                     let isDisabled = false;
-                    if (item.key === 'masyarakat') {
-                      if (editRolesVal.some(r => r !== 'masyarakat')) {
-                        isDisabled = true;
-                      }
-                    } else if (item.key === 'user') {
-                      if (editRolesVal.some(r => r !== 'masyarakat' && r !== 'user')) {
-                        isDisabled = true; // Cannot uncheck if admin/helpdesk/pegawai
-                      }
+                    if (isMasyarakatUser) {
+                      // Akun Masyarakat Umum tidak dapat diubah ke OPD/staf manapun
+                      isDisabled = true;
                     } else {
-                      if (editRolesVal.includes('masyarakat')) {
+                      // Akun OPD / Instansi tidak dapat diubah menjadi Masyarakat
+                      if (item.key === 'masyarakat') {
+                        isDisabled = true;
+                      } else if (item.key === 'user') {
+                        // User (OPD / Dinas) adalah peran dasar instansi dan wajib aktif
                         isDisabled = true;
                       }
                     }
@@ -514,7 +592,7 @@ export const ManageUsers = () => {
                           }`}
                         >
                           {item.label}
-                          {isDisabled && (
+                          {isDisabled && !isChecked && (
                             <span className="text-[10px] text-slate-400 ml-1.5 font-normal">
                               (Tidak Kompatibel)
                             </span>

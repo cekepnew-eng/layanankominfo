@@ -9,28 +9,24 @@ export const TrackTicket = () => {
   const [ticketData, setTicketData] = useState(null);
   const [error, setError] = useState('');
 
-  const handleSearch = async (e) => {
-    e.preventDefault();
-    if (!ticketNumber.trim()) return;
+  const performSearch = async (numToSearch) => {
+    const cleanNum = (numToSearch || '').trim();
+    if (!cleanNum) return;
     
     setLoading(true);
     setError('');
-    setTicketData(null);
     
     try {
-      // Find ticket by number
-      // We can use getAdminTickets or getHelpdeskTickets then filter, but ideally an API call. 
-      // Assuming getAdminTickets gets all tickets
       const res = await api.getAdminTickets();
       if (res.data) {
-        const found = res.data.find(t => t.ticket_number === ticketNumber.trim());
+        const found = res.data.find(t => t.ticket_number === cleanNum);
         if (found) {
-          // Fetch history
           const histRes = await api.getHistory(found.id);
           if (histRes.success) {
             found.logs = histRes.data;
           }
           setTicketData(found);
+          sessionStorage.setItem('lastTrackedTicketNumber', cleanNum);
         } else {
           setError('Tiket tidak ditemukan.');
         }
@@ -41,6 +37,21 @@ export const TrackTicket = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  React.useEffect(() => {
+    const saved = sessionStorage.getItem('lastTrackedTicketNumber');
+    if (saved) {
+      setTicketNumber(saved);
+      performSearch(saved);
+    }
+  }, []);
+
+  const handleSearch = async (e) => {
+    e.preventDefault();
+    if (!ticketNumber.trim()) return;
+    setTicketData(null);
+    performSearch(ticketNumber);
   };
 
   return (

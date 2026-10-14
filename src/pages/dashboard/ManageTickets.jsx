@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getCurrentLogTimeFormatted, formatLogDateDisplay } from '../../utils/dateUtils';
 import { TicketDetailModal } from '../../components/TicketDetailModal';
@@ -80,10 +80,42 @@ const getTargetShortDate = (targetDateStr) => {
 
 export const TicketHistory = ({ mode = 'active' }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, services } = useAuth();
   const [tickets, setTickets] = useState([]);
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedTicket, setSelectedTicket] = useState(null);
+  const [selectedTeam, setSelectedTeam] = useState('Tim Aplikasi & Sistem Informasi');
+  const [rejectReason, setRejectReason] = useState('');
+  const [showRejectForm, setShowRejectForm] = useState(false);
+  const [ratings, setRatings] = useState([]);
+
+  const [rateSpeed, setRateSpeed] = useState(0);
+  const [rateResult, setRateResult] = useState(0);
+  const [rateComm, setRateComm] = useState(0);
+  const [rateQuality, setRateQuality] = useState(0);
+  const rateOverall = Math.round((rateSpeed + rateResult + rateComm + rateQuality) / 4);
+  const [rateComment, setRateComment] = useState('');
+
+  const [tempProgress, setTempProgress] = useState(0);
+  const [progressNote, setProgressNote] = useState('');
+  const [tempRemainingDays, setTempRemainingDays] = useState(3);
+  const [isFinished, setIsFinished] = useState(false);
+  const [pegawaiAction, setPegawaiAction] = useState('pending');
+  const [fileName, setFileName] = useState('');
+  const [bastFileSize, setBastFileSize] = useState('');
+  const [bastFileUrl, setBastFileUrl] = useState('');
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showRefillModal, setShowRefillModal] = useState(false);
+  const [showSkmModal, setShowSkmModal] = useState(false);
+  const [showDisputeForm, setShowDisputeForm] = useState(false);
+  const [disputeReason, setDisputeReason] = useState('');
+  const [showSubtaskModal, setShowSubtaskModal] = useState(false);
+  const [subtaskAssignees, setSubtaskAssignees] = useState({});
+  const [rejectSubtaskId, setRejectSubtaskId] = useState(null);
+  const [rejectSubtaskReason, setRejectSubtaskReason] = useState('');
+  const [showRejectSubtaskModal, setShowRejectSubtaskModal] = useState(false);
 
   const loadTickets = async () => {
     try {
@@ -122,8 +154,8 @@ export const TicketHistory = ({ mode = 'active' }) => {
             requestType: 'Baru',
             slaDuration: 7,
             remainingDays: 7,
-            bastFile: t.bast_file_name,
-            bastFileUrl: t.bast_file_url
+            bastFile: (t.bast_file_name && t.bast_file_url && t.bast_file_url !== '/bast_selesai.pdf') ? t.bast_file_name : null,
+            bastFileUrl: (t.bast_file_name && t.bast_file_url && t.bast_file_url !== '/bast_selesai.pdf') ? t.bast_file_url : null
           }));
         setTickets(mapped);
       }
@@ -139,25 +171,81 @@ export const TicketHistory = ({ mode = 'active' }) => {
   }, [user]);
 
   useEffect(() => {
-    const savedId = sessionStorage.getItem('activeTicketId');
-    if (savedId && tickets.length > 0 && !selectedTicket) {
-      const found = tickets.find(t => (t.uuid || t.id) === savedId || t.id === savedId || t.ticket_number === savedId);
+    setSelectedTicket(null);
+    setShowDetailModal(false);
+    sessionStorage.removeItem('activeTicketId');
+    sessionStorage.removeItem('activeTicketId_active');
+    sessionStorage.removeItem('activeTicketId_history');
+    sessionStorage.removeItem('activeTicketId_my');
+    sessionStorage.removeItem('activeTicketNumber_active');
+    sessionStorage.removeItem('activeTicketNumber_history');
+    sessionStorage.removeItem('showDetailModal_active');
+    sessionStorage.removeItem('showDetailModal_history');
+  }, [location.pathname, mode]);
+
+  useEffect(() => {
+    return () => {
+      setSelectedTicket(null);
+      setShowDetailModal(false);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (selectedTicket && typeof window !== 'undefined' && window.innerWidth < 1024) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [selectedTicket]);
+
+  const handleClearSelectedTicket = () => {
+    setSelectedTicket(null);
+    setShowDetailModal(false);
+    sessionStorage.removeItem('activeTicketId');
+    sessionStorage.removeItem('fromNotificationTicketId');
+    sessionStorage.removeItem('redirectedForTicket');
+  };
+
+  useEffect(() => {
+    const fromNotif = sessionStorage.getItem('fromNotificationTicketId');
+    if (!fromNotif) return;
+
+    if (tickets.length > 0 && !selectedTicket) {
+      const targetId = String(fromNotif).toLowerCase().trim();
+      const isMatch = (t) => {
+        if (!t) return false;
+        const uuidStr = String(t.uuid !== undefined ? t.uuid : '').toLowerCase().trim();
+        const idStr = String(t.id !== undefined ? t.id : '').toLowerCase().trim();
+        const numStr = String(t.ticket_number !== undefined ? t.ticket_number : '').toLowerCase().trim();
+        return uuidStr === targetId || idStr === targetId || numStr === targetId;
+      };
+
+      const found = tickets.find(isMatch);
       if (found) {
         handleSelectTicket(found);
         sessionStorage.removeItem('redirectedForTicket');
+        sessionStorage.removeItem('fromNotificationTicketId');
+        sessionStorage.removeItem('activeTicketId');
       } else {
         const triedRedirect = sessionStorage.getItem('redirectedForTicket');
-        if (triedRedirect !== savedId) {
-          sessionStorage.setItem('redirectedForTicket', savedId);
+        if (triedRedirect !== fromNotif) {
+          sessionStorage.setItem('redirectedForTicket', fromNotif);
           if (mode === 'active') {
-             navigate('/dashboard/ticket-history');
+            navigate('/dashboard/ticket-history');
           } else {
-             navigate('/dashboard/history');
+            navigate('/dashboard/history');
           }
+        } else {
+          sessionStorage.removeItem('redirectedForTicket');
+          sessionStorage.removeItem('fromNotificationTicketId');
+          sessionStorage.removeItem('activeTicketId');
         }
       }
     }
-  }, [tickets]);
+  }, [tickets, mode]);
 
   useEffect(() => {
     const fetchTeams = async () => {
@@ -176,38 +264,6 @@ export const TicketHistory = ({ mode = 'active' }) => {
     };
     if (user) fetchTeams();
   }, [user]);
-
-  const [selectedTicket, setSelectedTicket] = useState(null);
-  const [selectedTeam, setSelectedTeam] = useState('Tim Aplikasi & Sistem Informasi');
-  const [rejectReason, setRejectReason] = useState('');
-  const [showRejectForm, setShowRejectForm] = useState(false);
-  const [ratings, setRatings] = useState([]);
-
-  const [rateSpeed, setRateSpeed] = useState(0);
-  const [rateResult, setRateResult] = useState(0);
-  const [rateComm, setRateComm] = useState(0);
-  const [rateQuality, setRateQuality] = useState(0);
-  const rateOverall = Math.round((rateSpeed + rateResult + rateComm + rateQuality) / 4);
-  const [rateComment, setRateComment] = useState('');
-
-  const [tempProgress, setTempProgress] = useState(0);
-  const [progressNote, setProgressNote] = useState('');
-  const [tempRemainingDays, setTempRemainingDays] = useState(3);
-  const [isFinished, setIsFinished] = useState(false);
-  const [pegawaiAction, setPegawaiAction] = useState('pending');
-  const [fileName, setFileName] = useState('');
-  const [bastFileSize, setBastFileSize] = useState('');
-  const [bastFileUrl, setBastFileUrl] = useState('/bast_selesai.pdf');
-  const [showDetailModal, setShowDetailModal] = useState(false);
-  const [showRefillModal, setShowRefillModal] = useState(false);
-  const [showSkmModal, setShowSkmModal] = useState(false);
-  const [showDisputeForm, setShowDisputeForm] = useState(false);
-  const [disputeReason, setDisputeReason] = useState('');
-  const [showSubtaskModal, setShowSubtaskModal] = useState(false);
-  const [subtaskAssignees, setSubtaskAssignees] = useState({});
-  const [rejectSubtaskId, setRejectSubtaskId] = useState(null);
-  const [rejectSubtaskReason, setRejectSubtaskReason] = useState('');
-  const [showRejectSubtaskModal, setShowRejectSubtaskModal] = useState(false);
 
   const handleFinalizeAssessment = async () => {
     try {
@@ -454,18 +510,29 @@ export const TicketHistory = ({ mode = 'active' }) => {
     try {
       const res = await api.getHistory(t.uuid || t.id);
       if (res.success) {
+        const hasBast = Boolean(ticketWithLogs.bastFile && ticketWithLogs.bastFileUrl && ticketWithLogs.bastFileUrl !== '/bast_selesai.pdf');
         // Reverse so newest is first, if backend sends ASC
-        ticketWithLogs.logs = res.data.reverse().map(log => ({
-          date: log.created_at,
-          text: log.log_description,
-          author: log.user_name ? `${log.user_name} (${!log.user_role ? 'Sistem' : ['ADMIN', 'PEGAWAI', 'KETUA TIM'].includes(log.user_role.toUpperCase()) ? 'Pegawai' : ['USER', 'MASYARAKAT'].includes(log.user_role.toUpperCase()) ? 'Pemohon' : 'Helpdesk'})` : 'Sistem'
-        }));
+        ticketWithLogs.logs = res.data.reverse().map(log => {
+          let text = log.log_description || '';
+          if (!hasBast) {
+            text = text.replace(/Selesai dikerjakan\.\s*BAST siap\.?/gi, 'Selesai dikerjakan.');
+            text = text.replace(/\.?\s*Berkas dokumen Berita Acara Serah Terima \(BAST\) telah siap untuk diunduh dan dikonfirmasi\.?/gi, '');
+            text = text.replace(/\.?\s*BAST siap\.?/gi, '');
+          }
+          return {
+            date: log.created_at,
+            text: text,
+            author: log.user_name ? `${log.user_name} (${!log.user_role ? 'Sistem' : ['ADMIN', 'PEGAWAI', 'KETUA TIM'].includes(log.user_role.toUpperCase()) ? 'Pegawai' : ['USER', 'MASYARAKAT'].includes(log.user_role.toUpperCase()) ? 'Pemohon' : 'Helpdesk'})` : 'Sistem'
+          };
+        });
       }
     } catch (err) {
       console.error('Failed to fetch history', err);
     }
     setSelectedTicket(ticketWithLogs);
-    sessionStorage.setItem('activeTicketId', t.uuid || t.id);
+    if (window.innerWidth < 1024) {
+      setShowDetailModal(true);
+    }
     document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -475,12 +542,19 @@ export const TicketHistory = ({ mode = 'active' }) => {
       return;
     }
 
+    const hasBast = Boolean(fileName && bastFileBase64 && bastFileBase64.trim() !== '');
+    const finalNoteText = progressNote.trim() 
+      ? progressNote.trim() 
+      : (pegawaiAction === 'done' 
+          ? (hasBast ? 'Pekerjaan teknis telah selesai 100% dan dokumen BAST siap.' : 'Pekerjaan teknis telah selesai dikerjakan 100%.')
+          : (pegawaiAction === 'reject' ? 'Tiket dikembalikan ke pemohon untuk diperbaiki.' : ''));
+
     try {
       await api.updateProgress(ticketId, { 
         progress: pegawaiAction === 'done' ? 100 : tempProgress, 
-        note: progressNote.trim(),
+        note: finalNoteText,
         statusAction: pegawaiAction === 'reject' ? 'REJECT' : null,
-        ...(pegawaiAction === 'done' && fileName ? { bastFileName: fileName, bastFileBase64: bastFileBase64 } : {})
+        ...(pegawaiAction === 'done' && hasBast ? { bastFileName: fileName, bastFileBase64: bastFileBase64 } : {})
       });
       loadTickets(); // Refresh from DB
       setProgressNote('');
@@ -489,12 +563,12 @@ export const TicketHistory = ({ mode = 'active' }) => {
         type: 'success',
         title: pegawaiAction === 'done' ? 'Tugas Berhasil Diselesaikan' : (pegawaiAction === 'reject' ? 'Tiket Dikembalikan' : 'Progres Berhasil Diperbarui'),
         message: pegawaiAction === 'done'
-          ? (fileName ? 'Pekerjaan teknis telah selesai 100% dan Dokumen Pendukung telah diunggah. Pemohon dapat mengisi survei SKM.' : 'Pekerjaan teknis telah selesai 100%! Pemohon dapat mengisi survei SKM.')
+          ? (hasBast ? 'Pekerjaan teknis telah selesai 100% dan Dokumen BAST telah diunggah. Pemohon dapat mengisi survei SKM.' : 'Pekerjaan teknis telah selesai 100%! Pemohon dapat mengisi survei SKM.')
           : (pegawaiAction === 'reject' ? 'Tiket berhasil dikembalikan ke pemohon untuk diperbaiki.' : 'Catatan progres pekerjaan berhasil disimpan ke dalam log riwayat tiket.'),
         confirmText: 'Selesai & Tutup',
         onConfirm: closeModal
       });
-      setSelectedTicket(null);
+      handleClearSelectedTicket();
     } catch (err) {
       alert('Gagal update progress: ' + err.message);
     }
@@ -561,7 +635,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
         confirmText: 'Selesai & Tutup',
         onConfirm: closeModal
       });
-      setSelectedTicket(null);
+      handleClearSelectedTicket();
     } catch (err) {
       alert('Gagal mengirim feedback: ' + err.message);
     }
@@ -575,7 +649,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
       await api.verifyTicket(ticketUuid);
       await api.assignTicket(ticketUuid, { team_id, user_id: null });
       loadTickets(); // Refresh from DB
-      setSelectedTicket(null);
+      handleClearSelectedTicket();
       setModalConfig({
         isOpen: true,
         type: 'success',
@@ -609,7 +683,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
     try {
       await api.rejectTicket(ticketUuid, { note: reasonText });
       loadTickets();
-      setSelectedTicket(null);
+      handleClearSelectedTicket();
       setRejectReason('');
       setShowRejectForm(false);
       setModalConfig({
@@ -786,8 +860,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
               key={tab.id}
               onClick={() => {
                 setActiveTab(tab.id);
-                setSelectedTicket(null);
-                sessionStorage.removeItem('activeTicketId');
+                handleClearSelectedTicket();
               }}
               className={`px-5 py-3 border-b-2 font-bold text-sm transition-all whitespace-nowrap -mb-px flex items-center gap-2 ${isActive
                   ? 'border-sky-600 text-sky-600 bg-sky-50/50 rounded-t-lg'
@@ -875,12 +948,24 @@ export const TicketHistory = ({ mode = 'active' }) => {
           )}
         </div>
 
-        <div className={`lg:col-span-5 ${selectedTicket ? 'fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 lg:relative lg:inset-auto lg:bg-transparent lg:backdrop-blur-none lg:p-0 lg:z-auto lg:block' : 'hidden lg:block'}`}>
+        <div 
+          className={`lg:col-span-5 ${selectedTicket ? 'fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 lg:relative lg:inset-auto lg:bg-transparent lg:backdrop-blur-none lg:p-0 lg:z-auto lg:block overflow-x-hidden overflow-y-auto' : 'hidden lg:block'}`}
+          onClick={() => {
+            if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+              handleClearSelectedTicket();
+            }
+          }}
+        >
           {selectedTicket ? (
-            <div className="w-full max-w-lg lg:max-w-none bg-white lg:bg-transparent lg:glass-card rounded-3xl border border-slate-200 lg:border-white/60 p-6 space-y-6 lg:sticky lg:top-24 shadow-2xl lg:shadow-sm max-h-[90vh] overflow-y-auto lg:max-h-none lg:overflow-visible relative">
+            <div 
+              className="w-full max-w-lg lg:max-w-none bg-white lg:bg-transparent lg:glass-card rounded-2xl sm:rounded-3xl border border-slate-200 lg:border-white/60 p-4 sm:p-6 space-y-5 sm:space-y-6 lg:sticky lg:top-24 shadow-2xl lg:shadow-sm max-h-[88vh] lg:max-h-none overflow-y-auto overflow-x-hidden lg:overflow-visible relative text-left"
+              onClick={(e) => e.stopPropagation()}
+            >
               <button 
-                onClick={(e) => { e.stopPropagation(); setSelectedTicket(null); }}
-                className="absolute right-4 top-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 lg:hidden cursor-pointer"
+                type="button"
+                onClick={(e) => { e.stopPropagation(); handleClearSelectedTicket(); }}
+                className="absolute right-3.5 top-3.5 w-9 h-9 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 lg:hidden cursor-pointer shadow-xs transition-colors"
+                aria-label="Tutup Detail"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -900,8 +985,8 @@ export const TicketHistory = ({ mode = 'active' }) => {
                     {selectedTicket.status}
                   </span>
                 </div>
-                <h3 className="font-extrabold text-lg text-slate-800 tracking-tight leading-snug">{selectedTicket.title}</h3>
-                <p className="text-base text-slate-500 leading-relaxed">{selectedTicket.desc}</p>
+                <h3 className="font-extrabold text-lg text-slate-800 tracking-tight leading-snug break-words">{selectedTicket.title}</h3>
+                <p className="text-base text-slate-500 leading-relaxed break-words break-all">{selectedTicket.desc}</p>
                 <button
                   type="button"
                   onClick={() => setShowDetailModal(true)}
@@ -951,15 +1036,15 @@ export const TicketHistory = ({ mode = 'active' }) => {
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Dokumen Lampiran Pengajuan</span>
                   <div className="space-y-2">
                     {selectedTicket.files.map((file, idx) => (
-                      <div key={idx} className="flex items-center justify-between gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold">
-                        <div className="flex items-center gap-2 text-slate-700 min-w-0">
+                      <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold overflow-hidden">
+                        <div className="flex items-center gap-2 text-slate-700 min-w-0 flex-1 w-full overflow-hidden">
                           <FileText className="w-4 h-4 text-sky-600 shrink-0" />
-                          <span className="truncate">{file}</span>
+                          <span className="truncate block min-w-0" title={file}>{file}</span>
                         </div>
                         <button
                           type="button"
                           onClick={() => handleViewFile(selectedTicket.fileUrl || '/dokumen_permohonan.pdf')}
-                          className="text-xs font-bold text-sky-600 hover:underline px-2.5 py-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-all shrink-0 cursor-pointer"
+                          className="text-xs font-bold text-sky-600 hover:underline px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-all shrink-0 cursor-pointer w-full sm:w-auto text-center"
                         >
                           Buka PDF
                         </button>
@@ -969,20 +1054,20 @@ export const TicketHistory = ({ mode = 'active' }) => {
                 </div>
               )}
 
-              {(selectedTicket.bastFile || selectedTicket.status.includes('Selesai') || selectedTicket.status === 'Menunggu Konfirmasi User') && (
+              {Boolean(selectedTicket.bastFile && selectedTicket.bastFile.trim() !== '' && selectedTicket.bastFileUrl && selectedTicket.bastFileUrl !== '/bast_selesai.pdf') && (
                 <div className="space-y-2.5 text-left">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Lampiran Penyelesaian Pegawai (Dokumen Pendukung)</span>
-                  <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200 text-sm font-semibold">
-                    <div className="flex items-center gap-2 text-slate-700">
-                      <FileText className="w-4 h-4 text-emerald-600" />
-                      <span className="truncate max-w-[200px]" title={selectedTicket.bastFile || `Dokumen_${selectedTicket.id}.pdf`}>
-                        {selectedTicket.bastFile || `Dokumen_${selectedTicket.id}.pdf`}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200 text-sm font-semibold overflow-hidden">
+                    <div className="flex items-center gap-2 text-slate-700 min-w-0 flex-1 w-full overflow-hidden">
+                      <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span className="truncate block min-w-0" title={selectedTicket.bastFile}>
+                        {selectedTicket.bastFile}
                       </span>
                     </div>
                     <button
                       type="button"
-                      onClick={() => handleViewFile(selectedTicket.bastFileUrl || '/bast_selesai.pdf')}
-                      className="text-xs font-bold text-sky-600 hover:underline px-2.5 py-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-all shrink-0 cursor-pointer"
+                      onClick={() => handleViewFile(selectedTicket.bastFileUrl)}
+                      className="text-xs font-bold text-sky-600 hover:underline px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-all shrink-0 cursor-pointer w-full sm:w-auto text-center"
                     >
                       Unduh Dokumen (PDF)
                     </button>
@@ -1183,9 +1268,9 @@ export const TicketHistory = ({ mode = 'active' }) => {
                                   const fName = selectedTicket.form_data[`${key}_name`];
                                   if (fUrl && fName) {
                                     return (
-                                      <div className="flex items-center justify-between p-2 bg-slate-50 rounded-lg border border-slate-100">
-                                        <span className="text-[10px] font-bold text-slate-600 truncate mr-2" title={fName}>{fName}</span>
-                                        <button type="button" onClick={() => handleViewFile(fUrl)} className="flex items-center gap-1 px-2 py-1 bg-sky-100 text-sky-700 hover:bg-sky-200 rounded text-[10px] font-bold transition-all shrink-0 cursor-pointer">
+                                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100 overflow-hidden">
+                                        <span className="text-[10px] font-bold text-slate-600 truncate min-w-0 flex-1 block" title={fName}>{fName}</span>
+                                        <button type="button" onClick={() => handleViewFile(fUrl)} className="flex items-center justify-center gap-1 px-2 py-1 bg-sky-100 text-sky-700 hover:bg-sky-200 rounded text-[10px] font-bold transition-all shrink-0 cursor-pointer w-full sm:w-auto text-center">
                                           <Eye className="w-3 h-3" /> Lihat
                                         </button>
                                       </div>
@@ -1299,17 +1384,17 @@ export const TicketHistory = ({ mode = 'active' }) => {
                         className="hidden"
                       />
                       {fileName ? (
-                        <div className="flex justify-between items-center p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800">
-                          <div className="flex items-center gap-2 truncate">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800 overflow-hidden">
+                          <div className="flex items-center gap-2 min-w-0 flex-1 w-full overflow-hidden">
                             <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
-                            <span className="truncate">{fileName} ({bastFileSize || 'Valid PDF'})</span>
+                            <span className="truncate block min-w-0">{fileName} ({bastFileSize || 'Valid PDF'})</span>
                           </div>
-                          <div className="flex items-center gap-2 shrink-0">
+                          <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
                             <a
                               href={bastFileUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="px-2.5 py-1 bg-white border border-emerald-300 text-emerald-700 rounded-lg hover:bg-emerald-100 transition-all"
+                              className="px-2.5 py-1 bg-white border border-emerald-300 text-emerald-700 rounded-lg hover:bg-emerald-100 transition-all w-full sm:w-auto text-center"
                             >
                               Lihat PDF
                             </a>

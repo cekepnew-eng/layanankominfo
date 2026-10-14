@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { authService } from '../../services/authService';
 import { api } from '../../services/api';
 import { ActionModal } from '../../components/ActionModal';
+import { ForgotPasswordModal } from '../../components/ForgotPasswordModal';
 import { Monitor, ArrowLeft, Lock, Mail, ChevronRight, Check, ShieldCheck, QrCode, Copy, Eye, EyeOff } from 'lucide-react';
 
 export const Login = () => {
@@ -15,6 +16,7 @@ export const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [tempToken, setTempToken] = useState('');
 
+  const [showForgotModal, setShowForgotModal] = useState(false);
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [otpStep, setOtpStep] = useState(1);
   const [otpCode, setOtpCode] = useState('');
@@ -24,6 +26,7 @@ export const Login = () => {
   const [captchaData, setCaptchaData] = useState({ text: '', token: '' });
   const [captchaAnswer, setCaptchaAnswer] = useState('');
   const [trustDevice, setTrustDevice] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
   
   const [modalConfig, setModalConfig] = useState({
     isOpen: false,
@@ -71,6 +74,7 @@ export const Login = () => {
   };
 
   const triggerLogin = async (email, pass, cToken, cAnswer) => {
+    setPasswordError('');
     const loginResult = await login(email, pass, cToken, cAnswer);
     if (loginResult && loginResult.requires2FA) {
       setTempToken(loginResult.tempToken);
@@ -95,8 +99,13 @@ export const Login = () => {
     } else if (loginResult && loginResult.success) {
       navigate('/dashboard');
     } else {
-      setModalConfig({ isOpen: true, type: 'danger', title: 'Login Gagal', message: loginResult?.message || 'Login gagal, periksa kredensial Anda.' });
-      loadCaptcha(); // Reload captcha on failure
+      if (loginResult?.isOldPassword) {
+        setPasswordError(loginResult.message);
+        loadCaptcha();
+      } else {
+        setModalConfig({ isOpen: true, type: 'danger', title: 'Login Gagal', message: loginResult?.message || 'Login gagal, periksa kredensial Anda.' });
+        loadCaptcha(); // Reload captcha on failure
+      }
     }
   };
 
@@ -250,11 +259,14 @@ export const Login = () => {
           </div>
 
           <div className="space-y-6 max-w-md text-left">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-400/20 text-sky-400 text-xs font-black uppercase tracking-widest">
+              Portal Helpdesk SPBE
+            </div>
             <h1 className="text-5xl lg:text-6xl font-black leading-tight tracking-tight text-white">
-              Sinergi Teknologi Pemerintahan
+              Helpdesk Layanan SPBE
             </h1>
             <p className="text-slate-400 text-lg leading-relaxed">
-              Mewujudkan efisiensi, akuntabilitas, dan pelayanan terbaik bagi warga Kota Bogor melalui penerapan arsitektur SPBE terintegrasi.
+              Pusat bantuan dan sistem pelayanan terpadu Diskominfo Kota Bogor untuk penanganan permohonan, bantuan teknis, dan digitalisasi layanan secara cepat, transparan, dan akuntabel.
             </p>
           </div>
 
@@ -277,12 +289,12 @@ export const Login = () => {
             <h2 className="text-4xl font-black text-slate-900 tracking-tight">Portal Masuk</h2>
             <div className="space-y-2.5">
               <p className="text-slate-600 text-base leading-relaxed">
-                Silakan masuk menggunakan <strong>Email</strong> (Masyarakat) atau <strong>SSO TND</strong> (ASN).
+                Silakan masuk menggunakan <strong>NIP</strong> atau <strong>Email</strong> Anda.
               </p>
-              <div className="bg-blue-50/80 border border-blue-100 rounded-xl p-3 text-sm text-blue-800 shadow-sm flex items-start gap-2.5">
-                <span className="text-blue-500 mt-0.5">ℹ️</span>
+              <div className="bg-sky-50/80 border border-sky-100 rounded-xl p-3 text-sm text-sky-800 shadow-sm flex items-start gap-2.5">
+                <span className="text-sky-500 mt-0.5">ℹ️</span>
                 <p>
-                  <strong>Khusus ASN/OPD:</strong> Tidak perlu mendaftar. Silakan langsung masuk menggunakan kredensial SSO TND Anda.
+                  <strong>Khusus ASN / OPD:</strong> Anda dapat masuk menggunakan <strong>NIP</strong> maupun <strong>Email</strong>. Keduanya otomatis terhubung ke 1 akun yang sama.
                 </p>
               </div>
             </div>
@@ -291,7 +303,7 @@ export const Login = () => {
           <div className="space-y-4">
             <div className="space-y-1.5">
               <label htmlFor="identifier" className="block text-xs font-bold text-slate-550 uppercase tracking-wider">
-                Email / NIK / Username TND / NIP
+                NIP / Email / NIK
               </label>
               <div className="relative rounded-xl border border-slate-200 bg-slate-50/50 focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500/20 transition-all">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-450">
@@ -303,18 +315,27 @@ export const Login = () => {
                   required
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
-                  placeholder="Email, NIK, atau Username TND / NIP"
+                  placeholder="Masukkan NIP atau Email Anda"
                   className="block w-full pl-11 pr-4 py-3 bg-transparent text-slate-800 text-base placeholder-slate-400 focus:outline-none"
                 />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <label htmlFor="password" className="block text-xs font-bold text-slate-550 uppercase tracking-wider">
-                Kata Sandi
-              </label>
-              <div className="relative rounded-xl border border-slate-200 bg-slate-50/50 focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500/20 transition-all">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-450">
+              <div className="flex items-center justify-between">
+                <label htmlFor="password" className="block text-xs font-bold text-slate-550 uppercase tracking-wider">
+                  Kata Sandi
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowForgotModal(true)}
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline transition-colors cursor-pointer"
+                >
+                  Lupa kata sandi?
+                </button>
+              </div>
+              <div className={`relative rounded-xl border ${passwordError ? 'border-rose-500 bg-rose-50/20 ring-1 ring-rose-500/20' : 'border-slate-200 bg-slate-50/50 focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500/20'} transition-all`}>
+                <div className={`absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none ${passwordError ? 'text-rose-500' : 'text-slate-450'}`}>
                   <Lock className="w-4 h-4" />
                 </div>
                 <input
@@ -322,7 +343,10 @@ export const Login = () => {
                   type={showPassword ? "text" : "password"}
                   required
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (passwordError) setPasswordError('');
+                  }}
                   placeholder="Masukkan kata sandi"
                   className="block w-full pl-11 pr-12 py-3 bg-transparent text-slate-800 text-base placeholder-slate-400 focus:outline-none"
                 />
@@ -334,6 +358,12 @@ export const Login = () => {
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
+              {passwordError && (
+                <p className="text-xs font-bold text-rose-600 flex items-center gap-1.5 mt-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-600 shrink-0"></span>
+                  <span>{passwordError}</span>
+                </p>
+              )}
             </div>
 
             <div className="space-y-1.5 pt-2">
@@ -526,6 +556,11 @@ export const Login = () => {
         confirmText={modalConfig.confirmText}
         cancelText={modalConfig.cancelText}
         onConfirm={modalConfig.onConfirm}
+      />
+
+      <ForgotPasswordModal
+        isOpen={showForgotModal}
+        onClose={() => setShowForgotModal(false)}
       />
     </div>
   );

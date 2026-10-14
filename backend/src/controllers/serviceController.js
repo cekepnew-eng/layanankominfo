@@ -76,9 +76,11 @@ exports.deleteCategory = async (req, res) => {
 exports.getAdminServices = async (req, res) => {
   try {
     const servicesRes = await db.query(`
-      SELECT s.*, s.service_name as name, s.status = 'Aktif' as is_active, c.category_name as category_name
+      SELECT s.*, s.service_name as name, s.status = 'Aktif' as is_active, 
+             c.category_name as category_name, t.team_name as default_team_name
       FROM services s
       JOIN service_categories c ON s.category_id = c.id
+      LEFT JOIN teams t ON s.default_team_id = t.id
       ORDER BY s.id ASC
     `);
     
@@ -109,33 +111,48 @@ exports.createService = async (req, res) => {
       const catRes = await db.query('SELECT id FROM service_categories WHERE category_name = $1', [category_name]);
       if (catRes.rows.length > 0) finalCatId = catRes.rows[0].id;
     }
+    if (!finalCatId) {
+      const catRes = await db.query('SELECT id FROM service_categories LIMIT 1');
+      finalCatId = catRes.rows[0]?.id || 1;
+    }
+    const finalDefTeam = verification_type === 'Otomatis' && default_team_id ? parseInt(default_team_id, 10) : null;
     const result = await db.query(`
       INSERT INTO services (category_id, service_name, target_sla, verification_type, sop_link, status, form_schema, required_docs, default_team_id)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *
-    `, [finalCatId, name, target_sla, verification_type, sop_link || null, status || 'Aktif', JSON.stringify(form_schema || []), required_docs || '', default_team_id || null]);
+    `, [finalCatId, name, target_sla || '7 Hari', verification_type || 'Wajib Verifikasi', sop_link || null, status || 'Aktif', JSON.stringify(form_schema || []), required_docs || '', finalDefTeam]);
     res.status(201).json({ success: true, data: result.rows[0] });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error' });
+    res.status(500).json({ success: false, message: 'Server error: ' + err.message });
   }
 };
 
 exports.updateService = async (req, res) => {
   const { id } = req.params;
-  const { category_name, category_id, name, target_sla, verification_type, sop_link, status, form_schema, required_docs, default_team_id } = req.body;
+  const { category_name, category_id, name, target_sla, verification_type, sop_link, status, form_schema, required_docs, default_team_id, is_active } = req.body;
   try {
     let finalCatId = category_id;
     if (!finalCatId && category_name) {
       const catRes = await db.query('SELECT id FROM service_categories WHERE category_name = $1', [category_name]);
       if (catRes.rows.length > 0) finalCatId = catRes.rows[0].id;
     }
+    const finalStatus = status || (is_active ? 'Aktif' : 'Tahap Pengembangan');
+    const finalDefTeam = verification_type === 'Otomatis' && default_team_id ? parseInt(default_team_id, 10) : null;
     const result = await db.query(`
       UPDATE services 
-      SET category_id=$1, service_name=$2, target_sla=$3, verification_type=$4, sop_link=$5, status=$6, form_schema=$7, required_docs=$8, default_team_id=$9
+      SET category_id = COALESCE($1, category_id), 
+          service_name = COALESCE($2, service_name), 
+          target_sla = COALESCE($3, target_sla), 
+          verification_type = $4, 
+          sop_link = COALESCE($5, sop_link), 
+          status = COALESCE($6, status), 
+          form_schema = COALESCE($7, form_schema), 
+          required_docs = COALESCE($8, required_docs), 
+          default_team_id = $9
       WHERE id = $10 RETURNING *
-    `, [finalCatId, name, target_sla, verification_type, sop_link || null, status || 'Aktif', JSON.stringify(form_schema || []), required_docs || '', default_team_id || null, id]);
+    `, [finalCatId || null, name || null, target_sla || null, verification_type || 'Wajib Verifikasi', sop_link || null, finalStatus, form_schema ? JSON.stringify(form_schema) : null, required_docs !== undefined ? required_docs : null, finalDefTeam, id]);
     res.json({ success: true, data: result.rows[0] });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error' });
+    res.status(500).json({ success: false, message: 'Server error: ' + err.message });
   }
 };
 

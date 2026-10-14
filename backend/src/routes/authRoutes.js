@@ -21,7 +21,13 @@ router.post('/login-2fa', login2FaLimiter, authController.login2FA);
 router.post('/register', authController.register);
 router.post('/logout', authenticateToken, authController.logout);
 router.get('/me', authenticateToken, authController.getMe);
+router.put('/profile', authenticateToken, authController.updateProfile);
 router.post('/2fa/generate', authenticateTempToken, authController.generate2FA);
 router.post('/2fa/verify-setup', authenticateTempToken, authController.verifySetup2FA);
+
+// Forgot Password via Email OTP
+router.post('/forgot-password/request-otp', authController.requestResetOtp);
+router.post('/forgot-password/validate-otp', authController.validateResetOtp);
+router.post('/forgot-password/verify-otp', authController.verifyResetOtp);
 
 module.exports = router;

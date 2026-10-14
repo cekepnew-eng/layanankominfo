@@ -14,9 +14,9 @@ const LogItem = ({ log }) => {
   const author = log.user_name ? `${log.user_name} (${!log.user_role ? 'Sistem' : ['ADMIN', 'PEGAWAI', 'KETUA TIM'].includes(log.user_role.toUpperCase()) ? 'Pegawai' : ['USER', 'MASYARAKAT'].includes(log.user_role.toUpperCase()) ? 'Pemohon' : 'Helpdesk'})` : 'Sistem';
   const text = log.text || log.log_description || '';
   
-  const words = text.split(' ');
-  const isLong = words.length > 20;
-  const displayText = expanded ? text : (isLong ? words.slice(0, 20).join(' ') + '...' : text);
+  const words = text.trim().split(/\s+/);
+  const isLong = words.length >= 15;
+  const displayText = expanded ? text : (isLong ? words.slice(0, 15).join(' ') + '...' : text);
 
   return (
     <div className="relative pl-4">
@@ -127,7 +127,19 @@ export const MyTickets = () => {
     try {
       const res = await api.getHistory(ticket.id);
       if (res.success) {
-        ticketWithLogs.logs = res.data;
+        const hasBast = Boolean(ticketWithLogs.bastFile && ticketWithLogs.bastFileUrl && ticketWithLogs.bastFileUrl !== '/bast_selesai.pdf');
+        ticketWithLogs.logs = (res.data || []).map(log => {
+          let text = log.log_description || '';
+          if (!hasBast) {
+            text = text.replace(/Selesai dikerjakan\.\s*BAST siap\.?/gi, 'Selesai dikerjakan.');
+            text = text.replace(/\.?\s*Berkas dokumen Berita Acara Serah Terima \(BAST\) telah siap untuk diunduh dan dikonfirmasi\.?/gi, '');
+            text = text.replace(/\.?\s*BAST siap\.?/gi, '');
+          }
+          return {
+            ...log,
+            log_description: text
+          };
+        });
       }
     } catch (e) {
       console.error('Failed to load history', e);
@@ -228,6 +240,10 @@ export const MyTickets = () => {
 
   useEffect(() => {
     fetchTickets();
+  }, []);
+
+  useEffect(() => {
+    sessionStorage.removeItem('activeTicketId_my');
   }, []);
 
   const handleSendSurvey = async (e) => {
@@ -397,20 +413,20 @@ export const MyTickets = () => {
 
       {selectedTicket && (
         <div className="mt-8 space-y-4">
-          {(selectedTicket.status === 'Selesai' || selectedTicket.status === 'Menunggu Konfirmasi') && selectedTicket.bastFile && (
+          {Boolean((selectedTicket.status === 'Selesai' || selectedTicket.status === 'Menunggu Konfirmasi') && selectedTicket.bastFile && selectedTicket.bastFile.trim() !== '' && selectedTicket.bastFileUrl && selectedTicket.bastFileUrl !== '/bast_selesai.pdf') && (
             <div className="space-y-2.5 text-left">
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Lampiran Penyelesaian Pegawai</span>
-              <div className="flex items-center justify-between glass-card p-3 rounded-2xl border border-white/60 text-sm font-semibold shadow-sm">
-                <div className="flex items-center gap-2 text-slate-700 overflow-hidden">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-2 glass-card p-3 rounded-2xl border border-white/60 text-sm font-semibold shadow-sm overflow-hidden">
+                <div className="flex items-center gap-2 text-slate-700 min-w-0 flex-1 w-full overflow-hidden">
                   <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span className="truncate max-w-[200px]" title={selectedTicket.bastFile}>{selectedTicket.bastFile}</span>
+                  <span className="truncate block min-w-0" title={selectedTicket.bastFile}>{selectedTicket.bastFile}</span>
                 </div>
                 <a
-                  href={selectedTicket.bastFileUrl || '/bast_selesai.pdf'}
-                  download={selectedTicket.bastFile || `BAST_${selectedTicket.id}.pdf`}
+                  href={selectedTicket.bastFileUrl}
+                  download={selectedTicket.bastFile}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-xs font-bold text-emerald-600 hover:underline px-2.5 py-1 glass-card border border-white/60 rounded-xl hover:bg-white/80 transition-all shrink-0 shadow-sm"
+                  className="text-xs font-bold text-emerald-600 hover:underline px-3 py-1.5 glass-card border border-white/60 rounded-xl hover:bg-white/80 transition-all shrink-0 shadow-sm w-full sm:w-auto text-center"
                 >
                   Buka PDF BAST
                 </a>

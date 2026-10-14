@@ -3,7 +3,12 @@ const db = require('../config/database');
 exports.getMyNotifications = async (req, res) => {
   try {
     const result = await db.query(
-      'SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC', 
+      `SELECT n.*, t.status_id AS ticket_status_id, ts.name AS ticket_status_name, t.ticket_number 
+       FROM notifications n 
+       LEFT JOIN tickets t ON n.ticket_id = t.id 
+       LEFT JOIN ticket_statuses ts ON t.status_id = ts.id 
+       WHERE n.user_id = $1 
+       ORDER BY n.created_at DESC`, 
       [req.user.id]
     );
     res.json({ success: true, data: result.rows });

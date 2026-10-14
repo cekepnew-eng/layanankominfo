@@ -608,7 +608,7 @@ export const Overview = () => {
                       <p className="text-sm font-bold text-indigo-600 uppercase tracking-wider">Butuh Evaluasi SKM & Rating</p>
                       <h4 className="font-bold text-slate-850 text-base">{userConfirmTicket.title}</h4>
                       <p className="text-base text-slate-500 leading-relaxed">
-                        Status: Pekerjaan telah selesai dikerjakan | BAST terunggah. Silakan klik menu "Tiket Saya" untuk mengisi kuesioner SKM dan memberikan ulasan bintang.
+                        Status: Pekerjaan telah selesai dikerjakan 100%. Silakan klik menu "Tiket Saya" untuk mengisi kuesioner SKM dan memberikan ulasan bintang.
                       </p>
                     </div>
                   </div>

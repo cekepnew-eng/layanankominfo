@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Mail, ShieldCheck, Building, Tag, Info, Activity, Lock, Eye, EyeOff, Check, Briefcase } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { api } from '../../services/api';
 import { ActionModal } from '../../components/ActionModal';
 
 export const Profile = () => {
@@ -11,10 +12,13 @@ export const Profile = () => {
   const myTeams = (teams || []).filter(t => (t.members && t.members.includes(user?.name)) || t.leader === user?.name);
 
   const [nameVal, setNameVal] = useState(user?.name || '');
+  const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [showOldPassword, setShowOldPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [modalConfig, setModalConfig] = useState({
     isOpen: false,
@@ -58,7 +62,7 @@ export const Profile = () => {
     return r.toUpperCase();
   };
 
-  const handleUpdateProfile = (e) => {
+  const handleUpdateProfile = async (e) => {
     e.preventDefault();
     if (!nameVal.trim()) {
       setModalConfig({
@@ -72,7 +76,31 @@ export const Profile = () => {
       });
       return;
     }
-    if (newPassword || confirmPassword) {
+    if (oldPassword || newPassword || confirmPassword) {
+      if (!oldPassword) {
+        setModalConfig({
+          isOpen: true,
+          type: 'warning',
+          title: 'Kata Sandi Lama Wajib Diisi',
+          message: 'Silakan masukkan kata sandi lama Anda terlebih dahulu untuk mengubah kata sandi.',
+          confirmText: 'Lengkapi Sandi Lama',
+          cancelText: '',
+          onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+        });
+        return;
+      }
+      if (!newPassword) {
+        setModalConfig({
+          isOpen: true,
+          type: 'warning',
+          title: 'Kata Sandi Baru Wajib Diisi',
+          message: 'Silakan masukkan kata sandi baru Anda.',
+          confirmText: 'Lengkapi Sandi Baru',
+          cancelText: '',
+          onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+        });
+        return;
+      }
       if (newPassword.length < 6) {
         setModalConfig({
           isOpen: true,
@@ -99,35 +127,58 @@ export const Profile = () => {
       }
     }
 
-    const updatedUser = {
-      ...user,
-      name: nameVal.trim(),
-      ...(newPassword ? { password: newPassword } : {})
-    };
+    try {
+      setIsSubmitting(true);
+      const payload = {
+        fullName: nameVal.trim(),
+        ...(newPassword ? { oldPassword, newPassword } : {})
+      };
 
-    setUser(updatedUser);
+      const res = await api.updateProfile(payload);
 
-    if (users && setUsers) {
-      setUsers(prev => prev.map(u => 
-        u.email.toLowerCase() === user.email.toLowerCase()
-          ? { ...u, name: nameVal.trim(), ...(newPassword ? { password: newPassword } : {}) }
-          : u
-      ));
+      const updatedUser = {
+        ...user,
+        name: res.user?.name || res.user?.full_name || nameVal.trim()
+      };
+
+      setUser(updatedUser);
+      sessionStorage.setItem('spbe_user', JSON.stringify(updatedUser));
+
+      if (users && setUsers) {
+        setUsers(prev => prev.map(u => 
+          u.email.toLowerCase() === user.email.toLowerCase()
+            ? { ...u, name: nameVal.trim() }
+            : u
+        ));
+      }
+
+      setOldPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setSuccessMessage('Data profil dan kata sandi berhasil diperbarui!');
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: 'Profil Berhasil Diperbarui',
+        message: 'Perubahan data profil dan kata sandi akun Anda telah berhasil disimpan.',
+        confirmText: 'Selesai',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
+      setTimeout(() => setSuccessMessage(''), 4000);
+    } catch (err) {
+      setModalConfig({
+        isOpen: true,
+        type: 'danger',
+        title: 'Gagal Memperbarui Profil',
+        message: err.message || 'Terjadi kesalahan saat menyimpan perubahan profil.',
+        confirmText: 'Tutup',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setNewPassword('');
-    setConfirmPassword('');
-    setSuccessMessage('Data profil dan kata sandi berhasil diperbarui!');
-    setModalConfig({
-      isOpen: true,
-      type: 'success',
-      title: 'Profil Berhasil Diperbarui',
-      message: 'Perubahan data profil dan kata sandi akun Anda telah berhasil disimpan.',
-      confirmText: 'Selesai',
-      cancelText: '',
-      onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
-    });
-    setTimeout(() => setSuccessMessage(''), 4000);
   };
 
   return (
@@ -152,6 +203,12 @@ export const Profile = () => {
             <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
             <span>{user?.email || '-'}</span>
           </p>
+          {user?.nip && (
+            <p className="text-[11px] font-bold text-slate-600 mt-1 flex items-center justify-center gap-1.5">
+              <span className="text-slate-400">NIP:</span>
+              <span className="font-mono text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">{user.nip}</span>
+            </p>
+          )}
 
           <div className="mt-3.5 flex flex-wrap items-center justify-center gap-1.5">
             {userRoles.map((r) => (
@@ -323,14 +380,36 @@ export const Profile = () => {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="text-xs font-bold text-slate-600 block mb-1.5">
+                        Kata Sandi Lama
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showOldPassword ? 'text' : 'password'}
+                          value={oldPassword}
+                          onChange={(e) => setOldPassword(e.target.value)}
+                          placeholder="Masukkan sandi lama"
+                          className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 pr-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowOldPassword(!showOldPassword)}
+                          className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          {showOldPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+
                     <div>
                       <label className="text-xs font-bold text-slate-600 block mb-1.5">
                         Kata Sandi Baru
                       </label>
                       <div className="relative">
                         <input
-                          type={showPassword ? 'text' : 'password'}
+                          type={showNewPassword ? 'text' : 'password'}
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
                           placeholder="Minimal 6 karakter"
@@ -338,10 +417,10 @@ export const Profile = () => {
                         />
                         <button
                           type="button"
-                          onClick={() => setShowPassword(!showPassword)}
+                          onClick={() => setShowNewPassword(!showNewPassword)}
                           className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
                         >
-                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </button>
                       </div>
                     </div>
@@ -351,7 +430,7 @@ export const Profile = () => {
                         Konfirmasi Kata Sandi Baru
                       </label>
                       <input
-                        type={showPassword ? 'text' : 'password'}
+                        type={showNewPassword ? 'text' : 'password'}
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         placeholder="Ulangi kata sandi baru"
@@ -364,10 +443,11 @@ export const Profile = () => {
                 <div className="flex justify-end pt-2">
                   <button
                     type="submit"
-                    className="px-6 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm font-extrabold shadow-sm hover:shadow transition-all flex items-center gap-2 cursor-pointer"
+                    disabled={isSubmitting}
+                    className="px-6 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-60 text-white rounded-xl text-sm font-extrabold shadow-sm hover:shadow transition-all flex items-center gap-2 cursor-pointer"
                   >
                     <Check className="w-4 h-4" />
-                    <span>Simpan Perubahan</span>
+                    <span>{isSubmitting ? 'Menyimpan...' : 'Simpan Perubahan'}</span>
                   </button>
                 </div>
               </form>
@@ -436,6 +516,22 @@ export const Profile = () => {
                       </p>
                     </div>
                   </div>
+
+                  {user?.nip && (
+                    <div className="p-4 bg-slate-50/80 rounded-xl border border-slate-200/80 flex items-start gap-3.5 sm:col-span-2">
+                      <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 text-sky-600 flex items-center justify-center shrink-0 shadow-2xs">
+                        <Tag className="w-5 h-5 text-indigo-600" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                          Nomor Induk Pegawai (NIP)
+                        </span>
+                        <p className="text-sm font-extrabold text-slate-800 mt-0.5 font-mono truncate">
+                          {user.nip}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {isPegawai && (

@@ -159,11 +159,14 @@ export const Register = () => {
           </div>
 
           <div className="space-y-6 max-w-md text-left">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-400/20 text-sky-400 text-xs font-black uppercase tracking-widest">
+              Portal Helpdesk SPBE
+            </div>
             <h1 className="text-5xl lg:text-6xl font-black leading-tight tracking-tight text-white">
-              Satu Akses Layanan Publik
+              Helpdesk Layanan SPBE
             </h1>
             <p className="text-slate-400 text-lg leading-relaxed">
-              Daftarkan akun Anda sebagai perwakilan masyarakat umum untuk mengajukan layanan publik, permohonan, maupun pelaporan ke Diskominfo secara mandiri.
+              Pusat bantuan dan sistem pelayanan terpadu Diskominfo Kota Bogor untuk penanganan permohonan, bantuan teknis, dan digitalisasi layanan secara cepat, transparan, dan akuntabel.
             </p>
           </div>
 

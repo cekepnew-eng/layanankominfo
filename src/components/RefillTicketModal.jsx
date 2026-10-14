@@ -106,7 +106,10 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
   }, []);
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/65 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-hidden animate-in fade-in duration-200 font-sans">
+    <div 
+      className="fixed inset-0 z-[80] bg-slate-900/65 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-x-hidden overflow-y-auto animate-in fade-in duration-200 font-sans"
+      onClick={onClose}
+    >
       <div 
         className="relative w-full max-w-3xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden text-left max-h-[92vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
@@ -162,49 +165,49 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
             </div>
           )}
 
-          <div className="p-4 rounded-2xl bg-gradient-to-r from-sky-50/70 via-indigo-50/40 to-slate-50 border border-sky-200 space-y-2.5 text-left">
-            <div className="flex items-start gap-2.5">
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-sky-50/70 via-indigo-50/40 to-slate-50 border border-sky-200 space-y-2.5 text-left overflow-hidden">
+            <div className="flex items-start gap-2.5 min-w-0">
               <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 mt-0.5">
                 <FileText className="w-4 h-4" />
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1 overflow-hidden">
                 <span className="text-xs font-black text-amber-850 uppercase tracking-wider block">Dokumen yang Harus Disiapkan Pemohon:</span>
-                <div className="text-sm font-bold text-slate-800 mt-0.5 leading-relaxed">
+                <div className="text-sm font-bold text-slate-800 mt-0.5 leading-relaxed break-words break-all">
                   {reqDocs?.startsWith?.('data:') ? (
-                    <a href={reqDocs} download="Template_Persyaratan.pdf" className="inline-flex items-center gap-1.5 text-sky-600 hover:text-sky-700 bg-white border border-sky-200 px-3 py-1 rounded-lg">
-                      <Download className="w-4 h-4" />
-                      Unduh Template Dokumen
+                    <a href={reqDocs} download="Template_Persyaratan.pdf" className="inline-flex items-center gap-1.5 text-sky-600 hover:text-sky-700 bg-white border border-sky-200 px-3 py-1.5 rounded-lg max-w-full overflow-hidden">
+                      <Download className="w-4 h-4 shrink-0" />
+                      <span className="truncate min-w-0">Unduh Template Dokumen</span>
                     </a>
                   ) : (
-                    reqDocs
+                    <span className="break-words break-all">{reqDocs}</span>
                   )}
                 </div>
               </div>
             </div>
-            <div className="flex items-center justify-between gap-3 pt-2.5 border-t border-sky-100 flex-wrap text-xs">
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2.5 border-t border-sky-100 text-xs overflow-hidden">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 min-w-0 flex-1 w-full sm:w-auto">
+                <div className="flex items-center gap-2 min-w-0">
                   <FileCheck className="w-4 h-4 text-sky-600 shrink-0" />
-                  <span className="font-extrabold text-slate-700">SOP Pelayanan:</span>
+                  <span className="font-extrabold text-slate-700 shrink-0">SOP Pelayanan:</span>
                   <button
                     type="button"
                     onClick={() => setShowSopModal(true)}
-                    className="font-mono font-bold text-sky-700 hover:text-sky-800 bg-white hover:bg-sky-50 px-2 py-0.5 rounded border border-sky-200 hover:border-sky-300 transition-all cursor-pointer inline-flex items-center gap-1.5"
+                    className="font-mono font-bold text-sky-700 hover:text-sky-800 bg-white hover:bg-sky-50 px-2 py-0.5 rounded border border-sky-200 hover:border-sky-300 transition-all cursor-pointer inline-flex items-center gap-1.5 truncate max-w-[150px] sm:max-w-xs block min-w-0"
                     title="Klik untuk melihat dokumen SOP"
                   >
-                    <span>{sopFile}</span>
+                    <span className="truncate">{sopFile}</span>
                   </button>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowSopModal(true)}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer ml-1"
+                  className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer w-full sm:w-auto text-center"
                 >
                   <Eye className="w-3.5 h-3.5" />
                   <span>Lihat Dokumen SOP</span>
                 </button>
               </div>
-              <span className="font-bold text-slate-500 flex items-center gap-1">
+              <span className="font-bold text-slate-500 flex items-center gap-1 shrink-0">
                 <Clock className="w-3.5 h-3.5 text-slate-400" />
                 Target Waktu SLA: <strong className="text-slate-800">{slaText}</strong>
               </span>
@@ -277,7 +280,7 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
                         className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100 cursor-pointer"
                       />
                       {formData[`${fieldKey}_name`] && (
-                        <p className="mt-3 text-xs font-bold text-emerald-600 bg-emerald-50 py-1.5 px-3 rounded-lg inline-block border border-emerald-100">
+                        <p className="mt-3 text-xs font-bold text-emerald-600 bg-emerald-50 py-1.5 px-3 rounded-lg block sm:inline-block border border-emerald-100 max-w-full truncate overflow-hidden" title={formData[`${fieldKey}_name`]}>
                           ✓ File terpilih: {formData[`${fieldKey}_name`]}
                         </p>
                       )}

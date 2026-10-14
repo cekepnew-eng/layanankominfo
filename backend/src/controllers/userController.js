@@ -3,7 +3,7 @@ const db = require('../config/database');
 exports.getAllUsers = async (req, res) => {
   try {
     const result = await db.pool.query(`
-      SELECT u.id, u.email, u.full_name as name, u.phone_number as phone, u.department,
+      SELECT u.id, u.email, u.nip, u.full_name as name, u.phone_number as phone, u.department,
              COALESCE(tm.team_name, 'Dinas Komunikasi dan Informatika') as team
       FROM users u
       LEFT JOIN (
@@ -64,7 +64,22 @@ exports.updateUserRole = async (req, res) => {
     }
 
     if (Array.isArray(roleNames) && roleNames.length > 0) {
-      const normalized = roleNames.map(r => String(r).trim().toUpperCase()).filter(Boolean);
+      // Pastikan OPD tidak bisa menjadi Masyarakat dan Masyarakat tidak bisa menjadi OPD
+      const uRes = await client.query('SELECT department FROM users WHERE id = $1', [id]);
+      const dept = (uRes.rows[0]?.department || '').trim().toLowerCase();
+      const isMasyarakat = dept === 'masyarakat umum' || dept === 'masyarakat';
+
+      let normalized = roleNames.map(r => String(r).trim().toUpperCase()).filter(Boolean);
+
+      if (isMasyarakat) {
+        normalized = ['MASYARAKAT'];
+      } else {
+        normalized = normalized.filter(r => r !== 'MASYARAKAT');
+        if (!normalized.includes('USER')) {
+          normalized.push('USER');
+        }
+      }
+
       await client.query('DELETE FROM user_roles WHERE user_id = $1', [id]);
 
       for (const rName of normalized) {
