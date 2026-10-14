@@ -192,6 +192,14 @@ export const api = {
     const res = await fetch(`${BASE_URL}/notifications/${id}/read`, { method: 'PATCH', headers: getHeaders() });
     return handleResponse(res);
   },
+  markAllNotificationsRead: async () => {
+    const res = await fetch(`${BASE_URL}/notifications/read-all`, { method: 'PATCH', headers: getHeaders() });
+    return handleResponse(res);
+  },
+  markTicketNotificationsRead: async (ticketId) => {
+    const res = await fetch(`${BASE_URL}/notifications/ticket/${ticketId}/read`, { method: 'PATCH', headers: getHeaders() });
+    return handleResponse(res);
+  },
 
   // SERVICES
   getPublicServices: async () => {

@@ -77,11 +77,11 @@ async function getUserTeams(userId) {
 function getPrimaryRole(roles = []) {
   if (!roles || roles.length === 0) return 'USER';
   const normalized = roles.map(role => String(role).toUpperCase());
+  if (normalized.includes('HELPDESK')) return 'HELPDESK';
+  if (normalized.includes('ADMIN')) return 'ADMIN';
+  if (normalized.includes('PEGAWAI')) return 'PEGAWAI';
   if (normalized.includes('MASYARAKAT')) return 'MASYARAKAT';
   if (normalized.includes('USER')) return 'USER';
-  if (normalized.includes('ADMIN')) return 'ADMIN';
-  if (normalized.includes('HELPDESK')) return 'HELPDESK';
-  if (normalized.includes('PEGAWAI')) return 'PEGAWAI';
   return normalized[0];
 }
 

@@ -185,7 +185,15 @@ export const CreateTicket = () => {
     }
   }, [formData, title, description, selectedSubService]);
 
-  const activeTicket = (user?.role === 'USER' || user?.role === 'MASYARAKAT' || user?.role === 'masyarakat') 
+  const isHelpdeskUser = 
+    user?.role?.toUpperCase() === 'HELPDESK' || 
+    user?.roles?.some(r => String(r).toUpperCase() === 'HELPDESK');
+  const isAdminUser = 
+    user?.role?.toUpperCase() === 'ADMIN' || 
+    user?.roles?.some(r => String(r).toUpperCase() === 'ADMIN');
+  const isStaff = isHelpdeskUser || isAdminUser;
+
+  const activeTicket = (!isStaff && (user?.role?.toUpperCase() === 'USER' || user?.role?.toUpperCase() === 'MASYARAKAT' || user?.roles?.some(r => ['USER', 'MASYARAKAT'].includes(String(r).toUpperCase())))) 
     ? tickets.find(t => t.status_name !== 'COMPLETED' && t.status_name !== 'REJECTED')
     : null;
 
@@ -261,11 +269,16 @@ export const CreateTicket = () => {
     
     const service_id = serviceObj.id;
 
+    const finalFormData = { ...formData };
+    if (isStaff && helpdeskInstansi.trim()) {
+      finalFormData['Instansi / Asal Pemohon'] = helpdeskInstansi.trim();
+    }
+
     const payload = {
       service_id,
-      title: formData['Judul Permohonan'] || title || `Permohonan ${selectedSubService}`,
-      description: formData['Deskripsi Kebutuhan'] || description || `Detail pengerjaan untuk sub-layanan ${selectedSubService}`,
-      details: formData,
+      title: finalFormData['Judul Permohonan'] || title || `Permohonan ${selectedSubService}`,
+      description: finalFormData['Deskripsi Kebutuhan'] || description || `Detail pengerjaan untuk sub-layanan ${selectedSubService}`,
+      details: finalFormData,
       priority: 'MEDIUM'
     };
 
@@ -276,6 +289,7 @@ export const CreateTicket = () => {
       }
       localStorage.removeItem(`ticket_draft_${selectedSubService}`);
       setFormData({});
+      setHelpdeskInstansi('');
       setShowSuccessModal(true);
     } catch (err) {
       console.error('Gagal menyimpan ke database backend', err);
@@ -697,16 +711,34 @@ export const CreateTicket = () => {
             </div>
           </div>
 
-          {user?.role === 'helpdesk' && (
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Instansi / Asal Pemohon</label>
-              <input
-                type="text"
-                value={helpdeskInstansi}
-                onChange={(e) => setHelpdeskInstansi(e.target.value)}
-                placeholder="Contoh: Dinas Kesehatan Kota Bogor / Masyarakat Umum"
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-base focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold"
-              />
+          {isStaff && (
+            <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-3.5">
+              <div className="flex items-center gap-2 text-amber-850 font-bold text-xs uppercase tracking-wider">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Pengajuan Tiket oleh Helpdesk / Petugas (Membantu Pemohon)</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">Nama Pemohon (Opsional)</label>
+                  <input
+                    type="text"
+                    value={formData['Nama Pemohon'] || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, 'Nama Pemohon': e.target.value }))}
+                    placeholder="Contoh: Bpk. Ahmad / Ibu Siti"
+                    className="w-full px-4 py-2.5 border border-slate-300 bg-white rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-sky-500 font-medium"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">Instansi / Asal Pemohon</label>
+                  <input
+                    type="text"
+                    value={helpdeskInstansi}
+                    onChange={(e) => setHelpdeskInstansi(e.target.value)}
+                    placeholder="Contoh: Dinas Kesehatan / Masyarakat Umum"
+                    className="w-full px-4 py-2.5 border border-slate-300 bg-white rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-sky-500 font-medium"
+                  />
+                </div>
+              </div>
             </div>
           )}
 
@@ -855,9 +887,15 @@ export const CreateTicket = () => {
           <div className="flex justify-between">
             <span className="text-slate-400">Instansi / Asal:</span>
             <span className="font-bold text-slate-800 text-right">
-              {user?.role === 'helpdesk' ? (helpdeskInstansi.trim() || 'Masyarakat Umum') : (user?.department || (user?.role?.toLowerCase() === 'masyarakat' ? 'Masyarakat Umum' : '-'))}
+              {isStaff ? (helpdeskInstansi.trim() || formData['Instansi / Asal Pemohon'] || 'Masyarakat Umum') : (user?.department || (user?.role?.toLowerCase() === 'masyarakat' ? 'Masyarakat Umum' : '-'))}
             </span>
           </div>
+          {isStaff && formData['Nama Pemohon'] && (
+            <div className="flex justify-between">
+              <span className="text-slate-400">Pemohon yang Dibantu:</span>
+              <span className="font-bold text-slate-800 text-right">{formData['Nama Pemohon']}</span>
+            </div>
+          )}
           {formData && Object.keys(formData).filter(k => !k.endsWith('_name')).length > 0 ? (
             <div className="pt-2 mt-2 border-t border-slate-200/50 flex justify-between">
               <span className="text-slate-400">Total Field Kustom:</span>

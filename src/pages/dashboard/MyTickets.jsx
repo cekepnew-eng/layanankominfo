@@ -123,6 +123,16 @@ export const MyTickets = () => {
   });
 
   const selectTicket = async (ticket) => {
+    try {
+      window.dispatchEvent(new CustomEvent('ticket-opened', {
+        detail: {
+          ticketId: ticket.id,
+          ticketUuid: ticket.uuid,
+          ticketNumber: ticket.ticket_number
+        }
+      }));
+    } catch (e) {}
+
     let ticketWithLogs = { ...ticket };
     try {
       const res = await api.getHistory(ticket.id);

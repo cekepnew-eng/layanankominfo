@@ -87,6 +87,17 @@ export const DashboardLayout = () => {
     }
   }, []);
 
+  const markNotificationAsReadLocally = (id) => {
+    try {
+      const readIds = JSON.parse(localStorage.getItem('read_notif_ids') || '[]');
+      const idStr = String(id);
+      if (!readIds.map(String).includes(idStr)) {
+        readIds.push(id);
+        localStorage.setItem('read_notif_ids', JSON.stringify(readIds));
+      }
+    } catch (e) {}
+  };
+
   React.useEffect(() => {
     if (!user) return;
     const fetchNotifications = async () => {
@@ -95,26 +106,35 @@ export const DashboardLayout = () => {
         const res = await api.getNotifications();
 
         if (res.data) {
-          const allNotifs = res.data.map(n => ({
-            id: n.id,
-            title: n.title || 'Update Tiket',
-            message: n.message,
-            time: n.created_at,
-            isRead: n.is_read,
-            type: n.type ? n.type.toLowerCase() : 'info',
-            ticket_id: n.ticket_id || n.ticket_uuid || null,
-            ticket_status_id: n.ticket_status_id,
-            ticket_status_name: n.ticket_status_name
-          }));
+          let readIds = new Set();
+          try {
+            readIds = new Set(JSON.parse(localStorage.getItem('read_notif_ids') || '[]').map(String));
+          } catch (e) {}
+
+          const allNotifs = res.data.map(n => {
+            const isRead = Boolean(n.is_read || readIds.has(String(n.id)));
+            return {
+              id: n.id,
+              title: n.title || 'Update Tiket',
+              message: n.message,
+              time: n.created_at,
+              isRead: isRead,
+              type: n.type ? n.type.toLowerCase() : 'info',
+              ticket_id: n.ticket_id || n.ticket_uuid || null,
+              ticket_number: n.ticket_number || null,
+              ticket_status_id: n.ticket_status_id,
+              ticket_status_name: n.ticket_status_name
+            };
+          });
 
           const unreadNotifs = allNotifs.filter(n => !n.isRead);
 
           setNotifications(prevNotifs => {
             if (prevNotifs.length > 0) {
               const prevIds = prevNotifs.map(n => n.id);
-              const newNotifs = unreadNotifs.filter(n => !prevIds.includes(n.id));
-              if (newNotifs.length > 0) {
-                const newest = newNotifs[0];
+              const newUnreads = unreadNotifs.filter(n => !prevIds.includes(n.id));
+              if (newUnreads.length > 0) {
+                const newest = newUnreads[0];
                 setLiveToast({
                   id: newest.id,
                   title: newest.title,
@@ -130,12 +150,12 @@ export const DashboardLayout = () => {
                 if ("Notification" in window && Notification.permission === "granted") {
                   new Notification(newest.title, {
                     body: newest.message,
-                    icon: '/logo-bogor.png' // Default icon
+                    icon: '/logo-bogor.png'
                   });
                 }
               }
             }
-            return unreadNotifs;
+            return allNotifs;
           });
           setUnreadCount(unreadNotifs.length);
         }
@@ -149,24 +169,75 @@ export const DashboardLayout = () => {
     return () => clearInterval(interval);
   }, [user]);
 
+  // Listener saat tiket dibuka di mana pun di aplikasi (seperti WhatsApp saat chat dibuka)
+  React.useEffect(() => {
+    const handleTicketOpened = async (e) => {
+      const { ticketId, ticketUuid, ticketNumber } = e.detail || {};
+      if (!ticketId && !ticketUuid && !ticketNumber) return;
+
+      const tIds = [ticketId, ticketUuid, ticketNumber].filter(Boolean).map(x => String(x).toLowerCase().trim());
+
+      setNotifications(prev => {
+        let changed = false;
+        const updated = prev.map(n => {
+          const match = 
+            (n.ticket_id && tIds.includes(String(n.ticket_id).toLowerCase().trim())) ||
+            (n.ticket_number && tIds.includes(String(n.ticket_number).toLowerCase().trim())) ||
+            (n.message && tIds.some(tid => n.message.toLowerCase().includes(tid)));
+
+          if (match && !n.isRead) {
+            changed = true;
+            markNotificationAsReadLocally(n.id);
+            import('../services/api').then(({ api }) => {
+              api.markNotificationRead(n.id).catch(() => {});
+            });
+            return { ...n, isRead: true };
+          }
+          return n;
+        });
+
+        if (changed) {
+          const remainingUnread = updated.filter(n => !n.isRead).length;
+          setUnreadCount(remainingUnread);
+        }
+        return updated;
+      });
+
+      try {
+        const { api } = await import('../services/api');
+        if (ticketId) api.markTicketNotificationsRead?.(ticketId);
+      } catch (err) {}
+    };
+
+    window.addEventListener('ticket-opened', handleTicketOpened);
+    return () => window.removeEventListener('ticket-opened', handleTicketOpened);
+  }, []);
+
   const handleNotificationClick = async (n) => {
     setShowNotifications(false);
 
-    // 1. Seketika hilangkan notifikasi dari dropdown list & kurangi counter
-    setNotifications(prev => prev.filter(item => item.id !== n.id));
-    setUnreadCount(prev => Math.max(0, prev - 1));
+    // 1. Seketika hilangkan biru-birunya & kurangi counter jika belum dibaca
+    if (!n.isRead) {
+      setNotifications(prev => prev.map(item => item.id === n.id ? { ...item, isRead: true } : item));
+      setUnreadCount(prev => Math.max(0, prev - 1));
+      markNotificationAsReadLocally(n.id);
 
-    // 2. Tandai sudah dibaca di backend
-    try {
-      const { api } = await import('../services/api');
-      await api.markNotificationRead(n.id);
-    } catch (err) {
-      console.error('Failed to mark notification as read:', err);
+      // 2. Tandai sudah dibaca di backend
+      try {
+        const { api } = await import('../services/api');
+        await api.markNotificationRead(n.id);
+        if (n.ticket_id) {
+          await api.markTicketNotificationsRead?.(n.ticket_id);
+        }
+      } catch (err) {
+        console.error('Failed to mark notification as read:', err);
+      }
     }
 
     // 3. Langsung arahkan ke tiket yang sesuai (Tiket Selesai vs Tiket Proses)
-    if (n.ticket_id) {
-      sessionStorage.setItem('fromNotificationTicketId', String(n.ticket_id));
+    const targetTicketId = n.ticket_id || n.ticket_number;
+    if (targetTicketId) {
+      sessionStorage.setItem('fromNotificationTicketId', String(targetTicketId));
 
       const isCompleted = 
         n.ticket_status_id === 6 || 
@@ -182,6 +253,19 @@ export const DashboardLayout = () => {
       } else {
         navigate('/dashboard/history');
       }
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    setNotifications(prev => prev.map(item => ({ ...item, isRead: true })));
+    setUnreadCount(0);
+    try {
+      const readIds = notifications.map(n => n.id);
+      localStorage.setItem('read_notif_ids', JSON.stringify(readIds));
+      const { api } = await import('../services/api');
+      await api.markAllNotificationsRead?.();
+    } catch (e) {
+      console.error('Failed to mark all as read:', e);
     }
   };
 
@@ -229,29 +313,31 @@ export const DashboardLayout = () => {
 
     if (!user) return [home, history, ticketHistory, profile];
 
-    switch (user.role) {
-      case 'ADMIN':
-        return [
-          home,
-          adminLinks[0],
-          adminLinks[1],
-          adminLinks[2],
-          history,
-          ticketHistory,
-          trackTicket,
-          adminLinks[3],
-          profile
-        ];
-      case 'HELPDESK':
-        return [home, userLinks[0], history, ticketHistory, trackTicket, profile];
-      case 'PEGAWAI':
-        return [home, history, ticketHistory, profile];
-      case 'USER':
-      case 'MASYARAKAT':
-        return [home, ...userLinks, history, ticketHistory, profile];
-      default:
-        return [home, history, ticketHistory, profile];
+    const role = (user?.role || '').toUpperCase();
+
+    if (role === 'HELPDESK') {
+      return [home, userLinks[0], history, ticketHistory, trackTicket, profile];
     }
+
+    if (role === 'ADMIN') {
+      return [
+        home,
+        adminLinks[0],
+        adminLinks[1],
+        adminLinks[2],
+        history,
+        ticketHistory,
+        trackTicket,
+        adminLinks[3],
+        profile
+      ];
+    }
+
+    if (role === 'PEGAWAI') {
+      return [home, history, ticketHistory, profile];
+    }
+
+    return [home, ...userLinks, history, ticketHistory, profile];
   };
 
   const menuLinks = getMenuLinks();
@@ -436,10 +522,7 @@ export const DashboardLayout = () => {
             <div className="relative">
               <button
                 type="button"
-                onClick={() => {
-                  setShowNotifications(!showNotifications);
-                  setUnreadCount(0);
-                }}
+                onClick={() => setShowNotifications(!showNotifications)}
                 className="relative p-2.5 bg-white hover:bg-slate-50 border border-slate-200 hover:border-sky-300 rounded-xl text-slate-500 hover:text-sky-600 transition-all shadow-none cursor-pointer"
                 style={{ boxShadow: 'none' }}
                 aria-label="Notifikasi"
@@ -480,14 +563,26 @@ export const DashboardLayout = () => {
                         </span>
                       )}
                     </div>
-                    <button 
-                      type="button" 
-                      onClick={() => setShowNotifications(false)}
-                      className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-                      aria-label="Tutup Notifikasi"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {unreadCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleMarkAllAsRead}
+                          className="text-[11px] font-bold text-sky-600 hover:text-sky-800 hover:bg-sky-50 px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                          title="Tandai semua notifikasi sudah dibaca"
+                        >
+                          Tandai Dibaca
+                        </button>
+                      )}
+                      <button 
+                        type="button" 
+                        onClick={() => setShowNotifications(false)}
+                        className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                        aria-label="Tutup Notifikasi"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                   <div className="max-h-[60vh] sm:max-h-[26rem] overflow-y-auto overflow-x-hidden p-2 space-y-1 bg-slate-50/50">
                     {notifications.length === 0 ? (
@@ -503,25 +598,36 @@ export const DashboardLayout = () => {
                         <div 
                           key={n.id || i} 
                           onClick={() => handleNotificationClick(n)} 
-                          className="p-3 sm:p-3.5 rounded-2xl hover:bg-white transition-all cursor-pointer group flex items-start gap-3 border border-transparent hover:border-slate-200 shadow-none"
+                          className={`p-3 sm:p-3.5 rounded-2xl transition-all cursor-pointer group flex items-start gap-3 border shadow-none ${
+                            n.isRead 
+                              ? 'bg-white/60 hover:bg-white border-transparent hover:border-slate-200' 
+                              : 'bg-sky-50/60 hover:bg-white border-sky-100 hover:border-sky-200'
+                          }`}
                           style={{ boxShadow: 'none' }}
                         >
-                          <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center shrink-0 border transition-colors ${n.type === 'warning' ? 'bg-amber-50 border-amber-100 text-amber-600 group-hover:bg-amber-100' :
-                              n.type === 'success' ? 'bg-emerald-50 border-emerald-100 text-emerald-600 group-hover:bg-emerald-100' :
-                                n.type === 'processing' ? 'bg-sky-50 border-sky-100 text-sky-600 group-hover:bg-sky-100' :
-                                  'bg-slate-50 border-slate-200 text-slate-600 group-hover:bg-slate-100'
-                            }`}>
+                          <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center shrink-0 border transition-colors ${
+                            n.type === 'warning' ? 'bg-amber-50 border-amber-100 text-amber-600 group-hover:bg-amber-100' :
+                            n.type === 'success' ? 'bg-emerald-50 border-emerald-100 text-emerald-600 group-hover:bg-emerald-100' :
+                            n.type === 'processing' ? 'bg-sky-50 border-sky-100 text-sky-600 group-hover:bg-sky-100' :
+                            'bg-slate-50 border-slate-200 text-slate-600 group-hover:bg-slate-100'
+                          }`}>
                             {n.type === 'warning' ? <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" /> :
                               n.type === 'success' ? <CheckSquare className="w-4 h-4 sm:w-5 sm:h-5" /> :
-                                n.type === 'processing' ? <Briefcase className="w-4 h-4 sm:w-5 sm:h-5" /> :
-                                  <FileText className="w-4 h-4 sm:w-5 sm:h-5" />}
+                              n.type === 'processing' ? <Briefcase className="w-4 h-4 sm:w-5 sm:h-5" /> :
+                                <FileText className="w-4 h-4 sm:w-5 sm:h-5" />}
                           </div>
                           <div className="flex-1 min-w-0 pt-0.5">
                             <div className="flex items-center justify-between gap-2">
-                              <h4 className={`text-xs sm:text-sm font-black truncate ${n.isRead ? 'text-slate-500' : 'text-slate-800'}`}>{n.title}</h4>
-                              {!n.isRead && <span className="w-2 h-2 rounded-full bg-sky-500 shrink-0"></span>}
+                              <h4 className={`text-xs sm:text-sm font-black truncate ${n.isRead ? 'text-slate-500 font-semibold' : 'text-slate-800'}`}>
+                                {n.title}
+                              </h4>
+                              {!n.isRead && (
+                                <span className="w-2.5 h-2.5 rounded-full bg-sky-500 shrink-0 ring-4 ring-sky-100" title="Belum dibaca"></span>
+                              )}
                             </div>
-                            <p className="text-xs font-semibold text-slate-600 mt-0.5 leading-relaxed line-clamp-2 break-words break-all">{n.message}</p>
+                            <p className={`text-xs mt-0.5 leading-relaxed line-clamp-2 break-words break-all ${n.isRead ? 'text-slate-500 font-normal' : 'text-slate-700 font-semibold'}`}>
+                              {n.message}
+                            </p>
                             <div className="flex items-center gap-1.5 mt-1.5 text-[10px] font-bold text-slate-400">
                               <Clock className="w-3 h-3" />
                               <span>{new Date(n.time).toLocaleString('id-ID', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}</span>

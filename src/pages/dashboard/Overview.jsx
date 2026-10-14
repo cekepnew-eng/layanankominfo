@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
 import { 
@@ -10,7 +11,8 @@ import {
   Layers, 
   Briefcase, 
   Star,
-  Activity
+  Activity,
+  PlusCircle
 } from 'lucide-react';
 
 
@@ -63,7 +65,8 @@ export const Overview = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        if (user.role === 'ADMIN') {
+        const userRole = user?.role?.toUpperCase();
+        if (userRole === 'ADMIN') {
           const [data, uData, teamsData, tData, sData] = await Promise.all([
             api.getAdminTickets(),
             api.getUsers(),
@@ -76,10 +79,10 @@ export const Overview = () => {
           setAdminTeams(teamsData.data || []);
           setAdminServicesCount(sData.data ? sData.data.length : 0);
           setAdminServices(sData.data || []);
-        } else if (user.role === 'HELPDESK') {
+        } else if (userRole === 'HELPDESK') {
           const data = await api.getHelpdeskTickets();
           setTickets(data.data || []);
-        } else if (user.role === 'PEGAWAI') {
+        } else if (userRole === 'PEGAWAI') {
           const data = await api.getEmployeeTickets();
           setTickets(data.data || []);
         } else {
@@ -292,9 +295,18 @@ export const Overview = () => {
 
   const renderHelpdeskDashboard = () => (
     <div className="space-y-8 text-left">
-      <div className="space-y-1.5">
-        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Dasbor Helpdesk Hub</h2>
-        <p className="text-slate-600 text-base leading-relaxed font-semibold">Pantau permohonan masuk, verifikasi syarat berkas, dan delegasikan pengerjaan ke tim.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-1.5">
+          <h2 className="text-3xl font-black text-slate-900 tracking-tight">Dasbor Helpdesk Hub</h2>
+          <p className="text-slate-600 text-base leading-relaxed font-semibold">Pantau permohonan masuk, verifikasi syarat berkas, dan delegasikan pengerjaan ke tim.</p>
+        </div>
+        <Link
+          to="/dashboard/user/create-ticket"
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-2xl font-bold text-sm shadow-lg shadow-sky-600/20 transition-all shrink-0 self-start sm:self-auto cursor-pointer"
+        >
+          <PlusCircle className="w-4 h-4" />
+          <span>Ajukan / Bantu Pemohon</span>
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">

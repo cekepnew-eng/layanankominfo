@@ -506,6 +506,17 @@ export const TicketHistory = ({ mode = 'active' }) => {
   }, [selectedTicket?.id]);
 
   const handleSelectTicket = async (t) => {
+    // Beritahu DashboardLayout untuk menghilangkan notifikasi / titik biru tiket ini (seperti WhatsApp)
+    try {
+      window.dispatchEvent(new CustomEvent('ticket-opened', {
+        detail: {
+          ticketId: t.id,
+          ticketUuid: t.uuid,
+          ticketNumber: t.ticket_number
+        }
+      }));
+    } catch (e) {}
+
     let ticketWithLogs = { ...t };
     try {
       const res = await api.getHistory(t.uuid || t.id);

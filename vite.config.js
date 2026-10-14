@@ -26,6 +26,7 @@ async function ensureCols() {
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS previous_password_hash VARCHAR(255);');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMP;');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS nip VARCHAR(50);');
+    await pool.query('ALTER TABLE notifications ADD COLUMN IF NOT EXISTS read_at TIMESTAMP;');
     await pool.query(`
       CREATE TABLE IF NOT EXISTS password_reset_otps (
         id SERIAL PRIMARY KEY,
@@ -339,11 +340,11 @@ async function getUserTeams(userId) {
 function getPrimaryRole(roles = []) {
   if (!roles || roles.length === 0) return 'USER';
   const normalized = roles.map(role => String(role).toUpperCase());
+  if (normalized.includes('HELPDESK')) return 'HELPDESK';
+  if (normalized.includes('ADMIN')) return 'ADMIN';
+  if (normalized.includes('PEGAWAI')) return 'PEGAWAI';
   if (normalized.includes('MASYARAKAT')) return 'MASYARAKAT';
   if (normalized.includes('USER')) return 'USER';
-  if (normalized.includes('ADMIN')) return 'ADMIN';
-  if (normalized.includes('HELPDESK')) return 'HELPDESK';
-  if (normalized.includes('PEGAWAI')) return 'PEGAWAI';
   return normalized[0];
 }
 
@@ -1127,6 +1128,122 @@ function profileFallbackPlugin() {
             return res.end(JSON.stringify({ success: true, message: 'Service deleted' }));
           } catch (err) {
             console.error('services delete middleware error:', err);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ success: false, message: err.message }));
+          }
+        }
+
+        // Handle GET /api/notifications
+        if (url === '/api/notifications' && req.method === 'GET') {
+          try {
+            await ensureCols();
+            const authHeader = req.headers['authorization'];
+            const token = authHeader && authHeader.split(' ')[1];
+            if (!token) {
+              res.writeHead(401, { 'Content-Type': 'application/json' });
+              return res.end(JSON.stringify({ success: false, message: 'No token provided' }));
+            }
+            let userId;
+            try {
+              const decoded = jwt.verify(token, JWT_SECRET);
+              userId = decoded.id;
+            } catch (e) {
+              res.writeHead(403, { 'Content-Type': 'application/json' });
+              return res.end(JSON.stringify({ success: false, message: 'Invalid token' }));
+            }
+
+            const result = await pool.query(`
+              SELECT n.*, t.status_id AS ticket_status_id, ts.name AS ticket_status_name, t.ticket_number 
+              FROM notifications n 
+              LEFT JOIN tickets t ON n.ticket_id = t.id 
+              LEFT JOIN ticket_statuses ts ON t.status_id = ts.id 
+              WHERE n.user_id = $1 
+                 OR n.user_id IN (
+                   SELECT id FROM users 
+                   WHERE (email IS NOT NULL AND email = (SELECT email FROM users WHERE id = $1))
+                      OR (nip IS NOT NULL AND nip = (SELECT nip FROM users WHERE id = $1))
+                 )
+              ORDER BY n.created_at DESC
+              LIMIT 30
+            `, [userId]);
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ success: true, data: result.rows }));
+          } catch (err) {
+            console.error('get notifications error in vite middleware:', err);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ success: false, message: err.message }));
+          }
+        }
+
+        // Handle PATCH /api/notifications/read-all
+        if (url === '/api/notifications/read-all' && req.method === 'PATCH') {
+          try {
+            await ensureCols();
+            const authHeader = req.headers['authorization'];
+            const token = authHeader && authHeader.split(' ')[1];
+            let userId;
+            if (token) {
+              try {
+                const decoded = jwt.verify(token, JWT_SECRET);
+                userId = decoded.id;
+              } catch (e) {}
+            }
+            if (userId) {
+              await pool.query(`
+                UPDATE notifications SET is_read = true 
+                WHERE user_id = $1 
+                   OR user_id IN (
+                     SELECT id FROM users 
+                     WHERE (email IS NOT NULL AND email = (SELECT email FROM users WHERE id = $1))
+                        OR (nip IS NOT NULL AND nip = (SELECT nip FROM users WHERE id = $1))
+                   )
+              `, [userId]);
+            } else {
+              await pool.query('UPDATE notifications SET is_read = true');
+            }
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ success: true, message: 'All notifications read' }));
+          } catch (err) {
+            console.error('read-all notifications error:', err);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ success: false, message: err.message }));
+          }
+        }
+
+        // Handle PATCH /api/notifications/ticket/:ticketId/read
+        if (url.startsWith('/api/notifications/ticket/') && req.method === 'PATCH') {
+          try {
+            await ensureCols();
+            const ticketId = url.replace('/api/notifications/ticket/', '').replace('/read', '').trim();
+            if (ticketId) {
+              await pool.query(`
+                UPDATE notifications SET is_read = true 
+                WHERE ticket_id::text = $1 
+                   OR ticket_id IN (SELECT id FROM tickets WHERE ticket_number ILIKE $1 OR id::text = $1)
+              `, [ticketId]);
+            }
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ success: true, message: 'Ticket notifications read' }));
+          } catch (err) {
+            console.error('ticket notifications read error:', err);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ success: false, message: err.message }));
+          }
+        }
+
+        // Handle PATCH /api/notifications/:id/read
+        if (url.startsWith('/api/notifications/') && url.endsWith('/read') && req.method === 'PATCH') {
+          try {
+            await ensureCols();
+            const notifId = url.replace('/api/notifications/', '').replace('/read', '').trim();
+            if (notifId) {
+              await pool.query('UPDATE notifications SET is_read = true WHERE id::text = $1', [notifId]);
+            }
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ success: true, message: 'Notification read' }));
+          } catch (err) {
+            console.error('notification read error:', err);
             res.writeHead(500, { 'Content-Type': 'application/json' });
             return res.end(JSON.stringify({ success: false, message: err.message }));
           }

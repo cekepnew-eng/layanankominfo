@@ -28,15 +28,37 @@ exports.createTicket = async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // Check if user already has an active ticket
-    const activeRes = await client.query(`
-      SELECT id FROM tickets 
-      WHERE user_id = $1 AND status_id NOT IN (3, 7)
-    `, [req.user.id]);
+    // 1. Resolve user roles first
+    let isHelpdeskOrAdmin = false;
+    let isHelpdesk = false;
+    try {
+      const userRolesQuery = await client.query(`
+        SELECT r.name FROM user_roles ur
+        JOIN roles r ON ur.role_id = r.id
+        WHERE ur.user_id = $1
+      `, [req.user.id]);
+      const roles = userRolesQuery.rows.map(row => row.name.toUpperCase());
+      isHelpdesk = roles.includes('HELPDESK');
+      isHelpdeskOrAdmin = isHelpdesk || roles.includes('ADMIN');
+    } catch (e) {
+      console.error('Role resolution error in createTicket:', e);
+    }
 
-    if (activeRes.rows.length > 0) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ success: false, message: 'Anda masih memiliki tiket yang sedang aktif. Silakan selesaikan tiket sebelumnya terlebih dahulu.' });
+    // 2. Check active ticket ONLY for standard users (USER / MASYARAKAT)
+    // Helpdesk and Admin are authorized to create multiple tickets to assist applicants / citizens
+    if (!isHelpdeskOrAdmin) {
+      const activeRes = await client.query(`
+        SELECT id FROM tickets 
+        WHERE user_id = $1 AND status_id NOT IN (3, 7)
+      `, [req.user.id]);
+
+      if (activeRes.rows.length > 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Anda masih memiliki tiket yang sedang aktif. Silakan selesaikan tiket sebelumnya terlebih dahulu.' 
+        });
+      }
     }
 
     let finalServiceId = service_id;
@@ -57,30 +79,27 @@ exports.createTicket = async (req, res) => {
     const needsVerification = srvRes.rows[0]?.verification_type === 'Wajib Verifikasi';
     const defaultTeamId = srvRes.rows[0]?.default_team_id;
 
-    // Check if user is HELPDESK or ADMIN to skip PENDING
-    let isHelpdeskOrAdmin = false;
-    try {
-      const userRolesQuery = await client.query(`
-        SELECT r.name FROM user_roles ur
-        JOIN roles r ON ur.role_id = r.id
-        WHERE ur.user_id = $1
-      `, [req.user.id]);
-      const roles = userRolesQuery.rows.map(row => row.name);
-      isHelpdeskOrAdmin = roles.includes('HELPDESK') || roles.includes('ADMIN');
-    } catch (e) {
-      console.error(e);
-    }
-
     let initialStatusId = 1; // PENDING
     let isAutoAssigned = false;
 
-    if (!needsVerification || isHelpdeskOrAdmin) {
+    // Alur penanganan status tiket baru:
+    // 1. Jika Layanan Otomatis (Tanpa Verifikasi / !needsVerification):
+    //    - Jika ada default_team_id: langsung ASSIGNED (4) ke tim/pegawai
+    //    - Jika tidak ada: VERIFIED (2) menunggu penugasan tim
+    //    Alur: [Pengajuan -> Pegawai]
+    // 2. Jika Layanan Wajib Verifikasi (needsVerification):
+    //    - Masuk ke status PENDING (1) agar diverifikasi & di-ACC oleh Helpdesk
+    //    - Helpdesk memverifikasi tiket dan meneruskannya ke Pegawai/Tim
+    //    Alur: [Pengajuan -> Helpdesk ACC -> Pegawai]
+    if (!needsVerification) {
       if (defaultTeamId) {
         initialStatusId = 4; // ASSIGNED directly to team
         isAutoAssigned = true;
       } else {
         initialStatusId = 2; // VERIFIED, waiting for manual assignment
       }
+    } else {
+      initialStatusId = 1; // PENDING: Menunggu verifikasi berkas
     }
 
     // Generate Ticket Number
@@ -111,22 +130,24 @@ exports.createTicket = async (req, res) => {
     // 4. Insert History
     let historyTextCreate = 'Tiket berhasil diajukan.';
     if (isAutoAssigned) {
-      historyTextCreate = 'Tiket diajukan dan langsung ditugaskan.';
-    } else if (initialStatusId === 2) {
+      historyTextCreate = 'Tiket diajukan dan langsung ditugaskan ke tim teknis.';
+    } else if (initialStatusId === 1) {
       if (isHelpdeskOrAdmin) {
-        historyTextCreate = 'Tiket diajukan dan diverifikasi (Bypass Administrator/Helpdesk). Menunggu penugasan tim.';
+        historyTextCreate = 'Tiket diajukan oleh Helpdesk untuk pemohon. Menunggu proses verifikasi Helpdesk.';
       } else {
-        historyTextCreate = 'Tiket otomatis terverifikasi, menunggu penugasan.';
+        historyTextCreate = 'Tiket berhasil diajukan. Menunggu verifikasi berkas.';
       }
+    } else if (initialStatusId === 2) {
+      historyTextCreate = 'Tiket otomatis terverifikasi, menunggu penugasan.';
     }
 
     await createHistory(client, ticketId, req.user.id, null, initialStatusId, historyTextCreate);
 
     // 5. Notifications
-    // Notify the user
+    // Notify the creator
     await createNotification(client, req.user.id, ticketId, 'INFO', 'Tiket Dibuat', `Tiket ${ticket_number} berhasil diajukan.`);
 
-    // Notify Helpdesk if it needs helpdesk action
+    // If it needs helpdesk action (status 1 PENDING or status 2 VERIFIED without auto-assign)
     if (!isAutoAssigned) {
       const helpdesks = await client.query("SELECT u.id FROM users u JOIN user_roles ur ON u.id = ur.user_id JOIN roles r ON ur.role_id = r.id WHERE r.name='HELPDESK'");
       for (let hd of helpdesks.rows) {
@@ -155,7 +176,14 @@ exports.getMyTickets = async (req, res) => {
   try {
     const result = await db.query(`
       SELECT t.id, t.ticket_number, t.progress, t.priority, t.created_at,
-             u.full_name as pemohon, (CASE WHEN u.department IN ('Masyarakat Umum', 'TND', 'TND User', 'MASYARAKAT', 'Masyarakat') OR u.department IS NULL THEN u.full_name ELSE u.department END) as opd,
+             COALESCE(NULLIF(td.form_data->>'Nama Pemohon', ''), u.full_name) as pemohon,
+             (CASE 
+               WHEN td.form_data->>'Instansi / Asal Pemohon' IS NOT NULL AND TRIM(td.form_data->>'Instansi / Asal Pemohon') != '' 
+                 THEN td.form_data->>'Instansi / Asal Pemohon'
+               WHEN u.department IN ('Masyarakat Umum', 'TND', 'TND User', 'MASYARAKAT', 'Masyarakat') OR u.department IS NULL 
+                 THEN u.full_name 
+               ELSE u.department 
+             END) as opd,
              s.service_name as service_name, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
              tf.rating,
              (SELECT file_name FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_name,
@@ -386,7 +414,15 @@ exports.disputeTicket = async (req, res) => {
 exports.getHelpdeskTickets = async (req, res) => {
   try {
     const result = await db.query(`
-      SELECT t.id, t.ticket_number, t.progress, t.created_at, u.full_name as pemohon, (CASE WHEN u.department IN ('Masyarakat Umum', 'TND', 'TND User', 'MASYARAKAT', 'Masyarakat') OR u.department IS NULL THEN u.full_name ELSE u.department END) as opd,
+      SELECT t.id, t.ticket_number, t.progress, t.created_at, 
+             COALESCE(NULLIF(td.form_data->>'Nama Pemohon', ''), u.full_name) as pemohon, 
+             (CASE 
+               WHEN td.form_data->>'Instansi / Asal Pemohon' IS NOT NULL AND TRIM(td.form_data->>'Instansi / Asal Pemohon') != '' 
+                 THEN td.form_data->>'Instansi / Asal Pemohon'
+               WHEN u.department IN ('Masyarakat Umum', 'TND', 'TND User', 'MASYARAKAT', 'Masyarakat') OR u.department IS NULL 
+                 THEN u.full_name 
+               ELSE u.department 
+             END) as opd,
              s.service_name as service_name, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
              tf.rating,
              (SELECT file_name FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_name,
@@ -474,7 +510,15 @@ exports.assignTicket = async (req, res) => {
 exports.getEmployeeTickets = async (req, res) => {
   try {
     const result = await db.query(`
-      SELECT DISTINCT ON (t.id) t.id, t.ticket_number, t.progress, t.created_at, u.full_name as pemohon, (CASE WHEN u.department IN ('Masyarakat Umum', 'TND', 'TND User', 'MASYARAKAT', 'Masyarakat') OR u.department IS NULL THEN u.full_name ELSE u.department END) as opd,
+      SELECT DISTINCT ON (t.id) t.id, t.ticket_number, t.progress, t.created_at, 
+             COALESCE(NULLIF(td.form_data->>'Nama Pemohon', ''), u.full_name) as pemohon, 
+             (CASE 
+               WHEN td.form_data->>'Instansi / Asal Pemohon' IS NOT NULL AND TRIM(td.form_data->>'Instansi / Asal Pemohon') != '' 
+                 THEN td.form_data->>'Instansi / Asal Pemohon'
+               WHEN u.department IN ('Masyarakat Umum', 'TND', 'TND User', 'MASYARAKAT', 'Masyarakat') OR u.department IS NULL 
+                 THEN u.full_name 
+               ELSE u.department 
+             END) as opd,
              s.service_name as service_name, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
              tf.rating,
              (SELECT file_name FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_name,
@@ -584,7 +628,15 @@ exports.updateProgress = async (req, res) => {
 exports.getAdminTickets = async (req, res) => {
   try {
     const result = await db.query(`
-      SELECT t.id, t.ticket_number, t.progress, t.created_at, u.full_name as pemohon, (CASE WHEN u.department IN ('Masyarakat Umum', 'TND', 'TND User', 'MASYARAKAT', 'Masyarakat') OR u.department IS NULL THEN u.full_name ELSE u.department END) as opd,
+      SELECT t.id, t.ticket_number, t.progress, t.created_at, 
+             COALESCE(NULLIF(td.form_data->>'Nama Pemohon', ''), u.full_name) as pemohon, 
+             (CASE 
+               WHEN td.form_data->>'Instansi / Asal Pemohon' IS NOT NULL AND TRIM(td.form_data->>'Instansi / Asal Pemohon') != '' 
+                 THEN td.form_data->>'Instansi / Asal Pemohon'
+               WHEN u.department IN ('Masyarakat Umum', 'TND', 'TND User', 'MASYARAKAT', 'Masyarakat') OR u.department IS NULL 
+                 THEN u.full_name 
+               ELSE u.department 
+             END) as opd,
              s.service_name as service_name, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
              tf.rating,
              (SELECT file_name FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_name,

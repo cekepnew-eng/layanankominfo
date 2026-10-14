@@ -166,6 +166,10 @@ export const ManageServices = () => {
     const isActive = nextStatus === 'Aktif';
     const verifType = service.requiresHelpdesk === 'asesmen' ? 'Asesmen' : (service.requiresHelpdesk === 'false' || service.verification_type === 'Otomatis' ? 'Otomatis' : 'Wajib Verifikasi');
     const teamIdVal = verifType === 'Otomatis' && service.defaultTeamId ? Number(service.defaultTeamId) : null;
+
+    // Instant optimistic update (NO DELAY!)
+    setServices(prev => prev.map(s => s.id === id ? { ...s, status: nextStatus, is_active: isActive } : s));
+
     try {
       await api.updateService(id, {
         category_name: service.category,
@@ -179,8 +183,8 @@ export const ManageServices = () => {
         default_team_id: teamIdVal,
         form_schema: service.form_schema || []
       });
-      setServices(prev => prev.map(s => s.id === id ? { ...s, status: nextStatus, is_active: isActive } : s));
     } catch (err) {
+      setServices(prev => prev.map(s => s.id === id ? service : s));
       alert('Gagal update status: ' + err.message);
     }
   };
@@ -193,6 +197,18 @@ export const ManageServices = () => {
     const nextVerif = isCurrentlyAuto ? 'Wajib Verifikasi' : 'Otomatis';
     const chosenTeamId = nextVerif === 'Otomatis' ? (service.defaultTeamId || (teams[0]?.id ? String(teams[0].id) : '')) : '';
     const teamObj = teams.find(t => String(t.id) === String(chosenTeamId));
+    const teamName = teamObj?.name || (nextVerif === 'Otomatis' ? (service.default_team_name || 'Tim Aplikasi') : '');
+
+    // Instant optimistic update (NO DELAY!)
+    setServices(prev => prev.map(s => s.id === id ? { 
+      ...s, 
+      requiresHelpdesk: nextReq,
+      verification_type: nextVerif,
+      defaultTeamId: chosenTeamId,
+      default_team_id: chosenTeamId,
+      default_team_name: nextVerif === 'Otomatis' ? teamName : ''
+    } : s));
+
     try {
       await api.updateService(id, {
         category_name: service.category,
@@ -206,15 +222,8 @@ export const ManageServices = () => {
         default_team_id: chosenTeamId ? Number(chosenTeamId) : null,
         form_schema: service.form_schema || []
       });
-      setServices(prev => prev.map(s => s.id === id ? { 
-        ...s, 
-        requiresHelpdesk: nextReq,
-        verification_type: nextVerif,
-        defaultTeamId: chosenTeamId,
-        default_team_id: chosenTeamId,
-        default_team_name: teamObj?.name || s.default_team_name || ''
-      } : s));
     } catch (err) {
+      setServices(prev => prev.map(s => s.id === id ? service : s));
       alert('Gagal update verifikasi: ' + err.message);
     }
   };
@@ -282,7 +291,15 @@ export const ManageServices = () => {
     e.preventDefault();
     const formattedSla = formatSlaString(editSlaMin, editSlaMax);
     const verificationType = editRequiresHelpdesk === 'asesmen' ? 'Asesmen' : (editRequiresHelpdesk === 'false' ? 'Otomatis' : 'Wajib Verifikasi');
-    const finalDefaultTeamId = editRequiresHelpdesk === 'false' && editDefaultTeamId ? Number(editDefaultTeamId) : null;
+    
+    let chosenTeamId = editDefaultTeamId;
+    if (editRequiresHelpdesk === 'false' && !chosenTeamId && teams.length > 0) {
+      chosenTeamId = String(teams[0].id);
+    }
+    const finalDefaultTeamId = editRequiresHelpdesk === 'false' && chosenTeamId ? Number(chosenTeamId) : null;
+    const teamObj = teams.find(t => String(t.id) === String(finalDefaultTeamId));
+    const teamName = teamObj?.name || (finalDefaultTeamId ? `Tim ${finalDefaultTeamId}` : '');
+
     try {
       let finalSop = editSop;
       if (editSopFile) {
@@ -297,6 +314,40 @@ export const ManageServices = () => {
       }
 
       const form_schema = editFormSchema;
+
+      // 1. INSTANT OPTIMISTIC UI UPDATE (ZERO DELAY!)
+      setServices(prev => prev.map(s => s.id === editingService.id ? {
+        ...s,
+        category: editCategory,
+        category_name: editCategory,
+        name: editName,
+        service_name: editName,
+        target_sla: formattedSla,
+        sla: formattedSla,
+        verification_type: verificationType,
+        requiresHelpdesk: verificationType === 'Asesmen' ? 'asesmen' : (verificationType === 'Otomatis' ? 'false' : 'true'),
+        status: editStatus,
+        sop: finalSop,
+        sop_link: finalSop,
+        requiredDocs: finalReqDocs,
+        required_docs: finalReqDocs,
+        defaultTeamId: finalDefaultTeamId ? String(finalDefaultTeamId) : '',
+        default_team_id: finalDefaultTeamId ? String(finalDefaultTeamId) : '',
+        default_team_name: verificationType === 'Otomatis' ? teamName : '',
+        form_schema
+      } : s));
+
+      // Close modal immediately so UI is completely responsive
+      setEditingService(null);
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: 'Perubahan Layanan Disimpan',
+        message: 'Konfigurasi master data layanan SPBE telah berhasil diperbarui.',
+        confirmText: 'Selesai',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
         
       await api.updateService(editingService.id, {
         category_name: editCategory,
@@ -309,19 +360,9 @@ export const ManageServices = () => {
         default_team_id: finalDefaultTeamId,
         form_schema
       });
-      await fetchServices();
-      setEditingService(null);
-      setModalConfig({
-        isOpen: true,
-        type: 'success',
-        title: 'Perubahan Layanan Disimpan',
-        message: 'Konfigurasi master data layanan SPBE telah berhasil diperbarui.',
-        confirmText: 'Selesai',
-        cancelText: '',
-        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
-      });
     } catch (err) {
       alert('Gagal memperbarui layanan: ' + err.message);
+      await fetchServices();
     }
   };
 
@@ -350,7 +391,11 @@ export const ManageServices = () => {
     e.preventDefault();
     const formattedSla = formatSlaString(slaMin, slaMax);
     const verificationType = requiresHelpdesk === 'asesmen' ? 'Asesmen' : (requiresHelpdesk === 'false' ? 'Otomatis' : 'Wajib Verifikasi');
-    const finalDefaultTeamId = requiresHelpdesk === 'false' && defaultTeamId ? Number(defaultTeamId) : null;
+    let chosenTeamId = defaultTeamId;
+    if (requiresHelpdesk === 'false' && !chosenTeamId && teams.length > 0) {
+      chosenTeamId = String(teams[0].id);
+    }
+    const finalDefaultTeamId = requiresHelpdesk === 'false' && chosenTeamId ? Number(chosenTeamId) : null;
     try {
       let finalSop = sop;
       if (sopFile) {
@@ -529,7 +574,6 @@ export const ManageServices = () => {
                   Tim Pelaksana Otomatis <span className="text-rose-500">*</span>
                 </label>
                 <select
-                  required={requiresHelpdesk === 'false'}
                   value={defaultTeamId ? String(defaultTeamId) : ""}
                   onChange={(e) => setDefaultTeamId(e.target.value)}
                   className="w-full px-4 py-2.5 border border-emerald-300 bg-emerald-50 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 font-semibold cursor-pointer"
@@ -1111,7 +1155,6 @@ export const ManageServices = () => {
                       Tim Pelaksana Otomatis <span className="text-rose-500">*</span>
                     </label>
                     <select
-                      required={editRequiresHelpdesk === 'false'}
                       value={editDefaultTeamId ? String(editDefaultTeamId) : ""}
                       onChange={(e) => setEditDefaultTeamId(e.target.value)}
                       className="w-full px-4 py-2.5 border border-emerald-300 bg-emerald-50 rounded-xl text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-semibold cursor-pointer"

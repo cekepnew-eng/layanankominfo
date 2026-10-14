@@ -9,8 +9,13 @@ export const ProtectedRoute = ({ children, allowedRoles }) => {
     return <Navigate to="/auth/login" replace />;
   }
 
-  if (allowedRoles && !allowedRoles.map(r => r.toUpperCase()).includes(user.role?.toUpperCase())) {
-    return <Navigate to="/dashboard" replace />;
+  if (allowedRoles) {
+    const userRole = user.role?.toUpperCase();
+    const userRoles = (user.roles || []).map(r => String(r).toUpperCase());
+    const isAllowed = allowedRoles.some(r => r.toUpperCase() === userRole || userRoles.includes(r.toUpperCase()));
+    if (!isAllowed) {
+      return <Navigate to="/dashboard" replace />;
+    }
   }
 
   return children;
