@@ -19,14 +19,11 @@ build/
 
 # Environment & Secret files
 .env
-.env.*
-*.env
+.env*
+*.env*
 backend/.env
-backend/.env.*
+backend/.env*
 backend/.reset_2fa_done
-!.env.example
-!backend/.env.example
-!*.env.example
 
 # Certificates, Keys & Credentials
 *.pem
