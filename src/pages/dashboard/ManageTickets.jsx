@@ -23,6 +23,7 @@ import {
   AlertTriangle,
   ShieldCheck,
   User,
+  Building,
   X
 } from 'lucide-react';
 
@@ -132,8 +133,13 @@ export const TicketHistory = ({ mode = 'active' }) => {
       }
 
       if (res && res.data) {
-        // Map backend names to frontend expected names
         const mapped = res.data
+          .filter(t => {
+            if (user?.role === 'USER' || user?.role === 'MASYARAKAT') {
+              if (t.form_data?.submitted_by_helpdesk === true || t.form_data?.submitted_by_helpdesk === 'true') return false;
+            }
+            return true;
+          })
           .map(t => ({
             ...t,
             ticket_number: t.ticket_number,
@@ -149,7 +155,8 @@ export const TicketHistory = ({ mode = 'active' }) => {
                         : (t.status_name || ''),
             title: `Pengajuan Layanan ${t.service_name}`,
             service: t.service_name,
-            opd: (t.opd && t.opd !== 'OPD') ? t.opd : 'Dinas Komunikasi dan Informatika',
+            opd: t.form_data?.['Instansi / Asal Pemohon'] || t.form_data?.['Instansi'] || ((t.opd && t.opd !== 'OPD') ? t.opd : 'Dinas Komunikasi dan Informatika'),
+            pemohon: t.pemohon || t.form_data?.['Nama Pemohon'] || 'Pemohon',
             date: new Date(t.created_at).toLocaleDateString('id-ID'),
             requestType: 'Baru',
             slaDuration: 7,
@@ -209,42 +216,98 @@ export const TicketHistory = ({ mode = 'active' }) => {
     sessionStorage.removeItem('redirectedForTicket');
   };
 
-  useEffect(() => {
-    const fromNotif = sessionStorage.getItem('fromNotificationTicketId');
-    if (!fromNotif) return;
+  const isCompletedTicket = (t) => {
+    if (!t) return false;
+    const s = String(t.status || '').toLowerCase();
+    const sn = String(t.status_name || '').toUpperCase();
+    const sid = Number(t.status_id);
+    return (
+      sid === 6 ||
+      sid === 7 ||
+      sn === 'COMPLETED' ||
+      sn === 'WAITING_USER_CONFIRMATION' ||
+      s.includes('selesai') ||
+      s.includes('menunggu konfirmasi user')
+    );
+  };
 
-    if (tickets.length > 0 && !selectedTicket) {
-      const targetId = String(fromNotif).toLowerCase().trim();
-      const isMatch = (t) => {
-        if (!t) return false;
-        const uuidStr = String(t.uuid !== undefined ? t.uuid : '').toLowerCase().trim();
-        const idStr = String(t.id !== undefined ? t.id : '').toLowerCase().trim();
-        const numStr = String(t.ticket_number !== undefined ? t.ticket_number : '').toLowerCase().trim();
-        return uuidStr === targetId || idStr === targetId || numStr === targetId;
-      };
+  const processNotificationTicket = (targetId) => {
+    if (!targetId || tickets.length === 0) return;
+    const cleanTargetId = String(targetId).toLowerCase().trim();
+    const isMatch = (t) => {
+      if (!t) return false;
+      const uuidStr = String(t.uuid !== undefined ? t.uuid : '').toLowerCase().trim();
+      const idStr = String(t.id !== undefined ? t.id : '').toLowerCase().trim();
+      const numStr = String(t.ticket_number !== undefined ? t.ticket_number : '').toLowerCase().trim();
+      return uuidStr === cleanTargetId || idStr === cleanTargetId || numStr === cleanTargetId;
+    };
 
-      const found = tickets.find(isMatch);
-      if (found) {
-        handleSelectTicket(found);
+    const found = tickets.find(isMatch);
+    if (found) {
+      const ticketIsCompleted = isCompletedTicket(found);
+
+      // Jika tiket tidak cocok dengan halaman sekarang, redirect ke halaman yang sesuai
+      if (mode === 'history' && !ticketIsCompleted) {
+        sessionStorage.setItem('fromNotificationTicketId', cleanTargetId);
+        navigate(`/dashboard/history?ticket=${encodeURIComponent(cleanTargetId)}&t=${Date.now()}`);
+        return;
+      }
+      if (mode === 'active' && ticketIsCompleted) {
+        sessionStorage.setItem('fromNotificationTicketId', cleanTargetId);
+        navigate(`/dashboard/ticket-history?ticket=${encodeURIComponent(cleanTargetId)}&t=${Date.now()}`);
+        return;
+      }
+
+      if (mode === 'active') {
+        if (found.status === 'Verifikasi' || found.status === 'Pending' || found.status === 'Menunggu Validasi') {
+          setActiveTab('pending');
+        } else if (found.status === 'Diproses') {
+          setActiveTab('proses');
+        }
+      }
+      handleSelectTicket(found);
+      sessionStorage.removeItem('redirectedForTicket');
+      sessionStorage.removeItem('fromNotificationTicketId');
+      sessionStorage.removeItem('activeTicketId');
+    } else {
+      const triedRedirect = sessionStorage.getItem('redirectedForTicket');
+      if (triedRedirect !== cleanTargetId) {
+        sessionStorage.setItem('redirectedForTicket', cleanTargetId);
+        sessionStorage.setItem('fromNotificationTicketId', cleanTargetId);
+        if (mode === 'active') {
+          navigate(`/dashboard/ticket-history?ticket=${encodeURIComponent(cleanTargetId)}&t=${Date.now()}`);
+        } else {
+          navigate(`/dashboard/history?ticket=${encodeURIComponent(cleanTargetId)}&t=${Date.now()}`);
+        }
+      } else {
         sessionStorage.removeItem('redirectedForTicket');
         sessionStorage.removeItem('fromNotificationTicketId');
         sessionStorage.removeItem('activeTicketId');
-      } else {
-        const triedRedirect = sessionStorage.getItem('redirectedForTicket');
-        if (triedRedirect !== fromNotif) {
-          sessionStorage.setItem('redirectedForTicket', fromNotif);
-          if (mode === 'active') {
-            navigate('/dashboard/ticket-history');
-          } else {
-            navigate('/dashboard/history');
-          }
-        } else {
-          sessionStorage.removeItem('redirectedForTicket');
-          sessionStorage.removeItem('fromNotificationTicketId');
-          sessionStorage.removeItem('activeTicketId');
-        }
       }
     }
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const queryTicket = params.get('ticket');
+    const fromNotif = queryTicket || sessionStorage.getItem('fromNotificationTicketId');
+    if (fromNotif && tickets.length > 0) {
+      processNotificationTicket(fromNotif);
+    }
+  }, [tickets, location.search, location.pathname, mode]);
+
+  useEffect(() => {
+    const handleCustomNotif = (e) => {
+      const ticketId = e.detail?.ticketId;
+      if (ticketId) {
+        sessionStorage.setItem('fromNotificationTicketId', String(ticketId));
+        if (tickets.length > 0) {
+          processNotificationTicket(ticketId);
+        }
+      }
+    };
+    window.addEventListener('notification-ticket-selected', handleCustomNotif);
+    return () => window.removeEventListener('notification-ticket-selected', handleCustomNotif);
   }, [tickets, mode]);
 
   useEffect(() => {
@@ -530,10 +593,58 @@ export const TicketHistory = ({ mode = 'active' }) => {
             text = text.replace(/\.?\s*Berkas dokumen Berita Acara Serah Terima \(BAST\) telah siap untuk diunduh dan dikonfirmasi\.?/gi, '');
             text = text.replace(/\.?\s*BAST siap\.?/gi, '');
           }
+          const lowerText = text.toLowerCase();
+          const roleUpper = (log.user_role || '').toUpperCase();
+          let roleTitle = 'Pegawai';
+
+          // 1. Pemohon actions (SKM, ulasan, rating, sanggahan, revisi pemohon)
+          if (
+            lowerText.includes('skm') ||
+            lowerText.includes('bintang') ||
+            lowerText.includes('ulasan') ||
+            lowerText.includes('rating') ||
+            lowerText.includes('disanggah') || 
+            lowerText.includes('sanggahan') ||
+            lowerText.includes('formulir diperbarui') ||
+            (lowerText.includes('diajukan') && !lowerText.includes('helpdesk'))
+          ) {
+            roleTitle = 'Pemohon';
+          } 
+          // 2. Helpdesk actions (pengajuan oleh Helpdesk, verifikasi, penugasan ke tim)
+          else if (
+            lowerText.includes('helpdesk') || 
+            lowerText.includes('diverifikasi') || 
+            lowerText.includes('ditugaskan ke tim') || 
+            lowerText.includes('penugasan tim') ||
+            lowerText.includes('alasan pending:')
+          ) {
+            roleTitle = 'Helpdesk';
+          } 
+          // 3. Pegawai actions (mulai pengerjaan teknis, progress, selesai dikerjakan, BAST)
+          else if (
+            lowerText.includes('mulai') || 
+            lowerText.includes('pengerjaan') || 
+            lowerText.includes('teknis') || 
+            lowerText.includes('selesai dikerjakan') ||
+            lowerText.includes('progress') ||
+            lowerText.includes('bast') ||
+            lowerText.includes('subtask')
+          ) {
+            roleTitle = 'Pegawai';
+          }
+          // 4. Role-based fallback
+          else if (roleUpper === 'HELPDESK') {
+            roleTitle = 'Helpdesk';
+          } else if (['USER', 'MASYARAKAT', 'OPD'].includes(roleUpper)) {
+            roleTitle = 'Pemohon';
+          } else if (['PEGAWAI', 'KETUA TIM', 'TEKNISI', 'ADMIN'].includes(roleUpper)) {
+            roleTitle = 'Pegawai';
+          }
+
           return {
             date: log.created_at,
             text: text,
-            author: log.user_name ? `${log.user_name} (${!log.user_role ? 'Sistem' : ['ADMIN', 'PEGAWAI', 'KETUA TIM'].includes(log.user_role.toUpperCase()) ? 'Pegawai' : ['USER', 'MASYARAKAT'].includes(log.user_role.toUpperCase()) ? 'Pemohon' : 'Helpdesk'})` : 'Sistem'
+            author: log.user_name ? `${log.user_name} (${roleTitle})` : 'Sistem'
           };
         });
       }
@@ -969,7 +1080,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
         >
           {selectedTicket ? (
             <div 
-              className="w-full max-w-lg lg:max-w-none bg-white lg:bg-transparent lg:glass-card rounded-2xl sm:rounded-3xl border border-slate-200 lg:border-white/60 p-4 sm:p-6 space-y-5 sm:space-y-6 lg:sticky lg:top-24 shadow-2xl lg:shadow-sm max-h-[88vh] lg:max-h-none overflow-y-auto overflow-x-hidden lg:overflow-visible relative text-left"
+              className="w-full max-w-lg lg:max-w-none bg-white rounded-2xl sm:rounded-3xl border border-slate-200 p-4 sm:p-6 space-y-5 sm:space-y-6 lg:sticky lg:top-24 shadow-xl lg:shadow-sm max-h-[88vh] lg:max-h-none overflow-y-auto overflow-x-hidden lg:overflow-visible relative text-left"
               onClick={(e) => e.stopPropagation()}
             >
               <button 
@@ -998,6 +1109,26 @@ export const TicketHistory = ({ mode = 'active' }) => {
                 </div>
                 <h3 className="font-extrabold text-lg text-slate-800 tracking-tight leading-snug break-words">{selectedTicket.title}</h3>
                 <p className="text-base text-slate-500 leading-relaxed break-words break-all">{selectedTicket.desc}</p>
+
+                {/* Informasi Pemohon & Instansi / Masyarakat */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-white border border-slate-200/90 rounded-2xl text-left shadow-xs">
+                  <div className="space-y-0.5 sm:border-r sm:border-slate-100 sm:pr-3">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Pemohon</span>
+                    <p className="text-sm font-extrabold text-slate-800 flex items-center gap-1.5 truncate">
+                      <User className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                      <span className="truncate">{selectedTicket.pemohon || selectedTicket.form_data?.['Nama Pemohon'] || 'Pemohon'}</span>
+                    </p>
+                  </div>
+                  <div className="space-y-0.5 sm:pl-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Instansi / Asal Pemohon</span>
+                    <p className="text-sm font-extrabold text-slate-800 flex items-center gap-1.5 truncate">
+                      <Building className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                      <span className="truncate">
+                        {selectedTicket.form_data?.['Instansi / Asal Pemohon'] || selectedTicket.form_data?.['Instansi'] || selectedTicket.opd || 'Masyarakat Umum'}
+                      </span>
+                    </p>
+                  </div>
+                </div>
                 <button
                   type="button"
                   onClick={() => setShowDetailModal(true)}
@@ -1019,7 +1150,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4 bg-slate-50 border border-slate-200/60 rounded-2xl p-4 text-left">
+              <div className="grid grid-cols-2 gap-4 bg-white border border-slate-200/90 rounded-2xl p-4 text-left shadow-xs">
                 <div>
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Durasi SLA</span>
                   <p className="text-sm font-extrabold text-slate-700 mt-0.5">
@@ -1619,7 +1750,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
               </div>
             </div>
           ) : (
-            <div className="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-6 text-center text-slate-400 py-16">
+            <div className="bg-white border border-dashed border-slate-200 rounded-3xl p-6 text-center text-slate-400 py-16 shadow-xs">
               <FileText className="w-8 h-8 mx-auto mb-2 text-slate-350" />
               <p className="text-sm font-semibold leading-relaxed">Pilih salah satu tiket di sebelah kiri untuk melihat rincian detail pelacakan dan riwayat ulasan rating.</p>
             </div>

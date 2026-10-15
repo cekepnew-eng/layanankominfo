@@ -270,8 +270,16 @@ export const CreateTicket = () => {
     const service_id = serviceObj.id;
 
     const finalFormData = { ...formData };
-    if (isStaff && helpdeskInstansi.trim()) {
-      finalFormData['Instansi / Asal Pemohon'] = helpdeskInstansi.trim();
+    if (isStaff) {
+      finalFormData['submitted_by_helpdesk'] = true;
+      if (helpdeskInstansi.trim()) {
+        finalFormData['Instansi / Asal Pemohon'] = helpdeskInstansi.trim();
+      } else if (!finalFormData['Instansi / Asal Pemohon']) {
+        finalFormData['Instansi / Asal Pemohon'] = 'Helpdesk (Pelayanan Langsung)';
+      }
+      if (!finalFormData['Nama Pemohon']) {
+        finalFormData['Nama Pemohon'] = 'Pemohon (via Helpdesk)';
+      }
     }
 
     const payload = {

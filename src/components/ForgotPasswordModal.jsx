@@ -247,20 +247,20 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="absolute top-5 right-5 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-all cursor-pointer disabled:opacity-50"
+            className="absolute top-5 right-5 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-all cursor-pointer disabled:opacity-50 z-10"
             title="Tutup"
           >
             <X className="w-5 h-5" />
           </button>
 
           {/* Stepper Indicator */}
-          <div className="flex items-center gap-2 pb-1">
+          <div className="flex items-center gap-2 pb-1 pr-10">
             <span className={`h-1.5 rounded-full transition-all duration-300 ${step === 1 ? 'w-8 bg-blue-600' : 'w-3 bg-blue-200'}`} />
             <span className={`h-1.5 rounded-full transition-all duration-300 ${step === 2 ? 'w-8 bg-blue-600' : 'w-3 bg-slate-200'}`} />
             <span className={`h-1.5 rounded-full transition-all duration-300 ${step === 3 ? 'w-8 bg-blue-600' : 'w-3 bg-slate-200'}`} />
             <span className={`h-1.5 rounded-full transition-all duration-300 ${step === 4 ? 'w-8 bg-emerald-600' : 'w-3 bg-slate-200'}`} />
-            <span className="text-xs font-bold text-slate-400 ml-auto">
-              Langkah {step} dari 3
+            <span className="text-xs font-bold text-slate-400 ml-auto whitespace-nowrap">
+              {step <= 3 ? `Langkah ${step} dari 3` : 'Selesai'}
             </span>
           </div>
 

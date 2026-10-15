@@ -66,6 +66,7 @@ export const Overview = () => {
     const fetchData = async () => {
       try {
         const userRole = user?.role?.toUpperCase();
+        let raw = [];
         if (userRole === 'ADMIN') {
           const [data, uData, teamsData, tData, sData] = await Promise.all([
             api.getAdminTickets(),
@@ -74,21 +75,52 @@ export const Overview = () => {
             api.getHelpdeskTickets(),
             api.getPublicServices()
           ]);
-          setTickets(tData.data || data.data || []);
+          raw = tData.data || data.data || [];
           setAdminUsers(uData.data || []);
           setAdminTeams(teamsData.data || []);
           setAdminServicesCount(sData.data ? sData.data.length : 0);
           setAdminServices(sData.data || []);
         } else if (userRole === 'HELPDESK') {
           const data = await api.getHelpdeskTickets();
-          setTickets(data.data || []);
+          raw = data.data || [];
         } else if (userRole === 'PEGAWAI') {
           const data = await api.getEmployeeTickets();
-          setTickets(data.data || []);
+          raw = data.data || [];
         } else {
           const data = await api.getMyTickets();
-          setTickets(data.data || []);
+          raw = (data.data || []).filter(t => t.form_data?.submitted_by_helpdesk !== true && t.form_data?.submitted_by_helpdesk !== 'true');
         }
+
+        const mapped = raw.map(t => {
+          const status = t.status_name === 'PENDING' ? 'Verifikasi'
+            : t.status_name === 'VERIFIED' ? 'Menunggu Validasi'
+              : t.status_name === 'REJECTED' ? 'Pending'
+                : t.status_name === 'ASSIGNED' ? 'Diproses'
+                  : t.status_name === 'IN_PROGRESS' ? 'Diproses'
+                    : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Selesai'
+                      : t.status_name === 'COMPLETED' ? 'Selesai & Dinilai'
+                        : (t.status || t.status_name || '');
+
+          return {
+            ...t,
+            ticket_number: t.ticket_number || t.id,
+            id: t.ticket_number || t.id,
+            uuid: t.id,
+            status,
+            status_name: t.status_name || (status === 'Verifikasi' ? 'PENDING' : status === 'Menunggu Validasi' ? 'VERIFIED' : status === 'Pending' ? 'REJECTED' : status === 'Diproses' ? 'IN_PROGRESS' : status.includes('Selesai') ? 'COMPLETED' : ''),
+            title: t.title || `Pengajuan Layanan ${t.service_name || t.service || 'SPBE'}`,
+            service: t.service_name || t.service,
+            service_name: t.service_name || t.service,
+            opd: t.form_data?.['Instansi / Asal Pemohon'] || t.form_data?.['Instansi'] || ((t.opd && t.opd !== 'OPD') ? t.opd : (t.department || 'Dinas Komunikasi dan Informatika')),
+            pemohon: t.pemohon || t.form_data?.['Nama Pemohon'] || 'Pemohon',
+            date: t.created_at ? new Date(t.created_at).toLocaleDateString('id-ID') : (t.date || '-'),
+            requestType: 'Baru',
+            slaDuration: 7,
+            remainingDays: 7,
+            slaRemainingDays: 7
+          };
+        });
+        setTickets(mapped);
       } catch (err) {
         console.error('Failed to fetch dashboard data', err);
       } finally {
@@ -102,10 +134,10 @@ export const Overview = () => {
     return user.teamId ? 'Tim Teknis' : '';
   };
 
-  const completedOrWaiting = tickets.filter(t => t.status_name === 'COMPLETED' || t.status_name === 'WAITING_USER_CONFIRMATION');
-  const completedTickets = tickets.filter(t => t.status_name === 'COMPLETED');
+  const completedOrWaiting = tickets.filter(t => t.status_name === 'COMPLETED' || t.status_name === 'WAITING_USER_CONFIRMATION' || (t.status || '').includes('Selesai'));
+  const completedTickets = tickets.filter(t => t.status_name === 'COMPLETED' || (t.status || '') === 'Selesai & Dinilai');
   
-  const inSlaTickets = completedOrWaiting.filter(t => t.progress === 100); 
+  const inSlaTickets = completedOrWaiting.filter(t => t.progress === 100 || (t.status || '').includes('Selesai')); 
   const slaCompliancePct = completedOrWaiting.length > 0 ? ((inSlaTickets.length / completedOrWaiting.length) * 100).toFixed(1) + '%' : '100.0%';
 
   const ratedTickets = tickets.filter(t => t.rating);
@@ -483,7 +515,7 @@ export const Overview = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-          <div className="md:col-span-4 glass-card p-6 rounded-3xl flex items-center gap-4 hover:scale-[1.02] transition-transform">
+          <div className="md:col-span-3 glass-card p-6 rounded-3xl flex items-center gap-4 hover:scale-[1.02] transition-transform">
             <div className="p-4 bg-gradient-to-br from-sky-400 to-sky-600 text-white rounded-2xl shadow-lg shadow-sky-500/30">
               <Clock className="w-6 h-6" />
             </div>
@@ -495,7 +527,7 @@ export const Overview = () => {
             </div>
           </div>
 
-          <div className="md:col-span-4 glass-card p-6 rounded-3xl flex items-center gap-4 hover:scale-[1.02] transition-transform">
+          <div className="md:col-span-3 glass-card p-6 rounded-3xl flex items-center gap-4 hover:scale-[1.02] transition-transform">
             <div className="p-4 bg-gradient-to-br from-amber-400 to-amber-600 text-white rounded-2xl shadow-lg shadow-amber-500/30">
               <AlertCircle className="w-6 h-6" />
             </div>
@@ -507,7 +539,7 @@ export const Overview = () => {
             </div>
           </div>
 
-          <div className="md:col-span-4 glass-card p-6 rounded-3xl flex items-center gap-4 hover:scale-[1.02] transition-transform">
+          <div className="md:col-span-3 glass-card p-6 rounded-3xl flex items-center gap-4 hover:scale-[1.02] transition-transform">
             <div className="p-4 bg-gradient-to-br from-emerald-400 to-emerald-600 text-white rounded-2xl shadow-lg shadow-emerald-500/30">
               <CheckCircle className="w-6 h-6" />
             </div>
@@ -519,6 +551,18 @@ export const Overview = () => {
             </div>
           </div>
 
+          <div className="md:col-span-3 glass-card p-6 rounded-3xl flex items-center gap-4 hover:scale-[1.02] transition-transform">
+            <div className="p-4 bg-gradient-to-br from-indigo-400 to-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-500/30">
+              <Activity className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">SLA Tepat Waktu</p>
+              <p className="text-2xl font-black text-slate-800 mt-0.5">
+                {slaCompliancePct}
+              </p>
+            </div>
+          </div>
+
           <div className="md:col-span-12 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
             <h3 className="font-extrabold text-base text-slate-800 uppercase tracking-wider">Tugas Dengan Prioritas Utama (SLA Terbatas)</h3>
             <div className="space-y-3">
@@ -526,11 +570,11 @@ export const Overview = () => {
                 <div className="p-5 bg-amber-50/50 border border-amber-200/50 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6 hover:bg-amber-50 transition-all">
                   <div className="space-y-1.5">
                     <span className="inline-block text-sm font-bold bg-amber-100 text-amber-700 px-2.5 py-0.5 rounded uppercase tracking-wider">
-                      Prioritas SLA: Sisa {priorityTask.remainingDays !== undefined ? priorityTask.remainingDays : 3} Hari
+                      Prioritas SLA: Sisa {priorityTask.remainingDays !== undefined ? priorityTask.remainingDays : 7} Hari (SLA Standar: {priorityTask.slaDuration || 7} Hari)
                     </span>
                     <h4 className="font-extrabold text-slate-850 text-base mt-1">{priorityTask.title}</h4>
                     <p className="text-base text-slate-500">
-                      Diajukan oleh: {priorityTask.opd} | Penanggung Jawab: {priorityTask.team || '-'}
+                      Diajukan oleh: {priorityTask.opd} | Penanggung Jawab: {priorityTask.team || getTicketTeam(priorityTask) || 'Tim Teknis'}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 self-stretch md:self-auto">
@@ -551,12 +595,12 @@ export const Overview = () => {
 
   const userTickets = tickets || [];
   const userTotalCount = userTickets.length;
-  const userInProgressCount = userTickets.filter(t => t.status === 'Diproses' || t.status === 'Verifikasi' || t.status === 'Pending' || t.status_name === 'PENDING' || t.status_name === 'VERIFIED' || t.status_name === 'ASSIGNED' || t.status_name === 'IN_PROGRESS').length;
+  const userInProgressCount = userTickets.filter(t => t.status === 'Diproses' || t.status === 'Verifikasi' || t.status === 'Pending' || t.status === 'Menunggu Validasi' || t.status_name === 'PENDING' || t.status_name === 'VERIFIED' || t.status_name === 'ASSIGNED' || t.status_name === 'IN_PROGRESS').length;
   const userConfirmCount = userTickets.filter(t => (t.status === 'Selesai' && !t.rating) || (t.status_name === 'WAITING_USER_CONFIRMATION')).length;
-  const userFinishedCount = userTickets.filter(t => (t.status === 'Selesai' && t.rating) || (t.status_name === 'COMPLETED')).length;
+  const userFinishedCount = userTickets.filter(t => t.status === 'Selesai & Dinilai' || (t.status === 'Selesai' && t.rating) || (t.status_name === 'COMPLETED')).length;
 
   const userConfirmTicket = userTickets.find(t => (t.status === 'Selesai' && !t.rating) || t.status_name === 'WAITING_USER_CONFIRMATION');
-  const userInProgressTicket = userTickets.find(t => t.status === 'Diproses' || t.status === 'Verifikasi' || t.status === 'Pending' || t.status_name === 'PENDING' || t.status_name === 'ASSIGNED' || t.status_name === 'IN_PROGRESS');
+  const userInProgressTicket = userTickets.find(t => t.status === 'Diproses' || t.status === 'Verifikasi' || t.status === 'Pending' || t.status === 'Menunggu Validasi' || t.status_name === 'PENDING' || t.status_name === 'ASSIGNED' || t.status_name === 'IN_PROGRESS');
 
   const renderUserDashboard = () => (
     <div className="space-y-8 text-left animate-in fade-in duration-200">
@@ -607,7 +651,12 @@ export const Overview = () => {
         </div>
 
         <div className="md:col-span-12 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
-          <h3 className="font-extrabold text-base text-slate-800 uppercase tracking-wider">Pelacakan Tiket Terakhir</h3>
+          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+            <h3 className="font-extrabold text-base text-slate-800 uppercase tracking-wider">Pelacakan Tiket Terakhir</h3>
+            <span className="text-xs font-bold bg-sky-50 text-sky-700 px-3 py-1 rounded-lg border border-sky-200">
+              SLA Standar: 7 Hari
+            </span>
+          </div>
           <div className="space-y-6 text-left">
             {!userConfirmTicket && !userInProgressTicket ? (
               <p className="text-slate-400 font-semibold text-sm">Tidak ada tiket pengajuan aktif saat ini.</p>
@@ -620,7 +669,7 @@ export const Overview = () => {
                       <p className="text-sm font-bold text-indigo-600 uppercase tracking-wider">Butuh Evaluasi SKM & Rating</p>
                       <h4 className="font-bold text-slate-850 text-base">{userConfirmTicket.title}</h4>
                       <p className="text-base text-slate-500 leading-relaxed">
-                        Status: Pekerjaan telah selesai dikerjakan 100%. Silakan klik menu "Tiket Saya" untuk mengisi kuesioner SKM dan memberikan ulasan bintang.
+                        Status: Pekerjaan telah selesai dikerjakan 100% (SLA Terpenuhi). Silakan klik menu "Tiket Selesai" untuk mengisi kuesioner SKM dan memberikan ulasan bintang.
                       </p>
                     </div>
                   </div>
@@ -633,13 +682,25 @@ export const Overview = () => {
                     }`}></div>
                     <div className="space-y-1">
                       <p className={`text-sm font-bold uppercase tracking-wider ${
-                        userInProgressTicket.status === 'Pending' ? 'text-amber-600' : 'text-sky-600'
+                        userInProgressTicket.status === 'Pending' 
+                          ? 'text-amber-600' 
+                          : userInProgressTicket.status === 'Verifikasi' || userInProgressTicket.status === 'Menunggu Validasi'
+                            ? 'text-amber-600'
+                            : 'text-sky-600'
                       }`}>
-                        {userInProgressTicket.status === 'Pending' ? 'Ditangguhkan (Pending)' : 'Sedang Diproses'}
+                        {userInProgressTicket.status === 'Pending' 
+                          ? 'Ditangguhkan (Pending)' 
+                          : userInProgressTicket.status === 'Verifikasi' || userInProgressTicket.status === 'Menunggu Validasi'
+                            ? 'Menunggu Verifikasi Helpdesk'
+                            : 'Sedang Diproses Tim Teknis'}
                       </p>
                       <h4 className="font-bold text-slate-850 text-base">{userInProgressTicket.title}</h4>
                       <p className="text-base text-slate-500 leading-relaxed">
-                        Status: {userInProgressTicket.status === 'Pending' ? 'Berkas permohonan kurang lengkap / ditangguhkan.' : `Pekerjaan teknis sedang berjalan | SLA: ${userInProgressTicket.slaDuration || 3} Hari (Sisa ${userInProgressTicket.slaRemainingDays !== undefined ? userInProgressTicket.slaRemainingDays : 3} Hari)`}
+                        Status: {userInProgressTicket.status === 'Pending' 
+                          ? 'Berkas permohonan kurang lengkap / ditangguhkan untuk perbaikan berkas.' 
+                          : userInProgressTicket.status === 'Verifikasi' || userInProgressTicket.status === 'Menunggu Validasi'
+                            ? `Menunggu verifikasi berkas oleh Helpdesk | SLA Standar: ${userInProgressTicket.slaDuration || 7} Hari (SLA Belum Berjalan)`
+                            : `Pekerjaan teknis sedang berjalan | SLA Standar: ${userInProgressTicket.slaDuration || 7} Hari (Sisa ${userInProgressTicket.remainingDays !== undefined ? userInProgressTicket.remainingDays : 7} Hari)`}
                       </p>
                     </div>
                   </div>

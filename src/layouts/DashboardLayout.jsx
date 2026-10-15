@@ -235,24 +235,44 @@ export const DashboardLayout = () => {
     }
 
     // 3. Langsung arahkan ke tiket yang sesuai (Tiket Selesai vs Tiket Proses)
-    const targetTicketId = n.ticket_id || n.ticket_number;
+    let targetTicketId = n.ticket_id || n.ticket_uuid || n.ticket_number;
+    if (!targetTicketId && n.message) {
+      const match = n.message.match(/((?:REQ|TKT)-\d+(?:-\d+)?)/i);
+      if (match) targetTicketId = match[1];
+    }
+    if (!targetTicketId && n.title) {
+      const match = n.title.match(/((?:REQ|TKT)-\d+(?:-\d+)?)/i);
+      if (match) targetTicketId = match[1];
+    }
+
     if (targetTicketId) {
       sessionStorage.setItem('fromNotificationTicketId', String(targetTicketId));
 
       const isCompleted = 
         n.ticket_status_id === 6 || 
         n.ticket_status_id === 7 || 
+        String(n.ticket_status_id) === '6' ||
+        String(n.ticket_status_id) === '7' ||
         n.ticket_status_name === 'WAITING_USER_CONFIRMATION' || 
         n.ticket_status_name === 'COMPLETED' ||
         (n.title && n.title.toLowerCase().includes('selesai')) ||
         (n.message && n.message.toLowerCase().includes('selesai')) ||
         (n.message && n.message.toLowerCase().includes('rating'));
 
-      if (isCompleted) {
-        navigate('/dashboard/ticket-history');
-      } else {
-        navigate('/dashboard/history');
+      const targetPath = isCompleted ? '/dashboard/ticket-history' : '/dashboard/history';
+
+      // Dispatch custom event to trigger immediate select if already on the same page
+      if (location.pathname === targetPath) {
+        window.dispatchEvent(new CustomEvent('notification-ticket-selected', {
+          detail: {
+            ticketId: String(targetTicketId),
+            isCompleted
+          }
+        }));
       }
+
+      // Navigate with query params and timestamp to guarantee re-render/reaction
+      navigate(`${targetPath}?ticket=${encodeURIComponent(targetTicketId)}&t=${Date.now()}`);
     }
   };
 
@@ -529,7 +549,9 @@ export const DashboardLayout = () => {
               >
                 <Bell className="w-5 h-5" />
                 {unreadCount > 0 && (
-                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-rose-500 border-2 border-white rounded-full animate-pulse"></span>
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[19px] h-[19px] px-1 flex items-center justify-center bg-rose-500 text-white text-[10px] font-black rounded-full border-2 border-white shadow-xs">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
                 )}
               </button>
 
@@ -645,6 +667,12 @@ export const DashboardLayout = () => {
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Pembatas Elemen Header (Putih Kehitaman sesuai tema yang tegas dan jelas terlihat) */}
+            <div className="h-8 flex items-center mx-1 shrink-0" aria-hidden="true">
+              <div className="h-6 w-[1.5px] bg-slate-400 rounded-l"></div>
+              <div className="h-6 w-[1.5px] bg-white rounded-r shadow-xs"></div>
             </div>
 
             <Link

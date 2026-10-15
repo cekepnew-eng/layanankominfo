@@ -99,7 +99,14 @@ export const TicketDetailModal = ({ isOpen, onClose, ticket, onBagiTugas }) => {
                 <span className="text-xs font-bold text-slate-400 block">Nama Pengaju:</span>
                 <p className="font-extrabold text-slate-800 mt-0.5 flex items-center gap-1.5">
                   <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  <span>{ticket.pemohon || '-'}</span>
+                  <span>{ticket.pemohon || formData['Nama Pemohon'] || '-'}</span>
+                </p>
+              </div>
+              <div>
+                <span className="text-xs font-bold text-slate-400 block">Instansi / Asal Pemohon:</span>
+                <p className="font-extrabold text-slate-800 mt-0.5 flex items-center gap-1.5">
+                  <Building className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                  <span>{formData['Instansi / Asal Pemohon'] || formData['Instansi'] || ticket.opd || 'Masyarakat Umum'}</span>
                 </p>
               </div>
               <div>
@@ -109,9 +116,9 @@ export const TicketDetailModal = ({ isOpen, onClose, ticket, onBagiTugas }) => {
                   <span>{ticket.service}</span>
                 </p>
               </div>
-              <div className="sm:col-span-2 pt-2 border-t border-slate-100">
+              <div>
                 <span className="text-xs font-bold text-slate-400 block">Sub-Layanan yang Diajukan:</span>
-                <p className="text-base font-black text-sky-900 mt-0.5">{ticket.requestType}</p>
+                <p className="font-extrabold text-sky-900 mt-0.5">{ticket.requestType}</p>
               </div>
             </div>
           </div>

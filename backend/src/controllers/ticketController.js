@@ -114,6 +114,13 @@ exports.createTicket = async (req, res) => {
     const ticketId = ticketRes.rows[0].id;
 
     // 2. Insert Ticket Details
+    if (isHelpdeskOrAdmin) {
+      form_data.submitted_by_helpdesk = true;
+      if (!form_data['Instansi / Asal Pemohon'] && form_data['Instansi']) {
+        form_data['Instansi / Asal Pemohon'] = form_data['Instansi'];
+      }
+    }
+
     await client.query(`
       INSERT INTO ticket_details (ticket_id, title, description, form_data)
       VALUES ($1, $2, $3, $4)
@@ -180,9 +187,11 @@ exports.getMyTickets = async (req, res) => {
              (CASE 
                WHEN td.form_data->>'Instansi / Asal Pemohon' IS NOT NULL AND TRIM(td.form_data->>'Instansi / Asal Pemohon') != '' 
                  THEN td.form_data->>'Instansi / Asal Pemohon'
-               WHEN u.department IN ('Masyarakat Umum', 'TND', 'TND User', 'MASYARAKAT', 'Masyarakat') OR u.department IS NULL 
-                 THEN u.full_name 
-               ELSE u.department 
+               WHEN td.form_data->>'Instansi' IS NOT NULL AND TRIM(td.form_data->>'Instansi') != '' 
+                 THEN td.form_data->>'Instansi'
+               WHEN u.department IS NOT NULL AND TRIM(u.department) != '' 
+                 THEN u.department 
+               ELSE 'Masyarakat Umum'
              END) as opd,
              s.service_name as service_name, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
              tf.rating,
@@ -196,6 +205,12 @@ exports.getMyTickets = async (req, res) => {
       LEFT JOIN ticket_details td ON td.ticket_id = t.id
       LEFT JOIN ticket_feedback tf ON tf.ticket_id = t.id
       WHERE t.user_id = $1
+        AND (td.form_data->>'submitted_by_helpdesk' IS DISTINCT FROM 'true')
+        AND NOT EXISTS (
+          SELECT 1 FROM ticket_histories th 
+          WHERE th.ticket_id = t.id 
+            AND th.log_description ILIKE '%diajukan oleh Helpdesk%'
+        )
       ORDER BY t.created_at DESC
     `, [req.user.id]);
     const mappedRows = result.rows.map(t => ({
@@ -419,9 +434,11 @@ exports.getHelpdeskTickets = async (req, res) => {
              (CASE 
                WHEN td.form_data->>'Instansi / Asal Pemohon' IS NOT NULL AND TRIM(td.form_data->>'Instansi / Asal Pemohon') != '' 
                  THEN td.form_data->>'Instansi / Asal Pemohon'
-               WHEN u.department IN ('Masyarakat Umum', 'TND', 'TND User', 'MASYARAKAT', 'Masyarakat') OR u.department IS NULL 
-                 THEN u.full_name 
-               ELSE u.department 
+               WHEN td.form_data->>'Instansi' IS NOT NULL AND TRIM(td.form_data->>'Instansi') != '' 
+                 THEN td.form_data->>'Instansi'
+               WHEN u.department IS NOT NULL AND TRIM(u.department) != '' 
+                 THEN u.department 
+               ELSE 'Masyarakat Umum'
              END) as opd,
              s.service_name as service_name, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
              tf.rating,
@@ -515,9 +532,11 @@ exports.getEmployeeTickets = async (req, res) => {
              (CASE 
                WHEN td.form_data->>'Instansi / Asal Pemohon' IS NOT NULL AND TRIM(td.form_data->>'Instansi / Asal Pemohon') != '' 
                  THEN td.form_data->>'Instansi / Asal Pemohon'
-               WHEN u.department IN ('Masyarakat Umum', 'TND', 'TND User', 'MASYARAKAT', 'Masyarakat') OR u.department IS NULL 
-                 THEN u.full_name 
-               ELSE u.department 
+               WHEN td.form_data->>'Instansi' IS NOT NULL AND TRIM(td.form_data->>'Instansi') != '' 
+                 THEN td.form_data->>'Instansi'
+               WHEN u.department IS NOT NULL AND TRIM(u.department) != '' 
+                 THEN u.department 
+               ELSE 'Masyarakat Umum'
              END) as opd,
              s.service_name as service_name, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
              tf.rating,
@@ -633,9 +652,11 @@ exports.getAdminTickets = async (req, res) => {
              (CASE 
                WHEN td.form_data->>'Instansi / Asal Pemohon' IS NOT NULL AND TRIM(td.form_data->>'Instansi / Asal Pemohon') != '' 
                  THEN td.form_data->>'Instansi / Asal Pemohon'
-               WHEN u.department IN ('Masyarakat Umum', 'TND', 'TND User', 'MASYARAKAT', 'Masyarakat') OR u.department IS NULL 
-                 THEN u.full_name 
-               ELSE u.department 
+               WHEN td.form_data->>'Instansi' IS NOT NULL AND TRIM(td.form_data->>'Instansi') != '' 
+                 THEN td.form_data->>'Instansi'
+               WHEN u.department IS NOT NULL AND TRIM(u.department) != '' 
+                 THEN u.department 
+               ELSE 'Masyarakat Umum'
              END) as opd,
              s.service_name as service_name, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
              tf.rating,
@@ -717,8 +738,40 @@ exports.getHistory = async (req, res) => {
         desc = desc.replace(/\.?\s*Berkas dokumen Berita Acara Serah Terima \(BAST\) telah siap untuk diunduh dan dikonfirmasi\.?/gi, '');
         desc = desc.replace(/\.?\s*BAST siap\.?/gi, '');
       }
+
+      let detectedRole = log.user_role;
+      const lowerDesc = desc.toLowerCase();
+      if (
+        lowerDesc.includes('skm') ||
+        lowerDesc.includes('bintang') ||
+        lowerDesc.includes('ulasan') ||
+        lowerDesc.includes('rating') ||
+        lowerDesc.includes('disanggah') ||
+        lowerDesc.includes('sanggahan') ||
+        (lowerDesc.includes('diajukan') && !lowerDesc.includes('helpdesk'))
+      ) {
+        detectedRole = 'USER';
+      } else if (
+        lowerDesc.includes('helpdesk') || 
+        lowerDesc.includes('diverifikasi') || 
+        lowerDesc.includes('ditugaskan ke tim') || 
+        lowerDesc.includes('penugasan tim')
+      ) {
+        detectedRole = 'HELPDESK';
+      } else if (
+        lowerDesc.includes('mulai') ||
+        lowerDesc.includes('pengerjaan') ||
+        lowerDesc.includes('teknis') ||
+        lowerDesc.includes('selesai dikerjakan') ||
+        lowerDesc.includes('progress') ||
+        lowerDesc.includes('bast')
+      ) {
+        detectedRole = 'PEGAWAI';
+      }
+
       return {
         ...log,
+        user_role: detectedRole,
         log_description: desc
       };
     });

@@ -163,7 +163,7 @@ export const Register = () => {
               Portal Helpdesk SPBE
             </div>
             <h1 className="text-5xl lg:text-6xl font-black leading-tight tracking-tight text-white">
-              Helpdesk Layanan SPBE
+              Helpdesk Digital Layanan DISKOMINFO
             </h1>
             <p className="text-slate-400 text-lg leading-relaxed">
               Pusat bantuan dan sistem pelayanan terpadu Diskominfo Kota Bogor untuk penanganan permohonan, bantuan teknis, dan digitalisasi layanan secara cepat, transparan, dan akuntabel.

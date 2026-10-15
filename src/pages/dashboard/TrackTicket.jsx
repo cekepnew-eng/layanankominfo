@@ -123,9 +123,57 @@ export const TrackTicket = () => {
                         <span>{log.date || new Date(log.created_at).toLocaleString('id-ID')}</span>
                         <span className="text-slate-300">•</span>
                         <span className="text-slate-600 bg-white px-2 py-0.5 rounded-md border border-slate-200 shadow-2xs">
-                          {log.user_name 
-                            ? `${log.user_name} (${!log.user_role ? 'Sistem' : ['ADMIN', 'PEGAWAI', 'KETUA TIM'].includes(log.user_role.toUpperCase()) ? 'Pegawai' : ['USER', 'MASYARAKAT'].includes(log.user_role.toUpperCase()) ? 'Pemohon' : 'Helpdesk'})` 
-                            : 'Sistem'}
+                          {(() => {
+                            if (!log.user_name) return 'Sistem';
+                            const desc = (log.log_description || log.text || '').toLowerCase();
+                            const roleUpper = (log.user_role || '').toUpperCase();
+                            let roleTitle = 'Pegawai';
+
+                            // 1. Pemohon actions (SKM, ulasan, rating, sanggahan, revisi pemohon)
+                            if (
+                              desc.includes('skm') ||
+                              desc.includes('bintang') ||
+                              desc.includes('ulasan') ||
+                              desc.includes('rating') ||
+                              desc.includes('disanggah') || 
+                              desc.includes('sanggahan') || 
+                              desc.includes('formulir diperbarui') ||
+                              (desc.includes('diajukan') && !desc.includes('helpdesk'))
+                            ) {
+                              roleTitle = 'Pemohon';
+                            } 
+                            // 2. Helpdesk actions (pengajuan oleh Helpdesk, verifikasi, penugasan ke tim)
+                            else if (
+                              desc.includes('helpdesk') || 
+                              desc.includes('diverifikasi') || 
+                              desc.includes('ditugaskan ke tim') || 
+                              desc.includes('penugasan tim') ||
+                              desc.includes('alasan pending:')
+                            ) {
+                              roleTitle = 'Helpdesk';
+                            } 
+                            // 3. Pegawai actions (mulai pengerjaan teknis, progress, selesai dikerjakan, BAST)
+                            else if (
+                              desc.includes('mulai') || 
+                              desc.includes('pengerjaan') || 
+                              desc.includes('teknis') || 
+                              desc.includes('selesai dikerjakan') ||
+                              desc.includes('progress') ||
+                              desc.includes('bast') ||
+                              desc.includes('subtask')
+                            ) {
+                              roleTitle = 'Pegawai';
+                            }
+                            // 4. Role-based fallback
+                            else if (roleUpper === 'HELPDESK') {
+                              roleTitle = 'Helpdesk';
+                            } else if (['USER', 'MASYARAKAT', 'OPD'].includes(roleUpper)) {
+                              roleTitle = 'Pemohon';
+                            } else if (['PEGAWAI', 'KETUA TIM', 'TEKNISI', 'ADMIN'].includes(roleUpper)) {
+                              roleTitle = 'Pegawai';
+                            }
+                            return `${log.user_name} (${roleTitle})`;
+                          })()}
                         </span>
                       </div>
                       <TruncatedText text={log.log_description || log.text} className="text-sm font-bold text-slate-700 leading-relaxed" />

@@ -10,9 +10,55 @@ import { api } from '../../services/api';
 
 const LogItem = ({ log }) => {
   const [expanded, setExpanded] = useState(false);
-  const dateStr = log.date || (log.created_at ? new Date(log.created_at).toLocaleString('id-ID') : '');
-  const author = log.user_name ? `${log.user_name} (${!log.user_role ? 'Sistem' : ['ADMIN', 'PEGAWAI', 'KETUA TIM'].includes(log.user_role.toUpperCase()) ? 'Pegawai' : ['USER', 'MASYARAKAT'].includes(log.user_role.toUpperCase()) ? 'Pemohon' : 'Helpdesk'})` : 'Sistem';
   const text = log.text || log.log_description || '';
+  const lowerText = text.toLowerCase();
+  const roleUpper = (log.user_role || '').toUpperCase();
+  let roleTitle = 'Pegawai';
+
+  // 1. Pemohon actions (SKM, ulasan, rating, sanggahan, revisi pemohon)
+  if (
+    lowerText.includes('skm') ||
+    lowerText.includes('bintang') ||
+    lowerText.includes('ulasan') ||
+    lowerText.includes('rating') ||
+    lowerText.includes('disanggah') || 
+    lowerText.includes('sanggahan') ||
+    lowerText.includes('formulir diperbarui') ||
+    (lowerText.includes('diajukan') && !lowerText.includes('helpdesk'))
+  ) {
+    roleTitle = 'Pemohon';
+  } 
+  // 2. Helpdesk actions (pengajuan oleh Helpdesk, verifikasi, penugasan ke tim)
+  else if (
+    lowerText.includes('helpdesk') || 
+    lowerText.includes('diverifikasi') || 
+    lowerText.includes('ditugaskan ke tim') || 
+    lowerText.includes('penugasan tim') ||
+    lowerText.includes('alasan pending:')
+  ) {
+    roleTitle = 'Helpdesk';
+  } 
+  // 3. Pegawai actions (mulai pengerjaan teknis, progress, selesai dikerjakan, BAST)
+  else if (
+    lowerText.includes('mulai') || 
+    lowerText.includes('pengerjaan') || 
+    lowerText.includes('teknis') || 
+    lowerText.includes('selesai dikerjakan') ||
+    lowerText.includes('progress') ||
+    lowerText.includes('bast') ||
+    lowerText.includes('subtask')
+  ) {
+    roleTitle = 'Pegawai';
+  }
+  // 4. Role-based fallback
+  else if (roleUpper === 'HELPDESK') {
+    roleTitle = 'Helpdesk';
+  } else if (['USER', 'MASYARAKAT', 'OPD'].includes(roleUpper)) {
+    roleTitle = 'Pemohon';
+  } else if (['PEGAWAI', 'KETUA TIM', 'TEKNISI', 'ADMIN'].includes(roleUpper)) {
+    roleTitle = 'Pegawai';
+  }
+  const author = log.user_name ? `${log.user_name} (${roleTitle})` : 'Sistem';
   
   const words = text.trim().split(/\s+/);
   const isLong = words.length >= 15;
@@ -77,7 +123,14 @@ export const MyTickets = () => {
       }
       
       if (res.data) {
-        const mapped = res.data.map(t => ({
+        const mapped = res.data
+          .filter(t => {
+            if (user?.role === 'USER' || user?.role === 'MASYARAKAT') {
+              if (t.form_data?.submitted_by_helpdesk === true || t.form_data?.submitted_by_helpdesk === 'true') return false;
+            }
+            return true;
+          })
+          .map(t => ({
           ...t,
           status: t.status_name === 'PENDING' ? 'Pending'
                 : t.status_name === 'VERIFIED' ? 'Menunggu Validasi'
