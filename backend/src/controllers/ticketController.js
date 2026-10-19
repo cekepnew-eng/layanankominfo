@@ -46,17 +46,25 @@ exports.createTicket = async (req, res) => {
 
     // 2. Check active ticket ONLY for standard users (USER / MASYARAKAT)
     // Helpdesk and Admin are authorized to create multiple tickets to assist applicants / citizens
-    if (!isHelpdeskOrAdmin) {
+    const isSubmittedByHelpdesk = Boolean(form_data.submitted_by_helpdesk === true || form_data.submitted_by_helpdesk === 'true');
+    if (!isSubmittedByHelpdesk && !isHelpdeskOrAdmin) {
       const activeRes = await client.query(`
-        SELECT id FROM tickets 
-        WHERE user_id = $1 AND status_id NOT IN (3, 7)
+        SELECT id, ticket_number FROM tickets 
+        WHERE (
+          user_id = $1 
+          OR user_id IN (
+            SELECT id FROM users 
+            WHERE (email IS NOT NULL AND email = (SELECT email FROM users WHERE id = $1))
+               OR (nip IS NOT NULL AND nip = (SELECT nip FROM users WHERE id = $1))
+          )
+        ) AND status_id != 7
       `, [req.user.id]);
 
       if (activeRes.rows.length > 0) {
         await client.query('ROLLBACK');
         return res.status(400).json({ 
           success: false, 
-          message: 'Anda masih memiliki tiket yang sedang aktif. Silakan selesaikan tiket sebelumnya terlebih dahulu.' 
+          message: `Anda masih memiliki tiket permohonan yang belum selesai (${activeRes.rows[0].ticket_number || 'aktif'}). Harap selesaikan tiket sebelumnya terlebih dahulu sebelum mengajukan tiket baru.` 
         });
       }
     }
@@ -114,11 +122,13 @@ exports.createTicket = async (req, res) => {
     const ticketId = ticketRes.rows[0].id;
 
     // 2. Insert Ticket Details
-    if (isHelpdeskOrAdmin) {
+    if (isSubmittedByHelpdesk) {
       form_data.submitted_by_helpdesk = true;
       if (!form_data['Instansi / Asal Pemohon'] && form_data['Instansi']) {
         form_data['Instansi / Asal Pemohon'] = form_data['Instansi'];
       }
+    } else {
+      delete form_data.submitted_by_helpdesk;
     }
 
     await client.query(`
@@ -139,7 +149,7 @@ exports.createTicket = async (req, res) => {
     if (isAutoAssigned) {
       historyTextCreate = 'Tiket diajukan dan langsung ditugaskan ke tim teknis.';
     } else if (initialStatusId === 1) {
-      if (isHelpdeskOrAdmin) {
+      if (isSubmittedByHelpdesk) {
         historyTextCreate = 'Tiket diajukan oleh Helpdesk untuk pemohon. Menunggu proses verifikasi Helpdesk.';
       } else {
         historyTextCreate = 'Tiket berhasil diajukan. Menunggu verifikasi berkas.';
@@ -182,7 +192,7 @@ exports.createTicket = async (req, res) => {
 exports.getMyTickets = async (req, res) => {
   try {
     const result = await db.query(`
-      SELECT t.id, t.ticket_number, t.progress, t.priority, t.created_at,
+      SELECT t.id, t.ticket_number, t.progress, t.priority, t.created_at, t.status_id as status_id,
              COALESCE(NULLIF(td.form_data->>'Nama Pemohon', ''), u.full_name) as pemohon,
              (CASE 
                WHEN td.form_data->>'Instansi / Asal Pemohon' IS NOT NULL AND TRIM(td.form_data->>'Instansi / Asal Pemohon') != '' 
@@ -204,13 +214,22 @@ exports.getMyTickets = async (req, res) => {
       JOIN ticket_statuses st ON t.status_id = st.id
       LEFT JOIN ticket_details td ON td.ticket_id = t.id
       LEFT JOIN ticket_feedback tf ON tf.ticket_id = t.id
-      WHERE t.user_id = $1
-        AND (td.form_data->>'submitted_by_helpdesk' IS DISTINCT FROM 'true')
-        AND NOT EXISTS (
-          SELECT 1 FROM ticket_histories th 
-          WHERE th.ticket_id = t.id 
-            AND th.log_description ILIKE '%diajukan oleh Helpdesk%'
+      WHERE (
+        t.user_id = $1 
+        OR t.user_id IN (
+          SELECT id FROM users 
+          WHERE (email IS NOT NULL AND email = (SELECT email FROM users WHERE id = $1))
+             OR (nip IS NOT NULL AND nip = (SELECT nip FROM users WHERE id = $1))
         )
+        OR (
+          td.form_data->>'Email Pemohon' IS NOT NULL 
+          AND td.form_data->>'Email Pemohon' = (SELECT email FROM users WHERE id = $1)
+        )
+        OR (
+          td.form_data->>'NIP' IS NOT NULL 
+          AND td.form_data->>'NIP' = (SELECT nip FROM users WHERE id = $1)
+        )
+      )
       ORDER BY t.created_at DESC
     `, [req.user.id]);
     const mappedRows = result.rows.map(t => ({
@@ -429,7 +448,7 @@ exports.disputeTicket = async (req, res) => {
 exports.getHelpdeskTickets = async (req, res) => {
   try {
     const result = await db.query(`
-      SELECT t.id, t.ticket_number, t.progress, t.created_at, 
+      SELECT t.id, t.ticket_number, t.progress, t.created_at, t.status_id as status_id, 
              COALESCE(NULLIF(td.form_data->>'Nama Pemohon', ''), u.full_name) as pemohon, 
              (CASE 
                WHEN td.form_data->>'Instansi / Asal Pemohon' IS NOT NULL AND TRIM(td.form_data->>'Instansi / Asal Pemohon') != '' 
@@ -527,7 +546,8 @@ exports.assignTicket = async (req, res) => {
 exports.getEmployeeTickets = async (req, res) => {
   try {
     const result = await db.query(`
-      SELECT DISTINCT ON (t.id) t.id, t.ticket_number, t.progress, t.created_at, 
+      SELECT DISTINCT ON (t.id) t.id, t.ticket_number, t.progress, t.created_at, t.status_id as status_id,
+             tm.team_name as team, tm.team_name as team_name, 
              COALESCE(NULLIF(td.form_data->>'Nama Pemohon', ''), u.full_name) as pemohon, 
              (CASE 
                WHEN td.form_data->>'Instansi / Asal Pemohon' IS NOT NULL AND TRIM(td.form_data->>'Instansi / Asal Pemohon') != '' 
@@ -545,12 +565,36 @@ exports.getEmployeeTickets = async (req, res) => {
              (SELECT COALESCE(json_agg(json_build_object('id', sub.id, 'task_name', sub.task_name, 'assigned_to_name', su.full_name, 'status', sub.status)), '[]'::json) FROM subtasks sub LEFT JOIN users su ON sub.assigned_to = su.id WHERE sub.ticket_id = t.id) as subtasks
       FROM tickets t
       JOIN ticket_assignments a ON a.ticket_id = t.id
+      LEFT JOIN teams tm ON a.team_id = tm.id
       JOIN users u ON t.user_id = u.id
       JOIN services s ON t.service_id = s.id
       JOIN ticket_statuses st ON t.status_id = st.id
       LEFT JOIN ticket_details td ON td.ticket_id = t.id
       LEFT JOIN ticket_feedback tf ON tf.ticket_id = t.id
-      WHERE a.assigned_to_user_id = $1 OR a.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
+      WHERE (
+        a.assigned_to_user_id = $1 
+        OR a.assigned_to_user_id IN (
+          SELECT id FROM users 
+          WHERE (email IS NOT NULL AND email = (SELECT email FROM users WHERE id = $1))
+             OR (nip IS NOT NULL AND nip = (SELECT nip FROM users WHERE id = $1))
+        )
+        OR a.team_id IN (
+          SELECT team_id FROM team_members 
+          WHERE user_id = $1 
+             OR user_id IN (SELECT id FROM users WHERE (email IS NOT NULL AND email = (SELECT email FROM users WHERE id = $1)) OR (nip IS NOT NULL AND nip = (SELECT nip FROM users WHERE id = $1)))
+        )
+        OR a.team_id IN (
+          SELECT team_id FROM users 
+          WHERE id = $1 
+             OR (email IS NOT NULL AND email = (SELECT email FROM users WHERE id = $1))
+             OR (nip IS NOT NULL AND nip = (SELECT nip FROM users WHERE id = $1))
+        )
+        OR t.id IN (
+          SELECT ticket_id FROM subtasks 
+          WHERE assigned_to = $1 
+             OR assigned_to IN (SELECT id FROM users WHERE (email IS NOT NULL AND email = (SELECT email FROM users WHERE id = $1)) OR (nip IS NOT NULL AND nip = (SELECT nip FROM users WHERE id = $1)))
+        )
+      )
       ORDER BY t.id, t.created_at DESC
     `, [req.user.id]);
     const mappedRows = result.rows.map(t => ({
@@ -647,7 +691,7 @@ exports.updateProgress = async (req, res) => {
 exports.getAdminTickets = async (req, res) => {
   try {
     const result = await db.query(`
-      SELECT t.id, t.ticket_number, t.progress, t.created_at, 
+      SELECT t.id, t.ticket_number, t.progress, t.created_at, t.status_id as status_id, 
              COALESCE(NULLIF(td.form_data->>'Nama Pemohon', ''), u.full_name) as pemohon, 
              (CASE 
                WHEN td.form_data->>'Instansi / Asal Pemohon' IS NOT NULL AND TRIM(td.form_data->>'Instansi / Asal Pemohon') != '' 

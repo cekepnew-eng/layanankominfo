@@ -123,14 +123,7 @@ export const MyTickets = () => {
       }
       
       if (res.data) {
-        const mapped = res.data
-          .filter(t => {
-            if (user?.role === 'USER' || user?.role === 'MASYARAKAT') {
-              if (t.form_data?.submitted_by_helpdesk === true || t.form_data?.submitted_by_helpdesk === 'true') return false;
-            }
-            return true;
-          })
-          .map(t => ({
+        const mapped = res.data.map(t => ({
           ...t,
           status: t.status_name === 'PENDING' ? 'Pending'
                 : t.status_name === 'VERIFIED' ? 'Menunggu Validasi'

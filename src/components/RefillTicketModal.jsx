@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { getCurrentLogTimeFormatted } from '../utils/dateUtils';
 import { SopModal } from './SopModal';
 import { ActionModal } from './ActionModal';
+import { parseFileValue } from '../utils/fileUtils';
 
 export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
   const { services } = useAuth();
@@ -173,14 +174,19 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
               <div className="min-w-0 flex-1 overflow-hidden">
                 <span className="text-xs font-black text-amber-850 uppercase tracking-wider block">Dokumen yang Harus Disiapkan Pemohon:</span>
                 <div className="text-sm font-bold text-slate-800 mt-0.5 leading-relaxed break-words break-all">
-                  {reqDocs?.startsWith?.('data:') ? (
-                    <a href={reqDocs} download="Template_Persyaratan.pdf" className="inline-flex items-center gap-1.5 text-sky-600 hover:text-sky-700 bg-white border border-sky-200 px-3 py-1.5 rounded-lg max-w-full overflow-hidden">
-                      <Download className="w-4 h-4 shrink-0" />
-                      <span className="truncate min-w-0">Unduh Template Dokumen</span>
-                    </a>
-                  ) : (
-                    <span className="break-words break-all">{reqDocs}</span>
-                  )}
+                  {(() => {
+                    const reqParsed = parseFileValue(reqDocs);
+                    const isDataUrl = reqParsed.data && reqParsed.data.startsWith('data:');
+                    if (isDataUrl) {
+                      return (
+                        <a href={reqParsed.data} download={reqParsed.name || "Template_Persyaratan.pdf"} className="inline-flex items-center gap-1.5 text-sky-600 hover:text-sky-700 bg-white border border-sky-200 px-3 py-1.5 rounded-lg max-w-full overflow-hidden">
+                          <Download className="w-4 h-4 shrink-0" />
+                          <span className="truncate min-w-0">Unduh: {reqParsed.name}</span>
+                        </a>
+                      );
+                    }
+                    return <span className="break-words break-all">{reqParsed.name}</span>;
+                  })()}
                 </div>
               </div>
             </div>
@@ -195,7 +201,7 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
                     className="font-mono font-bold text-sky-700 hover:text-sky-800 bg-white hover:bg-sky-50 px-2 py-0.5 rounded border border-sky-200 hover:border-sky-300 transition-all cursor-pointer inline-flex items-center gap-1.5 truncate max-w-[150px] sm:max-w-xs block min-w-0"
                     title="Klik untuk melihat dokumen SOP"
                   >
-                    <span className="truncate">{sopFile}</span>
+                    <span className="truncate">{parseFileValue(sopFile).name || 'sop-layanan.pdf'}</span>
                   </button>
                 </div>
                 <button
@@ -279,9 +285,9 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
                         }}
                         className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100 cursor-pointer"
                       />
-                      {formData[`${fieldKey}_name`] && (
-                        <p className="mt-3 text-xs font-bold text-emerald-600 bg-emerald-50 py-1.5 px-3 rounded-lg block sm:inline-block border border-emerald-100 max-w-full truncate overflow-hidden" title={formData[`${fieldKey}_name`]}>
-                          ✓ File terpilih: {formData[`${fieldKey}_name`]}
+                      {(formData[`${fieldKey}_name`] || (formData[fieldKey] && typeof formData[fieldKey] === 'string')) && (
+                        <p className="mt-3 text-xs font-bold text-emerald-600 bg-emerald-50 py-1.5 px-3 rounded-lg block sm:inline-block border border-emerald-100 max-w-full truncate overflow-hidden" title={formData[`${fieldKey}_name`] || parseFileValue(formData[fieldKey]).name}>
+                          ✓ File terpilih: {formData[`${fieldKey}_name`] || parseFileValue(formData[fieldKey]).name || 'File telah diunggah'}
                         </p>
                       )}
                     </div>
@@ -359,8 +365,8 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
           isOpen={showSopModal}
           onClose={() => setShowSopModal(false)}
           serviceName={subServiceName}
-          sopFileName={sopFile?.startsWith?.('data:') ? 'SOP_Document.pdf' : sopFile}
-          fileUrl={sopFile}
+          sopFileName={parseFileValue(sopFile).name || 'SOP_Document.pdf'}
+          fileUrl={parseFileValue(sopFile).data || sopFile}
         />
 
         <ActionModal

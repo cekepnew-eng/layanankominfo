@@ -2,15 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Users, User, Trash2, Edit2, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ActionModal } from '../../components/ActionModal';
-
-const availableServices = [
-  'Aplikasi Informatika',
-  'Pengelolaan Sumber Daya & Perangkat Informatika',
-  'Penerapan Persandian & Keamanan Informasi',
-  'Tata Kelola SPBE'
-];
-
 import { api } from '../../services/api';
+
 export const ManageTeams = () => {
   const { teams, setTeams, fetchTeams } = useAuth();
   const [users, setUsers] = useState([]);
@@ -32,13 +25,11 @@ export const ManageTeams = () => {
   const [teamName, setTeamName] = useState('');
   const [leader, setLeader] = useState('');
   const [selectedMembers, setSelectedMembers] = useState([]);
-  const [selectedServices, setSelectedServices] = useState([]);
 
   const [editingTeam, setEditingTeam] = useState(null);
   const [editTeamName, setEditTeamName] = useState('');
   const [editLeader, setEditLeader] = useState('');
   const [editSelectedMembers, setEditSelectedMembers] = useState([]);
-  const [editSelectedServices, setEditSelectedServices] = useState([]);
 
   useEffect(() => {
     if (editingTeam) {
@@ -87,7 +78,7 @@ export const ManageTeams = () => {
     try {
       await api.createTeam({
         name: teamName.trim(),
-        description: selectedServices.join(', '),
+        description: 'Unit Kerja Pelaksana Teknis SPBE Diskominfo Kota Bogor',
         members: selectedMembers,
         leader: leader
       });
@@ -97,7 +88,6 @@ export const ManageTeams = () => {
       setTeamName('');
       setLeader('');
       setSelectedMembers([]);
-      setSelectedServices([]);
       setShowAddForm(false);
       setModalConfig({
         isOpen: true,
@@ -118,7 +108,6 @@ export const ManageTeams = () => {
     setEditTeamName(team.name || '');
     setEditLeader(team.leader || '');
     setEditSelectedMembers(team.members || []);
-    setEditSelectedServices(team.description ? team.description.split(',').map(s => s.trim()) : []);
   };
 
   const handleSaveEdit = async () => {
@@ -138,7 +127,7 @@ export const ManageTeams = () => {
     try {
       await api.updateTeam(editingTeam.id, {
         name: editTeamName.trim(),
-        description: editSelectedServices.join(', '),
+        description: editingTeam.description || 'Unit Kerja Pelaksana Teknis SPBE Diskominfo Kota Bogor',
         members: editSelectedMembers,
         leader: editLeader
       });
@@ -150,7 +139,7 @@ export const ManageTeams = () => {
         isOpen: true,
         type: 'success',
         title: 'Informasi Tim Diperbarui',
-        message: 'Perubahan data tim kerja dan cakupan layanannya telah berhasil disimpan.',
+        message: 'Perubahan data tim kerja telah berhasil disimpan.',
         confirmText: 'Selesai',
         cancelText: '',
         onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
@@ -196,7 +185,7 @@ export const ManageTeams = () => {
       <div className="flex justify-between items-center flex-wrap gap-4">
         <div className="space-y-1.5">
           <h2 className="text-3xl font-black text-slate-900 tracking-tight">Manajemen Tim Kerja</h2>
-          <p className="text-slate-500 text-base leading-relaxed">Buat tim pelaksana teknis Diskominfo, tentukan ketua tim, dan hubungkan dengan klasifikasi layanan SPBE.</p>
+          <p className="text-slate-500 text-base leading-relaxed">Kelola tim pelaksana teknis Diskominfo Kota Bogor, tentukan ketua tim, dan atur penugasan personel anggota.</p>
         </div>
         <button
           onClick={() => {
@@ -205,7 +194,6 @@ export const ManageTeams = () => {
               setTeamName('');
               setLeader('');
               setSelectedMembers([]);
-              setSelectedServices([]);
             }
           }}
           className="flex items-center gap-2 px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-base font-bold transition-all shadow-sm"
@@ -277,35 +265,6 @@ export const ManageTeams = () => {
                 )}
               </div>
             </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Cakupan Layanan SPBE</label>
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80 space-y-2">
-                {availableServices.map(service => {
-                  const isChecked = selectedServices.includes(service);
-                  return (
-                    <div key={service} className="flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        id={`add-service-${service}`}
-                        checked={isChecked}
-                        onChange={() => {
-                          if (isChecked) {
-                            setSelectedServices(selectedServices.filter(s => s !== service));
-                          } else {
-                            setSelectedServices([...selectedServices, service]);
-                          }
-                        }}
-                        className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
-                      />
-                      <label htmlFor={`add-service-${service}`} className="text-xs font-bold text-slate-700 cursor-pointer select-none">
-                        {service}
-                      </label>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
           </div>
           <button
             type="submit"
@@ -355,18 +314,6 @@ export const ManageTeams = () => {
                         ))
                       )}
                     </div>
-                  </div>
-
-                  <div>
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Cakupan Layanan SPBE</span>
-                    <ul className="mt-1 space-y-1">
-                      {t.description?.split(',').map((service, sIdx) => (
-                        <li key={sIdx} className="text-xs text-slate-505 flex items-start gap-1 font-semibold">
-                          <span className="text-sky-500 mt-0.5">•</span>
-                          <span>{service.trim()}</span>
-                        </li>
-                      ))}
-                    </ul>
                   </div>
                 </div>
               </div>
@@ -449,35 +396,6 @@ export const ManageTeams = () => {
                         />
                         <label htmlFor={`edit-member-${p.id}`} className="text-xs sm:text-sm font-bold text-slate-700 cursor-pointer select-none">
                           {p.name} <span className="text-xs text-slate-400 font-medium">({p.department})</span>
-                        </label>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Cakupan Layanan SPBE</label>
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2.5">
-                  {availableServices.map(service => {
-                    const isChecked = editSelectedServices.includes(service);
-                    return (
-                      <div key={service} className="flex items-center gap-2.5">
-                        <input
-                          type="checkbox"
-                          id={`edit-service-${service}`}
-                          checked={isChecked}
-                          onChange={() => {
-                            if (isChecked) {
-                              setEditSelectedServices(editSelectedServices.filter(s => s !== service));
-                            } else {
-                              setEditSelectedServices([...editSelectedServices, service]);
-                            }
-                          }}
-                          className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
-                        />
-                        <label htmlFor={`edit-service-${service}`} className="text-xs sm:text-sm font-bold text-slate-700 cursor-pointer select-none">
-                          {service}
                         </label>
                       </div>
                     );

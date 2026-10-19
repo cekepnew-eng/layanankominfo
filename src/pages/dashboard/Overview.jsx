@@ -17,34 +17,84 @@ import {
 
 
 
+const isGenericTeam = (name) => {
+  if (!name) return true;
+  const n = String(name).toLowerCase().trim();
+  return (
+    n.includes('dinas komunikasi') ||
+    n.includes('diskominfo') ||
+    n === 'tim teknis' ||
+    n === 'tim pelaksana teknis' ||
+    n === 'belum ada tim kerja'
+  );
+};
+
+const getTeamCategoryKey = (str = '') => {
+  if (!str) return '';
+  const s = String(str).toLowerCase();
+  if (s.includes('aplikasi') || s.includes('sistem') || s.includes('software') || s.includes('uks') || s.includes('web') || s.includes('mobile')) {
+    return 'aplikasi';
+  }
+  if (s.includes('infrastruktur') || s.includes('jaringan') || s.includes('server') || s.includes('wifi') || s.includes('domain') || s.includes('hardware') || s.includes('hosting')) {
+    return 'infrastruktur';
+  }
+  if (s.includes('keamanan') || s.includes('pengamanan') || s.includes('sandi') || s.includes('vapt') || s.includes('csirt') || s.includes('security')) {
+    return 'keamanan';
+  }
+  if (s.includes('tata kelola') || s.includes('spbe') || s.includes('audit')) {
+    return 'spbe';
+  }
+  if (s.includes('data') || s.includes('statistik')) {
+    return 'data';
+  }
+  if (s.includes('komunikasi') || s.includes('ikp') || s.includes('humas') || s.includes('zoom')) {
+    return 'ikp';
+  }
+  if (s.includes('lpse') || s.includes('katalog')) {
+    return 'lpse';
+  }
+  if (s.includes('helpdesk') || s.includes('lapor') || s.includes('umum')) {
+    return 'helpdesk';
+  }
+  return '';
+};
+
 const getTicketTeam = (t) => {
-  if (t.team) return t.team;
-  const svc = t.service;
-  if (svc === 'Pengembangan & Pengelolaan Aplikasi' || svc === 'Rekomendasi & Evaluasi Aplikasi' || svc === 'Uji Kesesuaian Sistem (UKS)' || svc === 'Aplikasi Informatika') {
-    return 'Tim Aplikasi & Sistem Informasi';
+  const existingTeam = t?.team || t?.team_name;
+  if (existingTeam && !isGenericTeam(existingTeam)) {
+    return existingTeam;
   }
-  if (svc === 'Jaringan Intra Pemerintah' || svc === 'Server Perangkat Daerah' || svc === 'Infrastruktur TIK' || svc === 'Wifi Publik' || svc === 'Domain & Subdomain Pemerintah Daerah') {
-    return 'Tim Infrastruktur & Jaringan TIK';
+  const svc = String(t?.service || t?.service_name || t?.title || '');
+  const key = getTeamCategoryKey(svc);
+  if (key === 'aplikasi') return 'Tim Aplikasi';
+  if (key === 'infrastruktur') return 'Tim Infrastruktur';
+  if (key === 'keamanan') return 'Tim Keamanan';
+  if (key === 'spbe') return 'Tim Tata Kelola SPBE';
+  if (key === 'data') return 'Tim Satu Data & Statistik';
+  if (key === 'ikp') return 'Tim Hubungan Masyarakat & IKP';
+  if (key === 'lpse') return 'Tim Layanan Pengadaan Secara Elektronik (LPSE)';
+  if (key === 'helpdesk') return 'Tim Support & Helpdesk Utama';
+  return existingTeam || 'Tim Pelaksana Teknis';
+};
+
+const isTicketForTeam = (tk, teamName) => {
+  const targetKey = getTeamCategoryKey(teamName);
+  
+  // 1. Direct name match (ignoring generic dinas names)
+  const tkTeamRaw = String(tk.team || tk.team_name || '').toLowerCase();
+  const targetLower = String(teamName).toLowerCase();
+  if (tkTeamRaw && !isGenericTeam(tkTeamRaw)) {
+    if (tkTeamRaw.includes(targetLower) || targetLower.includes(tkTeamRaw)) return true;
+    const tkTeamKey = getTeamCategoryKey(tkTeamRaw);
+    if (targetKey && tkTeamKey && targetKey === tkTeamKey) return true;
   }
-  if (svc === 'Keamanan Informasi & Persandian' || svc === 'Keamanan Aplikasi / VAPT' || svc === 'CSIRT / Respons Insiden') {
-    return 'Tim Pengamanan Informasi & Sandi';
-  }
-  if (svc === 'Tata Kelola SPBE' || svc === 'Audit Teknologi Informasi') {
-    return 'Tim Tata Kelola SPBE';
-  }
-  if (svc === 'Satu Data Daerah' || svc === 'Statistik Sektoral') {
-    return 'Tim Satu Data & Statistik';
-  }
-  if (svc === 'Informasi & Komunikasi Publik' || svc === 'Video Conference / Zoom') {
-    return 'Tim Hubungan Masyarakat & IKP';
-  }
-  if (svc === 'Sistem Informasi LPSE' || svc === 'Fasilitasi E-Katalog') {
-    return 'Tim Layanan Pengadaan Secara Elektronik (LPSE)';
-  }
-  if (svc === 'Pelayanan Umum TIK' || svc === 'Pengaduan SP4N Lapor') {
-    return 'Tim Support & Helpdesk Utama';
-  }
-  return 'Tim Support & Helpdesk Utama';
+
+  // 2. Service & Title based match
+  const svcRaw = String(tk.service || tk.service_name || tk.category_name || tk.title || '');
+  const svcKey = getTeamCategoryKey(svcRaw);
+  if (targetKey && svcKey && targetKey === svcKey) return true;
+
+  return false;
 };
 
 export const Overview = () => {
@@ -88,7 +138,7 @@ export const Overview = () => {
           raw = data.data || [];
         } else {
           const data = await api.getMyTickets();
-          raw = (data.data || []).filter(t => t.form_data?.submitted_by_helpdesk !== true && t.form_data?.submitted_by_helpdesk !== 'true');
+          raw = data.data || [];
         }
 
         const mapped = raw.map(t => {
@@ -106,6 +156,8 @@ export const Overview = () => {
             ticket_number: t.ticket_number || t.id,
             id: t.ticket_number || t.id,
             uuid: t.id,
+            team: getTicketTeam(t),
+            team_name: getTicketTeam(t),
             status,
             status_name: t.status_name || (status === 'Verifikasi' ? 'PENDING' : status === 'Menunggu Validasi' ? 'VERIFIED' : status === 'Pending' ? 'REJECTED' : status === 'Diproses' ? 'IN_PROGRESS' : status.includes('Selesai') ? 'COMPLETED' : ''),
             title: t.title || `Pengajuan Layanan ${t.service_name || t.service || 'SPBE'}`,
@@ -436,12 +488,36 @@ export const Overview = () => {
 
 
   const renderPegawaiDashboard = () => {
-    const myTeamNames = user?.teams && user.teams.length > 0 ? user.teams : ['Belum ada tim kerja'];
     const pegawaiTickets = (tickets || []);
-    const activeTasks = pegawaiTickets.filter(t => t.status_name === 'IN_PROGRESS' || t.status_name === 'ASSIGNED' || t.status === 'Diproses');
+    
+    // Auto-detect team names if user.teams is empty or placeholder
+    const detectedTicketTeams = Array.from(new Set(
+      pegawaiTickets.map(tk => tk.team || tk.team_name || getTicketTeam(tk)).filter(Boolean)
+    ));
+    
+    const userTeamsList = (user?.teams && Array.isArray(user.teams) && user.teams.length > 0 && user.teams[0] !== 'Belum ada tim kerja')
+      ? user.teams
+      : (detectedTicketTeams.length > 0 
+          ? detectedTicketTeams 
+          : (user?.team_name ? [user.team_name] : ['Tim Pelaksana Teknis']));
+
+    const activeTasks = pegawaiTickets.filter(t => {
+      const s = (t.status || '').toLowerCase();
+      const sn = (t.status_name || '').toUpperCase();
+      return (
+        s === 'diproses' || 
+        s === 'sedang dikerjakan' || 
+        s === 'ditugaskan' || 
+        sn === 'IN_PROGRESS' || 
+        sn === 'ASSIGNED' ||
+        s === 'menunggu validasi' ||
+        sn === 'VERIFIED'
+      );
+    });
+
     const priorityTask = activeTasks.length > 0 ? activeTasks[0] : null;
 
-    const myTeams = myTeamNames.map((name, idx) => ({
+    const myTeams = userTeamsList.map((name, idx) => ({
       id: idx + 1,
       name,
       members: ['Anda'] // Ideally fetched, but we only have team names for now.
@@ -480,37 +556,44 @@ export const Overview = () => {
               </div>
             </div>
             <span className="px-4 py-2 rounded-xl text-xs sm:text-sm font-black uppercase tracking-wider bg-white/60 text-indigo-700 shadow-sm">
-              {myTeams.length} Tim Kerja Aktif
+              {myTeams.length} Tim Kerja Aktif • {activeTasks.length} Tugas Berjalan
             </span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
-            {myTeams.map((t) => {
-              const teamActiveTasks = tickets.filter(tk => (tk.team || tk.team_name || '') === t.name && tk.status === 'Diproses').length;
-              return (
-                <div 
-                  key={t.id} 
-                  className="p-6 rounded-3xl bg-white/40 border border-white/60 space-y-3 hover:border-indigo-300 hover:bg-white/70 transition-all flex flex-col justify-between shadow-sm cursor-default"
-                >
-                  <div className="space-y-1.5">
-                    <h4 className="text-lg font-black text-slate-900 leading-snug tracking-tight">
-                      {t.name}
-                    </h4>
-                    {t.services && t.services.length > 0 && (
-                      <p className="text-xs sm:text-sm text-slate-600 font-semibold leading-relaxed">
-                        Layanan: {t.services.join(', ')}
-                      </p>
-                    )}
+            {(() => {
+              const allTeamCounts = myTeams.map((t) => activeTasks.filter(tk => isTicketForTeam(tk, t.name)).length);
+              const totalMatched = allTeamCounts.reduce((a, b) => a + b, 0);
+
+              return myTeams.map((t, idx) => {
+                let teamActiveTasks = allTeamCounts[idx];
+                // Fallback: If no direct keywords matched, distribute active tasks evenly across user's teams
+                if (totalMatched === 0 && activeTasks.length > 0) {
+                  const perTeam = Math.floor(activeTasks.length / myTeams.length);
+                  const remainder = activeTasks.length % myTeams.length;
+                  teamActiveTasks = perTeam + (idx < remainder ? 1 : 0);
+                }
+
+                return (
+                  <div 
+                    key={t.id} 
+                    className="p-6 rounded-3xl bg-white/40 border border-white/60 space-y-3 hover:border-indigo-300 hover:bg-white/70 transition-all flex flex-col justify-between shadow-sm cursor-default"
+                  >
+                    <div className="space-y-1.5">
+                      <h4 className="text-lg font-black text-slate-900 leading-snug tracking-tight">
+                        {t.name}
+                      </h4>
+                    </div>
+                    <div className="pt-4 border-t border-white/40 flex items-center justify-between text-xs sm:text-sm font-bold">
+                      <span className="text-slate-500">{t.members ? t.members.length : 1} Personel</span>
+                      <span className="text-indigo-700 bg-white/80 shadow-sm px-3 py-1.5 rounded-xl border border-white">
+                        {teamActiveTasks} Tugas Aktif
+                      </span>
+                    </div>
                   </div>
-                  <div className="pt-4 border-t border-white/40 flex items-center justify-between text-xs sm:text-sm font-bold">
-                    <span className="text-slate-500">{t.members ? t.members.length : 1} Personel</span>
-                    <span className="text-indigo-700 bg-white/80 shadow-sm px-3 py-1.5 rounded-xl border border-white">
-                      {teamActiveTasks} Tugas Aktif
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              });
+            })()}
           </div>
         </div>
 

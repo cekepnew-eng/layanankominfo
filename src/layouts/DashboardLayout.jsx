@@ -606,7 +606,7 @@ export const DashboardLayout = () => {
                       </button>
                     </div>
                   </div>
-                  <div className="max-h-[60vh] sm:max-h-[26rem] overflow-y-auto overflow-x-hidden p-2 space-y-1 bg-slate-50/50">
+                  <div className="max-h-[60vh] sm:max-h-[26rem] overflow-y-auto overflow-x-hidden p-2 space-y-1 bg-slate-50/50 custom-scrollbar">
                     {notifications.length === 0 ? (
                       <div className="p-8 flex flex-col items-center justify-center text-center">
                         <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mb-3 border border-slate-100">

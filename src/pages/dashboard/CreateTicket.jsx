@@ -185,16 +185,21 @@ export const CreateTicket = () => {
     }
   }, [formData, title, description, selectedSubService]);
 
-  const isHelpdeskUser = 
-    user?.role?.toUpperCase() === 'HELPDESK' || 
-    user?.roles?.some(r => String(r).toUpperCase() === 'HELPDESK');
-  const isAdminUser = 
-    user?.role?.toUpperCase() === 'ADMIN' || 
-    user?.roles?.some(r => String(r).toUpperCase() === 'ADMIN');
-  const isStaff = isHelpdeskUser || isAdminUser;
+  const isHelpdesk = user?.role?.toUpperCase() === 'HELPDESK';
+  const isAdmin = user?.role?.toUpperCase() === 'ADMIN';
+  const isStaff = isHelpdesk || isAdmin;
 
-  const activeTicket = (!isStaff && (user?.role?.toUpperCase() === 'USER' || user?.role?.toUpperCase() === 'MASYARAKAT' || user?.roles?.some(r => ['USER', 'MASYARAKAT'].includes(String(r).toUpperCase())))) 
-    ? tickets.find(t => t.status_name !== 'COMPLETED' && t.status_name !== 'REJECTED')
+  const isRegularUser = !isStaff;
+  const isTicketCompleted = (t) => {
+    if (!t) return false;
+    const sn = String(t.status_name || '').toUpperCase();
+    const s = String(t.status || '').toLowerCase();
+    const sid = Number(t.status_id);
+    return sid === 7 || sn === 'COMPLETED' || s === 'selesai & dinilai';
+  };
+
+  const activeTicket = isRegularUser 
+    ? tickets.find(t => !isTicketCompleted(t))
     : null;
 
   const handleCompleteSkm = async (t) => {
@@ -270,7 +275,7 @@ export const CreateTicket = () => {
     const service_id = serviceObj.id;
 
     const finalFormData = { ...formData };
-    if (isStaff) {
+    if (isHelpdesk) {
       finalFormData['submitted_by_helpdesk'] = true;
       if (helpdeskInstansi.trim()) {
         finalFormData['Instansi / Asal Pemohon'] = helpdeskInstansi.trim();
@@ -292,20 +297,27 @@ export const CreateTicket = () => {
 
     try {
       const res = await api.createTicket(payload);
-      if (res && res.data) {
-        setCreatedTicketId(res.data.id || `REQ-2026-0${Math.floor(132 + Math.random() * 800)}`);
-      }
+      const newTicketNumber = res?.data?.ticket_number || res?.data?.id || `REQ-${new Date().getFullYear()}-0001`;
+      setCreatedTicketId(newTicketNumber);
+      sessionStorage.setItem('fromNotificationTicketId', String(newTicketNumber));
+      window.dispatchEvent(new CustomEvent('ticket-created', { detail: { ticketNumber: newTicketNumber } }));
+
       localStorage.removeItem(`ticket_draft_${selectedSubService}`);
       setFormData({});
       setHelpdeskInstansi('');
       setShowSuccessModal(true);
+
+      api.getMyTickets().then(tktRes => {
+        if (tktRes && tktRes.data) setTickets(tktRes.data);
+      }).catch(() => {});
     } catch (err) {
       console.error('Gagal menyimpan ke database backend', err);
-      alert('Gagal mengirim tiket: ' + err.message);
+      const errorMsg = err.data?.message || err.message || 'Gagal mengirim tiket.';
+      alert(errorMsg);
     }
   };
 
-  if (activeTicket) {
+  if (activeTicket && !showSuccessModal) {
     const isWaitingSkm = 
       activeTicket.status_name === 'WAITING_USER_CONFIRMATION' || 
       activeTicket.status === 'Selesai' || 
@@ -360,8 +372,9 @@ export const CreateTicket = () => {
             <button 
               type="button"
               onClick={() => {
-                sessionStorage.setItem('fromNotificationTicketId', String(activeTicket.id || activeTicket.uuid || activeTicket.ticket_number));
-                navigate('/dashboard/history');
+                const targetNum = activeTicket.ticket_number || activeTicket.id || activeTicket.uuid;
+                sessionStorage.setItem('fromNotificationTicketId', String(targetNum));
+                navigate(`/dashboard/history?ticket=${encodeURIComponent(targetNum)}&t=${Date.now()}`);
               }}
               className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-md shadow-sky-200 flex items-center justify-center gap-2 cursor-pointer"
             >
@@ -375,6 +388,24 @@ export const CreateTicket = () => {
           onClose={() => setShowSkmModal(false)}
           ticket={activeTicket}
           onConfirm={handleCompleteSkm}
+        />
+
+        <ActionModal
+          isOpen={showSuccessModal}
+          onClose={() => {
+            setShowSuccessModal(false);
+            sessionStorage.setItem('fromNotificationTicketId', String(createdTicketId));
+            navigate(`/dashboard/history?ticket=${encodeURIComponent(createdTicketId)}&t=${Date.now()}`);
+          }}
+          type="success"
+          title="Permohonan Berhasil Diajukan"
+          message={`Tiket permohonan Anda (${createdTicketId}) telah berhasil diterbitkan dan masuk ke sistem Diskominfo Kota Bogor.`}
+          confirmText="Buka Riwayat Tiket"
+          onConfirm={() => {
+            setShowSuccessModal(false);
+            sessionStorage.setItem('fromNotificationTicketId', String(createdTicketId));
+            navigate(`/dashboard/history?ticket=${encodeURIComponent(createdTicketId)}&t=${Date.now()}`);
+          }}
         />
       </div>
     );
@@ -719,7 +750,7 @@ export const CreateTicket = () => {
             </div>
           </div>
 
-          {isStaff && (
+          {isHelpdesk && (
             <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-3.5">
               <div className="flex items-center gap-2 text-amber-850 font-bold text-xs uppercase tracking-wider">
                 <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
@@ -921,7 +952,8 @@ export const CreateTicket = () => {
         isOpen={showSuccessModal}
         onClose={() => {
           setShowSuccessModal(false);
-          navigate('/dashboard/history');
+          sessionStorage.setItem('fromNotificationTicketId', String(createdTicketId));
+          navigate(`/dashboard/history?ticket=${encodeURIComponent(createdTicketId)}&t=${Date.now()}`);
         }}
         type="success"
         title="Permohonan Berhasil Diajukan"
@@ -929,7 +961,8 @@ export const CreateTicket = () => {
         confirmText="Buka Riwayat Tiket"
         onConfirm={() => {
           setShowSuccessModal(false);
-          navigate('/dashboard/history');
+          sessionStorage.setItem('fromNotificationTicketId', String(createdTicketId));
+          navigate(`/dashboard/history?ticket=${encodeURIComponent(createdTicketId)}&t=${Date.now()}`);
         }}
       />
 

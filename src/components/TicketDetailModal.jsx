@@ -8,8 +8,10 @@ export const TicketDetailModal = ({ isOpen, onClose, ticket, onBagiTugas }) => {
   if (!isOpen || !ticket) return null;
 
   const formData = ticket.form_data || {};
-  const actualDocUrl = ticket.fileUrl || formData['Berkas_Persyaratan'] || formData['_uploadedFile'];
-  const fileName = (ticket.files && ticket.files.length > 0) ? ticket.files[0] : formData['Nama_File_Persyaratan'] || formData['_uploadedFileName'];
+  const rawDoc = ticket.fileUrl || formData['Berkas_Persyaratan'] || formData['_uploadedFile'];
+  const parsedDoc = parseFileValue(rawDoc);
+  const actualDocUrl = parsedDoc.data || rawDoc;
+  const fileName = (ticket.files && ticket.files.length > 0) ? ticket.files[0] : formData['Nama_File_Persyaratan'] || formData['_uploadedFileName'] || parsedDoc.name;
   const isDefaultDoc = actualDocUrl === '/dokumen_permohonan.pdf';
   const hasUploadedDoc = (!!actualDocUrl && !isDefaultDoc) || (!!fileName && fileName.trim() !== '' && fileName !== 'Dokumen_Persyaratan_Layanan.pdf');
   const docUrl = actualDocUrl || '';
@@ -188,18 +190,20 @@ export const TicketDetailModal = ({ isOpen, onClose, ticket, onBagiTugas }) => {
                             if (val === undefined || val === null || val === '') return null;
 
                             if (field.type === 'file') {
-                              const fileName = ticket.form_data[`${fieldKey}_name`] || 'Dokumen_Lampiran.pdf';
+                              const parsedFieldVal = parseFileValue(val);
+                              const fieldFileName = ticket.form_data[`${fieldKey}_name`] || parsedFieldVal.name || 'Dokumen_Lampiran.pdf';
+                              const fileData = parsedFieldVal.data || val;
                               return (
                                 <div key={field.id || fieldKey} className="p-2.5 sm:p-3 bg-slate-50 rounded-xl border border-slate-100 sm:col-span-2 overflow-hidden">
                                   <span className="font-bold text-slate-400 block text-xs truncate">{field.label}:</span>
                                   <a
-                                    href={val}
-                                    download={fileName}
+                                    href={fileData}
+                                    download={fieldFileName}
                                     className="inline-flex items-center gap-1.5 mt-1.5 text-sky-600 hover:text-sky-700 font-bold bg-white px-3 py-1.5 rounded-lg border border-sky-100 shadow-sm text-xs max-w-full overflow-hidden"
-                                    title={fileName}
+                                    title={fieldFileName}
                                   >
                                     <Download className="w-3.5 h-3.5 shrink-0" />
-                                    <span className="truncate min-w-0">Unduh {fileName}</span>
+                                    <span className="truncate min-w-0">Unduh {fieldFileName}</span>
                                   </a>
                                 </div>
                               );
