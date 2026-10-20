@@ -79,6 +79,16 @@ const getTicketTeam = (t) => {
 
 const isTicketForTeam = (tk, teamName) => {
   const targetKey = getTeamCategoryKey(teamName);
+  const assignedTeams = Array.isArray(tk.teams) ? tk.teams : [];
+  if (assignedTeams.some((name) => {
+    const assignedName = String(name || '').toLowerCase();
+    const targetLower = String(teamName).toLowerCase();
+    return assignedName && (
+      assignedName.includes(targetLower) ||
+      targetLower.includes(assignedName) ||
+      (targetKey && getTeamCategoryKey(assignedName) === targetKey)
+    );
+  })) return true;
   
   // 1. Direct name match (ignoring generic dinas names)
   const tkTeamRaw = String(tk.team || tk.team_name || '').toLowerCase();
@@ -513,8 +523,13 @@ export const Overview = () => {
       pegawaiTickets.map(tk => tk.team || tk.team_name || getTicketTeam(tk)).filter(Boolean)
     ));
     
-    const userTeamsList = (user?.teams && Array.isArray(user.teams) && user.teams.length > 0 && user.teams[0] !== 'Belum ada tim kerja')
-      ? user.teams
+    const configuredUserTeams = Array.isArray(user?.teams)
+      ? Array.from(new Map(user.teams
+        .filter(name => typeof name === 'string' && name.trim() && name.trim().toLowerCase() !== 'belum ada tim kerja')
+        .map(name => [name.trim().toLowerCase(), name.trim()])).values())
+      : [];
+    const userTeamsList = configuredUserTeams.length > 0
+      ? configuredUserTeams
       : (detectedTicketTeams.length > 0 
           ? detectedTicketTeams 
           : (user?.team_name ? [user.team_name] : ['Tim Pelaksana Teknis']));
@@ -581,16 +596,8 @@ export const Overview = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
             {(() => {
               const allTeamCounts = myTeams.map((t) => activeTasks.filter(tk => isTicketForTeam(tk, t.name)).length);
-              const totalMatched = allTeamCounts.reduce((a, b) => a + b, 0);
-
               return myTeams.map((t, idx) => {
-                let teamActiveTasks = allTeamCounts[idx];
-                // Fallback: If no direct keywords matched, distribute active tasks evenly across user's teams
-                if (totalMatched === 0 && activeTasks.length > 0) {
-                  const perTeam = Math.floor(activeTasks.length / myTeams.length);
-                  const remainder = activeTasks.length % myTeams.length;
-                  teamActiveTasks = perTeam + (idx < remainder ? 1 : 0);
-                }
+                const teamActiveTasks = allTeamCounts[idx];
 
                 return (
                   <div 
@@ -705,7 +712,7 @@ export const Overview = () => {
   const renderUserDashboard = () => (
     <div className="space-y-8 text-left animate-in fade-in duration-200">
       <div className="space-y-1.5">
-        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Dasbor Layanan {user?.role === 'masyarakat' ? 'Masyarakat' : 'OPD'}</h2>
+        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Dasbor Layanan {user?.role?.toUpperCase() === 'MASYARAKAT' ? 'Masyarakat' : 'OPD'}</h2>
         <p className="text-slate-505 text-base leading-relaxed">Ajukan permohonan fasilitas TIK, integrasi SPBE, data sektoral, serta pantau pengerjaan secara berkala.</p>
       </div>
 

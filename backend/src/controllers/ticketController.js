@@ -683,7 +683,14 @@ exports.getEmployeeTickets = async (req, res) => {
   try {
     const result = await db.query(`
       SELECT DISTINCT ON (t.id) t.id, t.ticket_number, t.service_id, t.progress, t.created_at, t.status_id as status_id,
-             tm.team_name as team, tm.team_name as team_name, 
+             tm.team_name as team, tm.team_name as team_name,
+             COALESCE((
+               SELECT json_agg(DISTINCT assigned_team.team_name)
+                 FILTER (WHERE assigned_team.team_name IS NOT NULL)
+               FROM ticket_assignments team_assignment
+               LEFT JOIN teams assigned_team ON assigned_team.id = team_assignment.team_id
+               WHERE team_assignment.ticket_id = t.id
+             ), '[]'::json) as teams,
              COALESCE(NULLIF(td.form_data->>'Nama Pemohon', ''), u.full_name) as pemohon, 
              (CASE 
                WHEN td.form_data->>'Instansi / Asal Pemohon' IS NOT NULL AND TRIM(td.form_data->>'Instansi / Asal Pemohon') != '' 
@@ -1050,4 +1057,3 @@ exports.updateSubtaskStatus = async (req, res) => {
     client.release();
   }
 };
-
