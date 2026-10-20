@@ -137,6 +137,18 @@ const runAutoMigrations = async () => {
     } catch (err) {
       handleMigrationError('password_reset_otps', err);
     }
+
+    // 7. Auto-seed services from official PDF if table is unpopulated
+    try {
+      const srvCheck = await pool.query('SELECT count(*) FROM services');
+      if (parseInt(srvCheck.rows[0].count, 10) < 5) {
+        console.log('[DB Migration] Layanan belum terisi lengkap. Menjalankan auto-seeder layanan...');
+        const { seedServices } = require('../../seed_services');
+        await seedServices();
+      }
+    } catch (err) {
+      handleMigrationError('auto_seed_services', err);
+    }
   } catch (err) {
     console.error('[DB Migration Unexpected Error]:', err.message);
   }

@@ -3,8 +3,17 @@ const router = express.Router();
 const serviceController = require('../controllers/serviceController');
 const { authenticateToken, authorizeRole } = require('../middleware/auth');
 
-// Public Route
+// Public Routes
 router.get('/services', serviceController.getPublicServices);
+router.get('/service-categories', async (req, res) => {
+  try {
+    const db = require('../config/database');
+    const catsRes = await db.query('SELECT id, category_name as name FROM service_categories ORDER BY id ASC');
+    res.json({ success: true, data: catsRes.rows });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
 
 // Admin Routes for Categories
 router.get('/admin/service-categories', authenticateToken, authorizeRole(['ADMIN']), serviceController.getCategories);

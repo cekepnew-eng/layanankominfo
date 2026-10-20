@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PlusCircle, FileText, FileCheck, Upload, ChevronRight, ArrowLeft, Clock, AlertTriangle, Search, CheckCircle2, Eye, Download, CheckSquare } from 'lucide-react';
+import { PlusCircle, FileText, FileCheck, Upload, ChevronRight, ArrowLeft, Clock, AlertTriangle, Search, CheckCircle2, Eye, Download, CheckSquare, X, Building2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getCurrentDateFormatted, getCurrentLogTimeFormatted } from '../../utils/dateUtils';
 import { SkmModal } from '../../components/SkmModal';
@@ -87,7 +87,23 @@ export const CreateTicket = () => {
   const fileInputRef = useRef(null);
   const [hoveredIdx, setHoveredIdx] = useState(null);
   const [helpdeskInstansi, setHelpdeskInstansi] = useState('');
+  const [opdUsers, setOpdUsers] = useState([]);
+  const [selectedOpdUserId, setSelectedOpdUserId] = useState('');
+  const [selectedOpdUser, setSelectedOpdUser] = useState(null);
+  const [opdSearchQuery, setOpdSearchQuery] = useState('');
+  const [isOpdSearchOpen, setIsOpdSearchOpen] = useState(false);
+  const opdSearchRef = useRef(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (opdSearchRef.current && !opdSearchRef.current.contains(e.target)) {
+        setIsOpdSearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [createdTicketId, setCreatedTicketId] = useState('');
   const [inactiveCategoryNotice, setInactiveCategoryNotice] = useState('');
@@ -195,9 +211,25 @@ export const CreateTicket = () => {
     }
   }, [formData, title, description, selectedSubService]);
 
-  const isHelpdesk = user?.role?.toUpperCase() === 'HELPDESK';
-  const isAdmin = user?.role?.toUpperCase() === 'ADMIN';
+  const isHelpdesk = user?.role?.toUpperCase() === 'HELPDESK' || (user?.roles && user.roles.map(r => String(r).toUpperCase()).includes('HELPDESK'));
+  const isAdmin = user?.role?.toUpperCase() === 'ADMIN' || (user?.roles && user.roles.map(r => String(r).toUpperCase()).includes('ADMIN'));
   const isStaff = isHelpdesk || isAdmin;
+
+  // Load registered OPD accounts for Helpdesk / Staff
+  useEffect(() => {
+    if (isStaff) {
+      const timer = setTimeout(() => {
+        api.getOpdUsers(opdSearchQuery)
+          .then(res => {
+            if (res && res.data) {
+              setOpdUsers(res.data);
+            }
+          })
+          .catch(err => console.error('Gagal memuat daftar akun OPD:', err));
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [isStaff, opdSearchQuery]);
 
   const isRegularUser = !isStaff;
   const isTicketCompleted = (t) => {
@@ -296,8 +328,26 @@ export const CreateTicket = () => {
     const service_id = serviceObj.id;
 
     const finalFormData = { ...formData };
-    if (isHelpdesk) {
+    let targetUserIdPayload = null;
+
+    if (isHelpdesk || isAdmin) {
       finalFormData['submitted_by_helpdesk'] = true;
+      if (selectedOpdUserId) {
+        const opdObj = opdUsers.find(u => String(u.id) === String(selectedOpdUserId));
+        if (opdObj) {
+          targetUserIdPayload = opdObj.id;
+          finalFormData['target_opd_user_id'] = opdObj.id;
+          finalFormData['Email Pemohon'] = opdObj.email;
+          if (opdObj.nip) finalFormData['NIP'] = opdObj.nip;
+          if (!finalFormData['Nama Pemohon']) {
+            finalFormData['Nama Pemohon'] = opdObj.name;
+          }
+          if (!helpdeskInstansi.trim() && opdObj.department) {
+            finalFormData['Instansi / Asal Pemohon'] = opdObj.department;
+          }
+        }
+      }
+
       if (helpdeskInstansi.trim()) {
         finalFormData['Instansi / Asal Pemohon'] = helpdeskInstansi.trim();
       } else if (!finalFormData['Instansi / Asal Pemohon']) {
@@ -313,7 +363,8 @@ export const CreateTicket = () => {
       title: finalFormData['Judul Permohonan'] || title || `Permohonan ${selectedSubService}`,
       description: finalFormData['Deskripsi Kebutuhan'] || description || `Detail pengerjaan untuk sub-layanan ${selectedSubService}`,
       details: finalFormData,
-      priority: 'MEDIUM'
+      priority: 'MEDIUM',
+      ...(targetUserIdPayload ? { target_user_id: targetUserIdPayload } : {})
     };
 
     try {
@@ -326,6 +377,10 @@ export const CreateTicket = () => {
       localStorage.removeItem(`ticket_draft_${selectedSubService}`);
       setFormData({});
       setHelpdeskInstansi('');
+      setSelectedOpdUserId('');
+      setSelectedOpdUser(null);
+      setOpdSearchQuery('');
+      setIsOpdSearchOpen(false);
       setShowSuccessModal(true);
 
       api.getMyTickets().then(tktRes => {
@@ -774,15 +829,180 @@ export const CreateTicket = () => {
             </div>
           </div>
 
-          {isHelpdesk && (
-            <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-3.5">
-              <div className="flex items-center gap-2 text-amber-850 font-bold text-xs uppercase tracking-wider">
-                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>Pengajuan Tiket oleh Helpdesk / Petugas (Membantu Pemohon)</span>
+          {(isHelpdesk || isAdmin) && (
+            <div className="p-5 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-4 shadow-sm">
+              <div className="flex items-center justify-between gap-2 flex-wrap border-b border-amber-200/80 pb-3">
+                <div className="flex items-center gap-2 text-amber-900 font-extrabold text-xs uppercase tracking-wider">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Pengajuan Tiket oleh Helpdesk / Petugas (Membantu Pemohon)</span>
+                </div>
+                <span className="text-[11px] font-bold text-amber-800 bg-amber-100/90 px-2.5 py-0.5 rounded-full border border-amber-300">
+                  Role: Helpdesk
+                </span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+              {/* Kolom Search Akun OPD Terdaftar */}
+              <div ref={opdSearchRef} className="space-y-1.5 relative">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-black text-slate-700 uppercase tracking-wider">
+                    Cari Akun OPD Terdaftar di Web
+                  </label>
+                  {selectedOpdUser && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedOpdUser(null);
+                        setSelectedOpdUserId('');
+                        setOpdSearchQuery('');
+                      }}
+                      className="text-xs font-bold text-rose-600 hover:text-rose-700 flex items-center gap-1 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      <span>Hapus Pilihan Akun</span>
+                    </button>
+                  )}
+                </div>
+
+                {selectedOpdUser ? (
+                  <div className="p-3.5 bg-sky-50 border-2 border-sky-400 rounded-xl flex items-center justify-between gap-3 shadow-xs animate-in fade-in duration-150">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-sky-600 text-white flex items-center justify-center font-black text-base shrink-0 shadow-xs">
+                        {selectedOpdUser.name ? selectedOpdUser.name.charAt(0).toUpperCase() : 'U'}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-extrabold text-slate-900 text-sm truncate">{selectedOpdUser.name}</span>
+                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-black rounded-full uppercase tracking-wider">
+                            Akun Terpilih
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 font-medium truncate mt-0.5">
+                          {selectedOpdUser.department} {selectedOpdUser.nip ? `• NIP: ${selectedOpdUser.nip}` : selectedOpdUser.email ? `• ${selectedOpdUser.email}` : ''}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedOpdUser(null);
+                        setSelectedOpdUserId('');
+                        setOpdSearchQuery('');
+                        setIsOpdSearchOpen(true);
+                      }}
+                      className="px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 text-xs font-bold rounded-lg transition-all shrink-0 cursor-pointer shadow-2xs"
+                    >
+                      Ganti Akun
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={opdSearchQuery}
+                      onChange={(e) => {
+                        setOpdSearchQuery(e.target.value);
+                        setIsOpdSearchOpen(true);
+                      }}
+                      onFocus={() => setIsOpdSearchOpen(true)}
+                      placeholder="Ketik nama OPD atau instansi"
+                      className="w-full pl-10 pr-10 py-2.5 border border-slate-300 bg-white rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 font-medium text-slate-800 transition-all shadow-xs"
+                    />
+                    {opdSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpdSearchQuery('');
+                        }}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+
+                    {/* Autocomplete Popup List */}
+                    {isOpdSearchOpen && (
+                      <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-64 overflow-y-auto divide-y divide-slate-100 text-left">
+                        {(() => {
+                          const q = (opdSearchQuery || '').toLowerCase().trim();
+                          const matches = (opdUsers || []).filter(u => {
+                            if (!q) return true;
+                            return (
+                              (u.name && u.name.toLowerCase().includes(q)) ||
+                              (u.department && u.department.toLowerCase().includes(q)) ||
+                              (u.email && u.email.toLowerCase().includes(q)) ||
+                              (u.nip && String(u.nip).includes(q))
+                            );
+                          });
+
+                          if (matches.length === 0) {
+                            return (
+                              <div className="p-4 text-center text-xs text-slate-500 space-y-1">
+                                <p className="font-semibold text-slate-700">Tidak ada akun OPD yang cocok dengan "{opdSearchQuery}"</p>
+                                <p className="text-[11px] text-slate-400">Anda dapat tetap mengajukan tiket ini dengan mengisi nama & instansi manual di bawah.</p>
+                              </div>
+                            );
+                          }
+
+                          return matches.map((opd) => (
+                            <div
+                              key={opd.id}
+                              onClick={() => {
+                                setSelectedOpdUser(opd);
+                                setSelectedOpdUserId(opd.id);
+                                setFormData(prev => ({ ...prev, 'Nama Pemohon': opd.name }));
+                                setHelpdeskInstansi(opd.department || '');
+                                setOpdSearchQuery('');
+                                setIsOpdSearchOpen(false);
+                              }}
+                              className="p-3 hover:bg-sky-50 cursor-pointer transition-all flex items-center justify-between gap-3 group"
+                            >
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-black text-sm text-slate-850 group-hover:text-sky-700 truncate">{opd.name}</span>
+                                  {opd.nip && (
+                                    <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 text-[10px] font-mono rounded shrink-0">
+                                      NIP: {opd.nip}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-slate-500 font-medium truncate mt-0.5">
+                                  {opd.department} {opd.email ? `• ${opd.email}` : ''}
+                                </p>
+                              </div>
+                              <span className="text-xs font-bold text-sky-600 bg-sky-50 px-2 py-1 rounded group-hover:bg-sky-600 group-hover:text-white transition-all shrink-0">
+                                Pilih
+                              </span>
+                            </div>
+                          ));
+                        })()}
+
+                        <div 
+                          onClick={() => {
+                            setSelectedOpdUser(null);
+                            setSelectedOpdUserId('');
+                            setIsOpdSearchOpen(false);
+                          }}
+                          className="p-2.5 bg-slate-50 hover:bg-slate-100 text-center text-xs font-bold text-slate-600 cursor-pointer transition-all border-t border-slate-100"
+                        >
+                          ✕ Tutup Pencarian / Pemohon Belum Terdaftar (Input Manual)
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <p className="text-[11px] text-slate-500 font-medium">
+                  Ketik nama pemohon OPD yang sudah terdaftar. Jika pemohon belum memiliki akun di web, kosongkan pencarian dan isi manual kolom di bawah.
+                </p>
+              </div>
+
+              {/* Input Nama & Instansi */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">Nama Pemohon (Opsional)</label>
+                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">
+                    Nama Pemohon {selectedOpdUser ? '(Terisi Otomatis)' : '(Manual)'}
+                  </label>
                   <input
                     type="text"
                     value={formData['Nama Pemohon'] || ''}
@@ -792,16 +1012,41 @@ export const CreateTicket = () => {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">Instansi / Asal Pemohon</label>
+                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">
+                    Instansi / Asal Pemohon {selectedOpdUser ? '(Terisi Otomatis)' : '(Manual)'}
+                  </label>
                   <input
                     type="text"
                     value={helpdeskInstansi}
                     onChange={(e) => setHelpdeskInstansi(e.target.value)}
-                    placeholder="Contoh: Dinas Kesehatan / Masyarakat Umum"
+                    placeholder="Contoh: Dinas Kesehatan / Bagian Umum"
                     className="w-full px-4 py-2.5 border border-slate-300 bg-white rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-sky-500 font-medium"
                   />
                 </div>
               </div>
+
+              {/* Status Note sesuai kondisi */}
+              {selectedOpdUser ? (
+                <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start gap-2.5 text-xs text-emerald-850 animate-in fade-in duration-150">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <span className="font-extrabold text-emerald-900 block">Akun OPD Terpilih: {selectedOpdUser.name}</span>
+                    <p className="text-emerald-800 leading-relaxed">
+                      Tiket ini akan otomatis terhubung dan <strong>muncul di Riwayat Tiket akun OPD {selectedOpdUser.name}</strong> ({selectedOpdUser.department}). Pemohon dapat memantau progres langsung dari akunnya di web.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3.5 bg-slate-100/90 border border-slate-250 rounded-xl flex items-start gap-2.5 text-xs text-slate-700 animate-in fade-in duration-150">
+                  <Clock className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <span className="font-bold text-slate-800 block">Pemohon Belum Punya Akun / Belum Terdaftar:</span>
+                    <p className="text-slate-600 leading-relaxed">
+                      Tiket akan tetap menjadi milik Helpdesk dan <strong>tidak akan muncul di akun OPD manapun</strong>. Pengisian Survei SKM tetap dilakukan oleh Helpdesk dengan persetujuan pemohon.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

@@ -62,6 +62,24 @@ export const api = {
   },
 
   // USERS
+  getOpdUsers: async (search = '') => {
+    const q = search ? `?search=${encodeURIComponent(search)}` : '';
+    try {
+      const res = await fetch(`${BASE_URL}/opd-users${q}`, { headers: getHeaders() });
+      if (res.ok) return handleResponse(res);
+      const resAlt = await fetch(`${BASE_URL}/users/opd-list${q}`, { headers: getHeaders() });
+      if (resAlt.ok) return handleResponse(resAlt);
+      const resAdmin = await fetch(`${BASE_URL}/admin/users/opd-list${q}`, { headers: getHeaders() });
+      return handleResponse(resAdmin);
+    } catch (e) {
+      try {
+        const resAlt = await fetch(`${BASE_URL}/users/opd-list${q}`, { headers: getHeaders() });
+        return handleResponse(resAlt);
+      } catch (e2) {
+        return { success: false, data: [] };
+      }
+    }
+  },
   getUsers: async () => {
     const res = await fetch(`${BASE_URL}/admin/users`, { headers: getHeaders() });
     return handleResponse(res);

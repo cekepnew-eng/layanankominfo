@@ -18,7 +18,7 @@ const createNotification = async (client, userId, ticketId, type, title, message
 // USER API
 // ==========================================
 exports.createTicket = async (req, res) => {
-  const { service_name, title, description, details, priority, service_id } = req.body;
+  const { service_name, title, description, details, priority, service_id, target_user_id } = req.body;
 
   // Use details as form_data. If not present, default to empty object.
   const form_data = details || {};
@@ -88,21 +88,14 @@ exports.createTicket = async (req, res) => {
 
     // Check if service needs verification
     const srvRes = await client.query('SELECT verification_type, default_team_id FROM services WHERE id = $1', [finalServiceId]);
-    const needsVerification = srvRes.rows[0]?.verification_type === 'Wajib Verifikasi';
+    const rawVerifType = String(srvRes.rows[0]?.verification_type || '').trim().toLowerCase();
+    const isAuto = rawVerifType === 'otomatis' || rawVerifType === 'auto' || rawVerifType === 'false';
+    const needsVerification = !isAuto;
     const defaultTeamId = srvRes.rows[0]?.default_team_id;
 
     let initialStatusId = 1; // PENDING
     let isAutoAssigned = false;
 
-    // Alur penanganan status tiket baru:
-    // 1. Jika Layanan Otomatis (Tanpa Verifikasi / !needsVerification):
-    //    - Jika ada default_team_id: langsung ASSIGNED (4) ke tim/pegawai
-    //    - Jika tidak ada: VERIFIED (2) menunggu penugasan tim
-    //    Alur: [Pengajuan -> Pegawai]
-    // 2. Jika Layanan Wajib Verifikasi (needsVerification):
-    //    - Masuk ke status PENDING (1) agar diverifikasi & di-ACC oleh Helpdesk
-    //    - Helpdesk memverifikasi tiket dan meneruskannya ke Pegawai/Tim
-    //    Alur: [Pengajuan -> Helpdesk ACC -> Pegawai]
     if (!needsVerification) {
       if (defaultTeamId) {
         initialStatusId = 4; // ASSIGNED directly to team
@@ -114,6 +107,21 @@ exports.createTicket = async (req, res) => {
       initialStatusId = 1; // PENDING: Menunggu verifikasi berkas
     }
 
+    // Resolve final ticket owner (Target OPD user or Helpdesk)
+    let finalTicketUserId = req.user.id;
+    let targetOpdUser = null;
+
+    if (isHelpdeskOrAdmin && target_user_id) {
+      const opdLookup = await client.query(`
+        SELECT id, full_name, email, nip, department FROM users WHERE id = $1
+      `, [target_user_id]);
+
+      if (opdLookup.rows.length > 0) {
+        targetOpdUser = opdLookup.rows[0];
+        finalTicketUserId = targetOpdUser.id;
+      }
+    }
+
     // Generate Ticket Number
     const countRes = await client.query('SELECT COUNT(*) FROM tickets');
     const ticket_number = `REQ-${new Date().getFullYear()}-${(parseInt(countRes.rows[0].count) + 1).toString().padStart(4, '0')}`;
@@ -122,14 +130,23 @@ exports.createTicket = async (req, res) => {
     const ticketRes = await client.query(`
       INSERT INTO tickets (ticket_number, user_id, service_id, status_id, priority)
       VALUES ($1, $2, $3, $4, $5) RETURNING id
-    `, [ticket_number, req.user.id, finalServiceId, initialStatusId, priority || 'MEDIUM']);
+    `, [ticket_number, finalTicketUserId, finalServiceId, initialStatusId, priority || 'MEDIUM']);
     const ticketId = ticketRes.rows[0].id;
 
     // 2. Insert Ticket Details
     if (isSubmittedByHelpdesk) {
       form_data.submitted_by_helpdesk = true;
-      if (!form_data['Instansi / Asal Pemohon'] && form_data['Instansi']) {
-        form_data['Instansi / Asal Pemohon'] = form_data['Instansi'];
+      form_data.helpdesk_user_id = req.user.id;
+      if (targetOpdUser) {
+        form_data.target_opd_user_id = targetOpdUser.id;
+        form_data['Nama Pemohon'] = form_data['Nama Pemohon'] || targetOpdUser.full_name;
+        form_data['Instansi / Asal Pemohon'] = form_data['Instansi / Asal Pemohon'] || targetOpdUser.department;
+        if (targetOpdUser.email) form_data['Email Pemohon'] = targetOpdUser.email;
+        if (targetOpdUser.nip) form_data['NIP'] = targetOpdUser.nip;
+      } else {
+        if (!form_data['Instansi / Asal Pemohon'] && form_data['Instansi']) {
+          form_data['Instansi / Asal Pemohon'] = form_data['Instansi'];
+        }
       }
     } else {
       delete form_data.submitted_by_helpdesk;
@@ -154,9 +171,13 @@ exports.createTicket = async (req, res) => {
       historyTextCreate = 'Tiket diajukan dan langsung ditugaskan ke tim teknis.';
     } else if (initialStatusId === 1) {
       if (isSubmittedByHelpdesk) {
-        historyTextCreate = 'Tiket diajukan oleh Helpdesk untuk pemohon. Menunggu proses verifikasi Helpdesk.';
+        if (targetOpdUser) {
+          historyTextCreate = `Tiket diajukan oleh Helpdesk untuk ${targetOpdUser.full_name} (${targetOpdUser.department || 'OPD'}). Menunggu proses verifikasi Helpdesk.`;
+        } else {
+          historyTextCreate = 'Tiket diajukan oleh Helpdesk untuk pemohon. Menunggu proses verifikasi Helpdesk.';
+        }
       } else {
-        historyTextCreate = 'Tiket berhasil diajukan. Menunggu verifikasi berkas.';
+        historyTextCreate = 'Tiket berhasil diajukan. Menunggu verifikasi berkas oleh Helpdesk.';
       }
     } else if (initialStatusId === 2) {
       historyTextCreate = 'Tiket otomatis terverifikasi, menunggu penugasan.';
@@ -167,6 +188,11 @@ exports.createTicket = async (req, res) => {
     // 5. Notifications
     // Notify the creator
     await createNotification(client, req.user.id, ticketId, 'INFO', 'Tiket Dibuat', `Tiket ${ticket_number} berhasil diajukan.`);
+
+    // If submitted by Helpdesk for an OPD user, also notify the OPD user!
+    if (targetOpdUser && targetOpdUser.id !== req.user.id) {
+      await createNotification(client, targetOpdUser.id, ticketId, 'INFO', 'Tiket Diajukan', `Tiket permohonan ${ticket_number} telah diajukan untuk akun Anda oleh Helpdesk.`);
+    }
 
     // If it needs helpdesk action (status 1 PENDING or status 2 VERIFIED without auto-assign)
     if (!isAutoAssigned) {
@@ -219,25 +245,27 @@ exports.getMyTickets = async (req, res) => {
       LEFT JOIN ticket_details td ON td.ticket_id = t.id
       LEFT JOIN ticket_feedback tf ON tf.ticket_id = t.id
       WHERE (
-        (td.form_data->>'submitted_by_helpdesk' IS NULL OR (td.form_data->>'submitted_by_helpdesk' != 'true' AND td.form_data->>'submitted_by_helpdesk' != '1'))
-        AND (td.form_data->>'Nama Pemohon' IS NULL OR td.form_data->>'Nama Pemohon' NOT ILIKE '%via Helpdesk%')
-        AND (td.form_data->>'Instansi / Asal Pemohon' IS NULL OR td.form_data->>'Instansi / Asal Pemohon' NOT ILIKE '%Helpdesk%')
-      )
-      AND (
-        t.user_id = $1 
-        OR t.user_id IN (
-          SELECT id FROM users 
-          WHERE (email IS NOT NULL AND email = (SELECT email FROM users WHERE id = $1))
-             OR (nip IS NOT NULL AND nip = (SELECT nip FROM users WHERE id = $1))
-        )
-        OR (
-          (
-            td.form_data->>'Email Pemohon' IS NOT NULL 
-            AND td.form_data->>'Email Pemohon' = (SELECT email FROM users WHERE id = $1)
+        -- 1. Tiket yang diajukan mandiri oleh user (bukan bantuan helpdesk untuk pihak lain)
+        (
+          (td.form_data->>'submitted_by_helpdesk' IS NULL OR (td.form_data->>'submitted_by_helpdesk' != 'true' AND td.form_data->>'submitted_by_helpdesk' != '1'))
+          AND (td.form_data->>'Nama Pemohon' IS NULL OR td.form_data->>'Nama Pemohon' NOT ILIKE '%via Helpdesk%')
+          AND (td.form_data->>'Instansi / Asal Pemohon' IS NULL OR td.form_data->>'Instansi / Asal Pemohon' NOT ILIKE '%Helpdesk%')
+          AND (
+            t.user_id = $1 
+            OR t.user_id IN (
+              SELECT id FROM users 
+              WHERE (email IS NOT NULL AND email = (SELECT email FROM users WHERE id = $1))
+                 OR (nip IS NOT NULL AND nip = (SELECT nip FROM users WHERE id = $1))
+            )
           )
-          OR (
-            td.form_data->>'NIP' IS NOT NULL 
-            AND td.form_data->>'NIP' = (SELECT nip FROM users WHERE id = $1)
+        )
+        -- 2. ATAU tiket bantuan helpdesk yang memang ditujukan untuk akun user ini
+        OR (
+          (td.form_data->>'submitted_by_helpdesk' = 'true' OR td.form_data->>'submitted_by_helpdesk' = '1')
+          AND (
+            (t.user_id = $1 AND (td.form_data->>'helpdesk_user_id' IS NULL OR t.user_id != (td.form_data->>'helpdesk_user_id')::uuid))
+            OR (td.form_data->>'Email Pemohon' IS NOT NULL AND td.form_data->>'Email Pemohon' = (SELECT email FROM users WHERE id = $1))
+            OR (td.form_data->>'NIP' IS NOT NULL AND td.form_data->>'NIP' = (SELECT nip FROM users WHERE id = $1))
           )
         )
       )
@@ -276,6 +304,22 @@ exports.updateTicketData = async (req, res) => {
       } else {
         throw new Error('Ticket not found');
       }
+    }
+
+    // Validasi kepemilikan tiket (IDOR Protection)
+    const ticketOwnerRes = await client.query('SELECT user_id FROM tickets WHERE id = $1', [actualTicketId]);
+    if (ticketOwnerRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, message: 'Tiket tidak ditemukan.' });
+    }
+
+    const ticketOwnerId = ticketOwnerRes.rows[0].user_id;
+    const userRoles = (req.user.roles || [req.user.role] || []).map(r => String(r).toUpperCase());
+    const isHelpdeskOrAdmin = userRoles.includes('HELPDESK') || userRoles.includes('ADMIN');
+
+    if (ticketOwnerId !== req.user.id && !isHelpdeskOrAdmin) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ success: false, message: 'Akses ditolak: Anda bukan pemilik tiket ini.' });
     }
 
     // Update the form_data in ticket_details
@@ -377,9 +421,30 @@ exports.submitFeedback = async (req, res) => {
     await client.query('BEGIN');
 
     // Verify ownership and status
-    const tRes = await client.query('SELECT status_id FROM tickets WHERE id = $1 AND user_id = $2', [id, req.user.id]);
-    if (tRes.rows.length === 0) throw new Error('Ticket not found or unauthorized');
-    if (tRes.rows[0].status_id !== 6) throw new Error('Ticket is not awaiting feedback'); // 6 = WAITING_USER_CONFIRMATION
+    const tRes = await client.query(`
+      SELECT t.status_id, t.user_id, td.form_data 
+      FROM tickets t
+      LEFT JOIN ticket_details td ON td.ticket_id = t.id
+      WHERE t.id = $1
+    `, [id]);
+    if (tRes.rows.length === 0) throw new Error('Tiket tidak ditemukan.');
+    if (tRes.rows[0].status_id !== 6) throw new Error('Tiket belum menunggu survei SKM / konfirmasi.'); // 6 = WAITING_USER_CONFIRMATION
+
+    const ticketOwnerId = tRes.rows[0].user_id;
+
+    // Check if caller is ticket owner OR Helpdesk/Admin
+    const userRolesRes = await client.query(`
+      SELECT r.name FROM user_roles ur
+      JOIN roles r ON ur.role_id = r.id
+      WHERE ur.user_id = $1
+    `, [req.user.id]);
+    const userRoles = userRolesRes.rows.map(r => r.name.toUpperCase());
+    const isHelpdeskOrAdmin = userRoles.includes('HELPDESK') || userRoles.includes('ADMIN');
+    const isOwner = ticketOwnerId === req.user.id;
+
+    if (!isOwner && !isHelpdeskOrAdmin) {
+      throw new Error('Akses ditolak: Anda tidak memiliki wewenang untuk mengisi penilaian tiket ini.');
+    }
 
     // Insert Feedback
     await client.query(`
@@ -391,7 +456,10 @@ exports.submitFeedback = async (req, res) => {
     await client.query('UPDATE tickets SET status_id = 7 WHERE id = $1', [id]);
 
     // History
-    const historyText = `Tiket selesai. SKM: ${rating} bintang.` + (comment ? ` Ulasan: "${comment}"` : '');
+    let historyText = `Tiket selesai. SKM: ${rating} bintang.` + (comment ? ` Ulasan: "${comment}"` : '');
+    if (isHelpdeskOrAdmin && !isOwner) {
+      historyText = `Tiket selesai. SKM diisi oleh Helpdesk/Petugas atas persetujuan pemohon (${rating} bintang).` + (comment ? ` Ulasan: "${comment}"` : '');
+    }
     await createHistory(client, id, req.user.id, 6, 7, historyText);
 
     await client.query('COMMIT');
@@ -537,18 +605,23 @@ exports.verifyTicket = async (req, res) => {
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('UPDATE tickets SET status_id = 2 WHERE id = $1', [id]); // 2: VERIFIED
-    await createHistory(client, id, req.user.id, 1, 2, 'Diverifikasi. Menunggu penugasan tim.');
+    const curRes = await client.query('SELECT status_id, user_id, ticket_number FROM tickets WHERE id = $1', [id]);
+    if (curRes.rows.length === 0) throw new Error('Ticket not found');
+    const oldStatus = curRes.rows[0].status_id;
+    const ticketOwnerId = curRes.rows[0].user_id;
+    const ticketNumber = curRes.rows[0].ticket_number;
+
+    await client.query('UPDATE tickets SET status_id = 2, updated_at = NOW() WHERE id = $1', [id]); // 2: VERIFIED
+    await createHistory(client, id, req.user.id, oldStatus, 2, 'Diverifikasi oleh Helpdesk. Berkas dinyatakan lengkap dan valid. Menunggu penugasan tim kerja.');
 
     // Notify User
-    const tRes = await client.query('SELECT user_id FROM tickets WHERE id = $1', [id]);
-    await createNotification(client, tRes.rows[0].user_id, id, 'INFO', 'Tiket Diverifikasi', 'Tiket Anda telah diverifikasi dan menunggu penugasan.');
+    await createNotification(client, ticketOwnerId, id, 'INFO', 'Tiket Diverifikasi', `Tiket ${ticketNumber} telah diverifikasi oleh Helpdesk dan menunggu penugasan.`);
 
     await client.query('COMMIT');
     res.json({ success: true, message: 'Ticket verified' });
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ success: false, message: 'Error verifying ticket' });
+    res.status(500).json({ success: false, message: 'Error verifying ticket: ' + err.message });
   } finally {
     client.release();
   }
@@ -560,13 +633,33 @@ exports.assignTicket = async (req, res) => {
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('UPDATE tickets SET status_id = 4 WHERE id = $1', [id]); // 4: ASSIGNED
+    const curRes = await client.query('SELECT status_id, user_id, ticket_number FROM tickets WHERE id = $1', [id]);
+    if (curRes.rows.length === 0) throw new Error('Ticket not found');
+    const oldStatus = curRes.rows[0].status_id;
+
+    await client.query('UPDATE tickets SET status_id = 4, updated_at = NOW() WHERE id = $1', [id]); // 4: ASSIGNED
     await client.query(`
       INSERT INTO ticket_assignments (ticket_id, team_id, assigned_to_user_id, assigned_by_user_id)
       VALUES ($1, $2, $3, $4)
     `, [id, team_id, user_id, req.user.id]);
 
-    await createHistory(client, id, req.user.id, 2, 4, 'Ditugaskan ke Tim Kerja.');
+    let teamName = '';
+    if (team_id) {
+      const tmRes = await client.query('SELECT team_name FROM teams WHERE id = $1', [team_id]);
+      if (tmRes.rows.length > 0) teamName = tmRes.rows[0].team_name;
+    }
+
+    let assignedPegawaiName = '';
+    if (user_id) {
+      const uRes = await client.query('SELECT full_name FROM users WHERE id = $1', [user_id]);
+      if (uRes.rows.length > 0) assignedPegawaiName = uRes.rows[0].full_name;
+    }
+
+    const assignLog = teamName 
+      ? `Ditugaskan ke Tim Kerja ${teamName}${assignedPegawaiName ? ' (' + assignedPegawaiName + ')' : ''}.`
+      : 'Ditugaskan ke Tim Kerja.';
+
+    await createHistory(client, id, req.user.id, oldStatus, 4, assignLog);
 
     // Notify Assigned Pegawai
     if (user_id) {
@@ -577,7 +670,7 @@ exports.assignTicket = async (req, res) => {
     res.json({ success: true, message: 'Ticket assigned' });
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ success: false, message: 'Error assigning ticket' });
+    res.status(500).json({ success: false, message: 'Error assigning ticket: ' + err.message });
   } finally {
     client.release();
   }
@@ -845,7 +938,8 @@ exports.getHistory = async (req, res) => {
         lowerDesc.includes('helpdesk') || 
         lowerDesc.includes('diverifikasi') || 
         lowerDesc.includes('ditugaskan ke tim') || 
-        lowerDesc.includes('penugasan tim')
+        lowerDesc.includes('penugasan tim') ||
+        lowerDesc.includes('ditangguhkan')
       ) {
         detectedRole = 'HELPDESK';
       } else if (
@@ -880,31 +974,39 @@ exports.rejectTicket = async (req, res) => {
   try {
     await client.query('BEGIN');
 
+    const curRes = await client.query('SELECT status_id, user_id, ticket_number FROM tickets WHERE id = $1', [id]);
+    if (curRes.rows.length === 0) throw new Error('Ticket not found');
+    const oldStatus = curRes.rows[0].status_id;
+    const ticketOwnerId = curRes.rows[0].user_id;
+    const ticketNumber = curRes.rows[0].ticket_number;
+
     // Status 3 is Rejected/Pending/Revision
-    const updateRes = await client.query('UPDATE tickets SET status_id = 3, updated_at = NOW() WHERE id = $1 RETURNING status_id', [id]);
+    await client.query('UPDATE tickets SET status_id = 3, updated_at = NOW() WHERE id = $1', [id]);
 
-    if (updateRes.rowCount === 0) throw new Error('Ticket not found');
-
-    const userRoles = req.user.roles || [req.user.role];
-    const isUser = userRoles.includes('USER') || userRoles.includes('MASYARAKAT');
+    const activeRole = String(req.user.role || '').toUpperCase();
+    const isPetugas = activeRole === 'HELPDESK' || activeRole === 'PEGAWAI' || activeRole === 'ADMIN';
 
     let finalNote = '';
-    if (isUser) {
+    if (isPetugas) {
+      finalNote = note
+        ? `Verifikasi berkas ditangguhkan oleh Helpdesk. Catatan: "${note}". Mohon revisi berkas.`
+        : `Verifikasi berkas ditangguhkan oleh Helpdesk. Mohon periksa dan lengkapi berkas permohonan.`;
+    } else {
       finalNote = note
         ? `Sanggahan: "${note}". Menunggu evaluasi Tim Kerja.`
         : `Sanggahan diajukan. Menunggu evaluasi Tim Kerja.`;
-    } else {
-      finalNote = note
-        ? `Ditangguhkan. Alasan: "${note}". Mohon revisi.`
-        : `Ditangguhkan. Mohon revisi.`;
     }
 
-    await createHistory(client, id, req.user.id, null, 3, finalNote);
+    await createHistory(client, id, req.user.id, oldStatus, 3, finalNote);
 
-    // Assuming status 1 is the previous, though we don't know it. Passing null for old_status is handled by db if nullable.
-    // Or we could fetch old status first:
-    // const tRes = await client.query('SELECT status_id FROM tickets WHERE id = $1', [id]);
-    // const oldStatus = tRes.rows[0].status_id;
+    await createNotification(
+      client, 
+      ticketOwnerId, 
+      id, 
+      'ACTION_REQUIRED', 
+      'Verifikasi Ditangguhkan', 
+      `Tiket ${ticketNumber} membutuhkan revisi berkas. Alasan: ${note || 'Berkas belum lengkap/sesuai'}.`
+    );
 
     await client.query('COMMIT');
     res.json({ success: true, message: 'Ticket rejected' });

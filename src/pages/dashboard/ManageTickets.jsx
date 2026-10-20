@@ -27,14 +27,22 @@ import {
   X
 } from 'lucide-react';
 
-const getServiceSlaDays = (serviceName) => {
+const parseSlaDays = (targetSla, serviceName) => {
+  if (targetSla) {
+    const match = String(targetSla).match(/\d+/);
+    if (match) return parseInt(match[0], 10);
+  }
   if (serviceName === 'Server Perangkat Daerah') return 5;
   if (serviceName === 'Jaringan Intra Pemerintah') return 3;
   if (serviceName === 'Pengembangan & Pengelolaan Aplikasi') return 7;
-  return 4;
+  return 7;
 };
 
-const calculateTargetDate = (dateStr, serviceName) => {
+const getServiceSlaDays = (serviceName, targetSla) => {
+  return parseSlaDays(targetSla, serviceName);
+};
+
+const calculateTargetDate = (dateStr, serviceName, targetSla) => {
   if (!dateStr) return '';
   const months = {
     'Januari': 0, 'Februari': 1, 'Maret': 2, 'April': 3, 'Mei': 4, 'Juni': 5,
@@ -56,7 +64,7 @@ const calculateTargetDate = (dateStr, serviceName) => {
 
   const date = new Date(year, monthIdx, day);
 
-  const slaDays = getServiceSlaDays(serviceName);
+  const slaDays = getServiceSlaDays(serviceName, targetSla);
 
   date.setDate(date.getDate() + slaDays);
 
@@ -186,9 +194,9 @@ export const TicketHistory = ({ mode = 'active' }) => {
             opd: t.form_data?.['Instansi / Asal Pemohon'] || t.form_data?.['Instansi'] || ((t.opd && t.opd !== 'OPD') ? t.opd : (t.department || 'Dinas Komunikasi dan Informatika')),
             pemohon: t.pemohon || t.form_data?.['Nama Pemohon'] || 'Pemohon',
             date: t.created_at ? new Date(t.created_at).toLocaleDateString('id-ID') : (t.date || '-'),
-            requestType: 'Baru',
-            slaDuration: configuredService?.target_sla || configuredService?.sla || t.target_sla || 7,
-            remainingDays: 7,
+            slaDuration: configuredService?.target_sla || configuredService?.sla || parseSlaDays(t.target_sla, t.service_name || t.service),
+            remainingDays: parseSlaDays(t.target_sla, t.service_name || t.service),
+            target_sla: t.target_sla || `${parseSlaDays(t.target_sla, t.service_name || t.service)} Hari`,
             bastFile: (t.bast_file_name && t.bast_file_url && t.bast_file_url !== '/bast_selesai.pdf') ? t.bast_file_name : null,
             bastFileUrl: (t.bast_file_name && t.bast_file_url && t.bast_file_url !== '/bast_selesai.pdf') ? t.bast_file_url : null
           };
@@ -213,10 +221,8 @@ export const TicketHistory = ({ mode = 'active' }) => {
       loadTickets();
     };
     window.addEventListener('ticket-created', handleTicketCreated);
-    window.addEventListener('ticket-opened', handleTicketCreated);
     return () => {
       window.removeEventListener('ticket-created', handleTicketCreated);
-      window.removeEventListener('ticket-opened', handleTicketCreated);
     };
   }, [user]);
 
@@ -305,10 +311,16 @@ export const TicketHistory = ({ mode = 'active' }) => {
       sessionStorage.removeItem('redirectedForTicket');
       sessionStorage.removeItem('fromNotificationTicketId');
       sessionStorage.removeItem('activeTicketId');
+      if (location.search && location.search.includes('ticket=')) {
+        navigate(location.pathname, { replace: true });
+      }
     } else {
       sessionStorage.removeItem('redirectedForTicket');
       sessionStorage.removeItem('fromNotificationTicketId');
       sessionStorage.removeItem('activeTicketId');
+      if (location.search && location.search.includes('ticket=')) {
+        navigate(location.pathname, { replace: true });
+      }
     }
   };
 
@@ -599,7 +611,14 @@ export const TicketHistory = ({ mode = 'active' }) => {
   }, [selectedTicket?.id]);
 
   const handleSelectTicket = async (t) => {
+    if (!t) return;
+
     // Notifikasi hanya hilang/terbaca bila tombol/item notifikasi dipencet langsung, tidak otomatis saat tiket dipilih
+
+    // Cegah re-scroll ke atas jika tiket yang sama sudah terbuka
+    if (selectedTicket && (selectedTicket.id === t.id || selectedTicket.uuid === t.uuid)) {
+      return;
+    }
     let ticketWithLogs = { ...t };
     try {
       const res = await api.getHistory(t.uuid || t.id);

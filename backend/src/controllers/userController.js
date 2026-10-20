@@ -235,3 +235,38 @@ exports.createUserManual = async (req, res) => {
     res.status(error.status || 500).json({ success: false, message: error.message });
   }
 };
+
+exports.getOpdUsers = async (req, res) => {
+  try {
+    const { search } = req.query;
+    let query = `
+      SELECT u.id, u.email, u.nip, u.full_name as name, u.phone_number as phone, u.department,
+             COALESCE(array_agg(r.name), ARRAY[]::varchar[]) as roles
+      FROM users u
+      LEFT JOIN user_roles ur ON ur.user_id = u.id
+      LEFT JOIN roles r ON ur.role_id = r.id
+      WHERE (
+        u.department IS NOT NULL 
+        AND TRIM(u.department) != '' 
+        AND LOWER(TRIM(u.department)) NOT IN ('masyarakat umum', 'masyarakat')
+      )
+    `;
+    const params = [];
+
+    if (search && search.trim()) {
+      params.push(`%${search.trim()}%`);
+      query += ` AND (u.full_name ILIKE $${params.length} OR u.email ILIKE $${params.length} OR u.department ILIKE $${params.length} OR (u.nip IS NOT NULL AND u.nip ILIKE $${params.length}))`;
+    }
+
+    query += `
+      GROUP BY u.id, u.email, u.nip, u.full_name, u.phone_number, u.department
+      ORDER BY u.department ASC, u.full_name ASC
+      LIMIT 100
+    `;
+
+    const result = await db.pool.query(query, params);
+    res.json({ success: true, data: result.rows });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

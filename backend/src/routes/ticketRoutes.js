@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const ticketController = require('../controllers/ticketController');
+const userController = require('../controllers/userController');
 const { authenticateToken, authorizeRole } = require('../middleware/auth');
 
 // USER & ALL ROLES (Untuk pembuatan tiket)
@@ -11,6 +12,7 @@ router.post('/my/tickets/:id/feedback', authenticateToken, authorizeRole(['USER'
 router.post('/my/tickets/:id/dispute', authenticateToken, authorizeRole(['USER', 'MASYARAKAT', 'ADMIN']), ticketController.disputeTicket);
 
 // HELPDESK
+router.get('/opd-users', authenticateToken, authorizeRole(['HELPDESK', 'ADMIN']), userController.getOpdUsers);
 router.get('/helpdesk/tickets', authenticateToken, authorizeRole(['HELPDESK', 'ADMIN']), ticketController.getHelpdeskTickets);
 router.patch('/helpdesk/tickets/:id/verify', authenticateToken, authorizeRole(['HELPDESK', 'ADMIN']), ticketController.verifyTicket);
 router.patch('/helpdesk/tickets/:id/assign', authenticateToken, authorizeRole(['HELPDESK', 'ADMIN']), ticketController.assignTicket);

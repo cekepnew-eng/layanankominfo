@@ -65,7 +65,7 @@ export const LandingPage = () => {
     : defaultTopCategories;
 
   const displayedSla = publicStats?.slaCompliance || (completedOrWaiting.length > 0 ? sla : '100.0%');
-  const displayedSubServices = publicStats?.totalSubServices || (dbCategories.length > 0 ? dbCategories.reduce((acc, c) => acc + c.services.length, 0) : 181);
+  const displayedSubServices = publicStats?.totalSubServices || (dbCategories.length > 0 ? dbCategories.reduce((acc, c) => acc + c.services.length, 0) : 191);
   const displayedCategories = publicStats?.totalCategories || dbCategories.length || 8;
   const [activeSection, setActiveSection] = useState('beranda');
 
@@ -183,10 +183,11 @@ export const LandingPage = () => {
       icon: Cpu,
       color: 'text-blue-600 bg-blue-50 border-blue-100',
       services: [
-        { name: 'Pengembangan & Pengelolaan Aplikasi', sla: '30-90 Hari', sop: 'sop-pengembangan.pdf', items: ['Pengembangan aplikasi baru', 'Penambahan fitur', 'Perubahan fitur', 'Perbaikan error/bug', 'Pemeliharaan aplikasi', 'Upgrade aplikasi', 'Migrasi aplikasi', 'Integrasi API', 'Integrasi SSO', 'Integrasi SPLP', 'Konsultasi aplikasi', 'Asistensi teknis'] },
-        { name: 'Rekomendasi & Evaluasi Aplikasi', sla: '7 Hari', sop: 'sop-rekomendasi.pdf', items: ['Permohonan rekomendasi aplikasi', 'Evaluasi aplikasi', 'Review kebutuhan aplikasi', 'Review arsitektur aplikasi', 'Konsultasi pengembangan aplikasi', 'Pendampingan pengembangan aplikasi'] },
-        { name: 'Uji Kesesuaian Sistem (UKS)', sla: '14 Hari', sop: 'sop-uks.pdf', items: ['Permohonan UKS', 'Pengajuan uji aplikasi', 'Konsultasi UKS', 'Perbaikan hasil UKS', 'Tindak lanjut hasil UKS'] },
-        { name: 'Keamanan Aplikasi / VAPT', sla: '10 Hari', sop: 'sop-vapt.pdf', items: ['Vulnerability Assessment', 'Penetration Testing', 'VAPT', 'Security Assessment', 'Retest keamanan', 'Konsultasi keamanan aplikasi'] }
+        { name: 'Pengembangan & Pengelolaan Aplikasi', sla: '30-90 Hari', sop: 'sop_layanan.pdf', items: ['Pengembangan aplikasi baru', 'Penambahan fitur', 'Perubahan fitur', 'Perbaikan error/bug', 'Pemeliharaan aplikasi', 'Upgrade aplikasi', 'Migrasi aplikasi', 'Integrasi API', 'Integrasi SSO', 'Integrasi SPLP', 'Konsultasi aplikasi', 'Asistensi teknis'] },
+        { name: 'Rekomendasi & Evaluasi Aplikasi', sla: '7 Hari', sop: 'sop_layanan.pdf', items: ['Permohonan rekomendasi aplikasi', 'Evaluasi aplikasi', 'Review kebutuhan aplikasi', 'Review arsitektur aplikasi', 'Konsultasi pengembangan aplikasi', 'Pendampingan pengembangan aplikasi'] },
+        { name: 'Uji Kesesuaian Sistem (UKS)', sla: '14 Hari', sop: 'sop_layanan.pdf', items: ['Permohonan UKS', 'Pengajuan uji aplikasi', 'Konsultasi UKS', 'Perbaikan hasil UKS', 'Tindak lanjut hasil UKS'] },
+        { name: 'Keamanan Aplikasi / VAPT', sla: '10 Hari', sop: 'sop_layanan.pdf', items: ['Vulnerability Assessment', 'Penetration Testing', 'VAPT', 'Security Assessment', 'Retest keamanan', 'Konsultasi keamanan aplikasi'] },
+        { name: 'Asesmen Aplikasi', sla: '3-11 Hari', sop: 'sop_layanan.pdf', items: ['KAK (Kerangka Acuan Kerja)', 'Laporan Awal', 'Surat Keputusan/Surat Perintah Tim Pengelola Aplikasi', 'Surat Keputusan/Surat Perintah Tim Helpdesk Aplikasi', 'Laporan Akhir', 'Standar Operasional Prosedur (SOP)', 'Buku Panduan Pengelolaan Aplikasi'] }
       ]
     },
     {
@@ -196,14 +197,14 @@ export const LandingPage = () => {
       icon: Globe,
       color: 'text-emerald-600 bg-emerald-50 border-emerald-100',
       services: [
-        { name: 'Jaringan Intra Pemerintah', sla: '3 Hari', sop: 'sop-jaringan.pdf', items: ['Gangguan jaringan', 'Permintaan akses jaringan', 'Permintaan koneksi jaringan', 'Instalasi jaringan', 'Penambahan titik jaringan', 'Pemindahan titik jaringan', 'Perubahan konfigurasi', 'Pemeriksaan jaringan', 'Konsultasi jaringan'] },
-        { name: 'Server Perangkat Daerah', sla: '5 Hari', sop: 'sop-server.pdf', items: ['Permohonan hosting', 'Permohonan server', 'Pembuatan virtual server', 'Deploy aplikasi', 'Penambahan resource', 'Perubahan resource', 'Backup server', 'Restore server', 'Pemindahan aplikasi', 'Gangguan server', 'Pemeliharaan server', 'Konsultasi server'] },
-        { name: 'Infrastruktur TIK', sla: '7 Hari', sop: 'sop-infra.pdf', items: ['Permintaan infrastruktur', 'Instalasi & konfigurasi perangkat', 'Pemeliharaan & perbaikan', 'Penggantian & pemeriksaan'] },
-        { name: 'Perangkat Jaringan & Komunikasi', sla: '5 Hari', sop: 'sop-perangkat.pdf', items: ['Permintaan & peminjaman perangkat', 'Instalasi & konfigurasi', 'Perbaikan & pemeliharaan'] },
-        { name: 'Teleconference & Meeting', sla: '1 Hari', sop: 'sop-meeting.pdf', items: ['Peminjaman perangkat/ruang teleconference', 'Permohonan operator', 'Setup & uji coba perangkat', 'Pendampingan kegiatan'] },
-        { name: 'Video Conference / Zoom', sla: '1 Hari', sop: 'sop-zoom.pdf', items: ['Permohonan link Zoom', 'Pembuatan Zoom Meeting/Webinar', 'Pengaturan host/co-host', 'Dukungan operator'] },
-        { name: 'CCTV & Video Monitoring', sla: '3 Hari', sop: 'sop-cctv.pdf', items: ['Permohonan akses CCTV/live streaming', 'Rekaman CCTV', 'Gangguan & pemeriksaan kamera', 'Permintaan pemasangan/pemindahan'] },
-        { name: 'Wifi Publik', sla: '2 Hari', sop: 'sop-wifi.pdf', items: ['Gangguan wifi', 'Permintaan pemasangan/pengecekan', 'Pelaporan lokasi wifi', 'Pemeliharaan wifi'] }
+        { name: 'Jaringan Intra Pemerintah', sla: '3 Hari', sop: 'sop_layanan.pdf', items: ['Gangguan jaringan', 'Permintaan akses jaringan', 'Permintaan koneksi jaringan', 'Instalasi jaringan', 'Penambahan titik jaringan', 'Pemindahan titik jaringan', 'Perubahan konfigurasi', 'Pemeriksaan jaringan', 'Konsultasi jaringan'] },
+        { name: 'Server Perangkat Daerah', sla: '5 Hari', sop: 'sop_layanan.pdf', items: ['Permohonan hosting', 'Permohonan server', 'Pembuatan virtual server', 'Deploy aplikasi', 'Penambahan resource', 'Perubahan resource', 'Backup server', 'Restore server', 'Pemindahan aplikasi', 'Gangguan server', 'Pemeliharaan server', 'Konsultasi server'] },
+        { name: 'Infrastruktur TIK', sla: '7 Hari', sop: 'sop_layanan.pdf', items: ['Permintaan infrastruktur', 'Instalasi & konfigurasi perangkat', 'Pemeliharaan & perbaikan', 'Penggantian & pemeriksaan'] },
+        { name: 'Perangkat Jaringan & Komunikasi', sla: '5 Hari', sop: 'sop_layanan.pdf', items: ['Permintaan & peminjaman perangkat', 'Instalasi & konfigurasi', 'Perbaikan & pemeliharaan'] },
+        { name: 'Teleconference & Meeting', sla: '1 Hari', sop: 'sop_layanan.pdf', items: ['Peminjaman perangkat/ruang teleconference', 'Permohonan operator', 'Setup & uji coba perangkat', 'Pendampingan kegiatan'] },
+        { name: 'Video Conference / Zoom', sla: '1 Hari', sop: 'sop_layanan.pdf', items: ['Permohonan link Zoom', 'Pembuatan Zoom Meeting/Webinar', 'Pengaturan host/co-host', 'Dukungan operator'] },
+        { name: 'CCTV & Video Monitoring', sla: '3 Hari', sop: 'sop_layanan.pdf', items: ['Permohonan akses CCTV/live streaming', 'Rekaman CCTV', 'Gangguan & pemeriksaan kamera', 'Permintaan pemasangan/pemindahan'] },
+        { name: 'Wifi Publik', sla: '2 Hari', sop: 'sop_layanan.pdf', items: ['Gangguan wifi', 'Permintaan pemasangan/pengecekan', 'Pelaporan lokasi wifi', 'Pemeliharaan wifi'] }
       ]
     },
     {
@@ -213,10 +214,10 @@ export const LandingPage = () => {
       icon: Shield,
       color: 'text-rose-600 bg-rose-50 border-rose-100',
       services: [
-        { name: 'Keamanan Informasi & Persandian', sla: '5 Hari', sop: 'sop-security.pdf', items: ['Konsultasi keamanan informasi/persandian', 'Asesmen & audit keamanan', 'Penyusunan tata kelola', 'Pendampingan keamanan'] },
-        { name: 'Security Operation Center (SOC)', sla: '1 Hari', sop: 'sop-soc.pdf', items: ['Permintaan monitoring keamanan', 'Investigasi alert keamanan', 'Analisis log', 'Konsultasi SOC'] },
-        { name: 'CSIRT / Respons Insiden', sla: '1 Hari', sop: 'sop-csirt.pdf', items: ['Pelaporan insiden keamanan', 'Penanganan & investigasi insiden', 'Analisis & pemulihan insiden', 'Konsultasi insiden'] },
-        { name: 'Security Awareness', sla: '3 Hari', sop: 'sop-awareness.pdf', items: ['Permohonan sosialisasi/pelatihan/bimtek', 'Edukasi keamanan siber', 'Pendampingan keamanan'] }
+        { name: 'Keamanan Informasi & Persandian', sla: '5 Hari', sop: 'sop_layanan.pdf', items: ['Konsultasi keamanan informasi/persandian', 'Asesmen & audit keamanan', 'Penyusunan tata kelola', 'Pendampingan keamanan'] },
+        { name: 'Security Operation Center (SOC)', sla: '1 Hari', sop: 'sop_layanan.pdf', items: ['Permintaan monitoring keamanan', 'Investigasi alert keamanan', 'Analisis log', 'Konsultasi SOC'] },
+        { name: 'CSIRT / Respons Insiden', sla: '1 Hari', sop: 'sop_layanan.pdf', items: ['Pelaporan insiden keamanan', 'Penanganan & investigasi insiden', 'Analisis & pemulihan insiden', 'Konsultasi insiden'] },
+        { name: 'Security Awareness', sla: '3 Hari', sop: 'sop_layanan.pdf', items: ['Permohonan sosialisasi/pelatihan/bimtek', 'Edukasi keamanan siber', 'Pendampingan keamanan'] }
       ]
     },
     {
@@ -226,10 +227,10 @@ export const LandingPage = () => {
       icon: FileText,
       color: 'text-amber-600 bg-amber-50 border-amber-100',
       services: [
-        { name: 'Kebijakan SPBE', sla: '10 Hari', sop: 'sop-kebijakan.pdf', items: ['Konsultasi kebijakan/tata kelola SPBE', 'Permintaan rekomendasi SPBE', 'Pendampingan SPBE', 'Konsultasi regulasi'] },
-        { name: 'Arsitektur & Peta Rencana SPBE', sla: '14 Hari', sop: 'sop-arsitektur.pdf', items: ['Konsultasi arsitektur/peta rencana SPBE', 'Penyusunan & review arsitektur', 'Pendampingan pemetaan SPBE'] },
-        { name: 'Monev & Pelaporan SPBE', sla: '14 Hari', sop: 'sop-monev.pdf', items: ['Konsultasi evaluasi/pelaporan SPBE', 'Pendampingan evaluasi SPBE', 'Konsultasi indikator/bukti dukung', 'Pendampingan pengisian evaluasi'] },
-        { name: 'Integrasi & Interoperabilitas SPBE', sla: '7 Hari', sop: 'sop-integrasi.pdf', items: ['Permohonan integrasi', 'Integrasi API/SPLP', 'Konsultasi interoperabilitas', 'Pengujian & pendampingan integrasi'] }
+        { name: 'Kebijakan SPBE', sla: '10 Hari', sop: 'sop_layanan.pdf', items: ['Konsultasi kebijakan/tata kelola SPBE', 'Permintaan rekomendasi SPBE', 'Pendampingan SPBE', 'Konsultasi regulasi'] },
+        { name: 'Arsitektur & Peta Rencana SPBE', sla: '14 Hari', sop: 'sop_layanan.pdf', items: ['Konsultasi arsitektur/peta rencana SPBE', 'Penyusunan & review arsitektur', 'Pendampingan pemetaan SPBE'] },
+        { name: 'Monev & Pelaporan SPBE', sla: '14 Hari', sop: 'sop_layanan.pdf', items: ['Konsultasi evaluasi/pelaporan SPBE', 'Pendampingan evaluasi SPBE', 'Konsultasi indikator/bukti dukung', 'Pendampingan pengisian evaluasi'] },
+        { name: 'Integrasi & Interoperabilitas SPBE', sla: '7 Hari', sop: 'sop_layanan.pdf', items: ['Permohonan integrasi', 'Integrasi API/SPLP', 'Konsultasi interoperabilitas', 'Pengujian & pendampingan integrasi'] }
       ]
     },
     {
@@ -239,7 +240,7 @@ export const LandingPage = () => {
       icon: BarChart2,
       color: 'text-cyan-600 bg-cyan-50 border-cyan-100',
       services: [
-        { name: 'Statistik Sektoral', sla: '5 Hari', sop: 'sop-statistik.pdf', items: ['Permintaan data statistik/dataset/metadata', 'Konsultasi statistik/metodologi', 'Rekomendasi & validasi data', 'Pendampingan statistik'] }
+        { name: 'Statistik Sektoral', sla: '5 Hari', sop: 'sop_layanan.pdf', items: ['Permintaan data statistik/dataset/metadata', 'Konsultasi statistik/metodologi', 'Rekomendasi & validasi data', 'Pendampingan statistik'] }
       ]
     },
     {
@@ -249,7 +250,7 @@ export const LandingPage = () => {
       icon: Database,
       color: 'text-teal-600 bg-teal-50 border-teal-100',
       services: [
-        { name: 'Satu Data Daerah', sla: '5 Hari', sop: 'sop-satudata.pdf', items: ['Permintaan data/dataset/metadata', 'Konsultasi Satu Data', 'Standar data & kode referensi', 'Integrasi & validasi data'] }
+        { name: 'Satu Data Daerah', sla: '5 Hari', sop: 'sop_layanan.pdf', items: ['Permintaan data/dataset/metadata', 'Konsultasi Satu Data', 'Standar data & kode referensi', 'Integrasi & validasi data'] }
       ]
     },
     {
@@ -259,8 +260,8 @@ export const LandingPage = () => {
       icon: Megaphone,
       color: 'text-violet-600 bg-violet-50 border-violet-100',
       services: [
-        { name: 'Informasi & Komunikasi Publik', sla: '3 Hari', sop: 'sop-publikasi.pdf', items: ['Permohonan publikasi/diseminasi informasi', 'Permohonan peliputan & dokumentasi', 'Konsultasi komunikasi publik', 'Dukungan komunikasi kegiatan'] },
-        { name: 'Pelayanan Informasi Publik', sla: '3 Hari', sop: 'sop-ppid.pdf', items: ['Permohonan informasi', 'Permintaan data/informasi', 'Konsultasi informasi publik', 'Permintaan salinan informasi'] }
+        { name: 'Informasi & Komunikasi Publik', sla: '3 Hari', sop: 'sop_layanan.pdf', items: ['Permohonan publikasi/diseminasi informasi', 'Permohonan peliputan & dokumentasi', 'Konsultasi komunikasi publik', 'Dukungan komunikasi kegiatan'] },
+        { name: 'Pelayanan Informasi Publik', sla: '3 Hari', sop: 'sop_layanan.pdf', items: ['Permohonan informasi', 'Permintaan data/informasi', 'Konsultasi informasi publik', 'Permintaan salinan informasi'] }
       ]
     },
     {
@@ -270,10 +271,10 @@ export const LandingPage = () => {
       icon: GraduationCap,
       color: 'text-slate-700 bg-slate-100 border-slate-200',
       services: [
-        { name: 'Domain & Subdomain Pemerintah Daerah', sla: '2 Hari', sop: 'sop-domain.pdf', items: ['Permohonan domain/subdomain', 'Perubahan DNS/konfigurasi domain', 'Perpanjangan/pengelolaan domain'] },
-        { name: 'Portal Pelayanan Digital', sla: '3 Hari', sop: 'sop-portal.pdf', items: ['Permohonan integrasi portal', 'Permintaan akses/akun', 'Perubahan konten & gangguan portal', 'Konsultasi portal'] },
-        { name: 'Pusat Kendali / Command Center', sla: '5 Hari', sop: 'sop-command.pdf', items: ['Permintaan integrasi data/API', 'Permintaan dashboard & data monitoring', 'Dukungan teknis dashboard'] },
-        { name: 'Peningkatan Kapasitas SDM TIK', sla: '5 Hari', sop: 'sop-sdm.pdf', items: ['Permohonan pelatihan/bimtek/sosialisasi', 'Permohonan narasumber', 'Konsultasi kompetensi & pendampingan SDM'] }
+        { name: 'Domain & Subdomain Pemerintah Daerah', sla: '2 Hari', sop: 'sop_layanan.pdf', items: ['Permohonan domain/subdomain', 'Perubahan DNS/konfigurasi domain', 'Perpanjangan/pengelolaan domain'] },
+        { name: 'Portal Pelayanan Digital', sla: '3 Hari', sop: 'sop_layanan.pdf', items: ['Permohonan integrasi portal', 'Permintaan akses/akun', 'Perubahan konten & gangguan portal', 'Konsultasi portal'] },
+        { name: 'Pusat Kendali / Command Center', sla: '5 Hari', sop: 'sop_layanan.pdf', items: ['Permintaan integrasi data/API', 'Permintaan dashboard & data monitoring', 'Dukungan teknis dashboard'] },
+        { name: 'Peningkatan Kapasitas SDM TIK', sla: '5 Hari', sop: 'sop_layanan.pdf', items: ['Permohonan pelatihan/bimtek/sosialisasi', 'Permohonan narasumber', 'Konsultasi kompetensi & pendampingan SDM'] }
       ]
     }
   ];
