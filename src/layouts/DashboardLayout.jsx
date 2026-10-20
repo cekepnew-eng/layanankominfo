@@ -144,7 +144,7 @@ export const DashboardLayout = () => {
                   ticket_status_id: newest.ticket_status_id,
                   ticket_status_name: newest.ticket_status_name
                 });
-                setTimeout(() => setLiveToast(null), 5000);
+                // Notifikasi tidak hilang otomatis setelah 5 detik, hanya hilang jika dipencet/ditutup oleh pengguna
 
                 // TRIGER BROWSER PUSH NOTIFICATION
                 if ("Notification" in window && Notification.permission === "granted") {
@@ -168,50 +168,6 @@ export const DashboardLayout = () => {
     const interval = setInterval(fetchNotifications, 15000);
     return () => clearInterval(interval);
   }, [user]);
-
-  // Listener saat tiket dibuka di mana pun di aplikasi (seperti WhatsApp saat chat dibuka)
-  React.useEffect(() => {
-    const handleTicketOpened = async (e) => {
-      const { ticketId, ticketUuid, ticketNumber } = e.detail || {};
-      if (!ticketId && !ticketUuid && !ticketNumber) return;
-
-      const tIds = [ticketId, ticketUuid, ticketNumber].filter(Boolean).map(x => String(x).toLowerCase().trim());
-
-      setNotifications(prev => {
-        let changed = false;
-        const updated = prev.map(n => {
-          const match = 
-            (n.ticket_id && tIds.includes(String(n.ticket_id).toLowerCase().trim())) ||
-            (n.ticket_number && tIds.includes(String(n.ticket_number).toLowerCase().trim())) ||
-            (n.message && tIds.some(tid => n.message.toLowerCase().includes(tid)));
-
-          if (match && !n.isRead) {
-            changed = true;
-            markNotificationAsReadLocally(n.id);
-            import('../services/api').then(({ api }) => {
-              api.markNotificationRead(n.id).catch(() => {});
-            });
-            return { ...n, isRead: true };
-          }
-          return n;
-        });
-
-        if (changed) {
-          const remainingUnread = updated.filter(n => !n.isRead).length;
-          setUnreadCount(remainingUnread);
-        }
-        return updated;
-      });
-
-      try {
-        const { api } = await import('../services/api');
-        if (ticketId) api.markTicketNotificationsRead?.(ticketId);
-      } catch (err) {}
-    };
-
-    window.addEventListener('ticket-opened', handleTicketOpened);
-    return () => window.removeEventListener('ticket-opened', handleTicketOpened);
-  }, []);
 
   const handleNotificationClick = async (n) => {
     setShowNotifications(false);
@@ -245,34 +201,25 @@ export const DashboardLayout = () => {
       if (match) targetTicketId = match[1];
     }
 
+    // Let the ticket list route using the ticket's current status, not notification metadata.
+    const targetPath = '/dashboard/history';
+
     if (targetTicketId) {
       sessionStorage.setItem('fromNotificationTicketId', String(targetTicketId));
-
-      const isCompleted = 
-        n.ticket_status_id === 6 || 
-        n.ticket_status_id === 7 || 
-        String(n.ticket_status_id) === '6' ||
-        String(n.ticket_status_id) === '7' ||
-        n.ticket_status_name === 'WAITING_USER_CONFIRMATION' || 
-        n.ticket_status_name === 'COMPLETED' ||
-        (n.title && n.title.toLowerCase().includes('selesai')) ||
-        (n.message && n.message.toLowerCase().includes('selesai')) ||
-        (n.message && n.message.toLowerCase().includes('rating'));
-
-      const targetPath = isCompleted ? '/dashboard/ticket-history' : '/dashboard/history';
 
       // Dispatch custom event to trigger immediate select if already on the same page
       if (location.pathname === targetPath) {
         window.dispatchEvent(new CustomEvent('notification-ticket-selected', {
           detail: {
-            ticketId: String(targetTicketId),
-            isCompleted
+            ticketId: String(targetTicketId)
           }
         }));
       }
 
       // Navigate with query params and timestamp to guarantee re-render/reaction
       navigate(`${targetPath}?ticket=${encodeURIComponent(targetTicketId)}&t=${Date.now()}`);
+    } else {
+      navigate(`${targetPath}?t=${Date.now()}`);
     }
   };
 
@@ -416,7 +363,7 @@ export const DashboardLayout = () => {
   const profileSubtitle = user ? `${getProfileRoleLabel()} • ${getProfileDeptLabel()}` : '';
 
   return (
-    <div className="h-screen w-screen theme-premium-bg flex font-sans overflow-hidden">
+    <div className="h-screen w-full theme-premium-bg flex font-sans overflow-hidden">
       {/* Mobile Sidebar Overlay */}
       {showSidebar && (
         <div 
@@ -660,8 +607,17 @@ export const DashboardLayout = () => {
                     )}
                   </div>
                   <div className="p-3 bg-slate-50/90 backdrop-blur-md border-t border-slate-100 text-center rounded-b-2xl sm:rounded-b-3xl shrink-0">
-                    <Link to="/dashboard/history" onClick={() => setShowNotifications(false)} className="text-xs font-bold text-sky-600 hover:text-sky-700 hover:underline flex items-center justify-center gap-1">
-                      <span>Lihat Semua Riwayat</span>
+                    <Link 
+                      to="/dashboard/ticket-history" 
+                      onClick={() => {
+                        setShowNotifications(false);
+                        sessionStorage.removeItem('fromNotificationTicketId');
+                        sessionStorage.removeItem('redirectedForTicket');
+                        sessionStorage.removeItem('activeTicketId');
+                      }} 
+                      className="text-xs font-bold text-sky-600 hover:text-sky-700 hover:underline flex items-center justify-center gap-1"
+                    >
+                      <span>Lihat Semua Riwayat Tiket Selesai</span>
                       <ChevronRight className="w-3.5 h-3.5" />
                     </Link>
                   </div>
@@ -701,7 +657,7 @@ export const DashboardLayout = () => {
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-8 overflow-y-auto overflow-x-hidden w-full">
+        <main className="flex-1 p-4 sm:p-8 overflow-y-auto overflow-x-hidden w-full custom-scrollbar">
           <ErrorBoundary>
             <Outlet />
           </ErrorBoundary>

@@ -1,4 +1,60 @@
 const db = require('../config/database');
+const bcrypt = require('bcryptjs');
+
+async function authenticateTndUser(identifier, password) {
+  const normalizedIdentifier = String(identifier || '').trim();
+  if (!normalizedIdentifier || !password) {
+    const error = new Error('NIP/NIK/Gmail dan password TND wajib diisi.');
+    error.status = 400;
+    throw error;
+  }
+
+  const ssoUrl = process.env.SSO_API_URL || 'https://dev-tnd.kotabogor.go.id/api-baru/api/v1/login';
+  const response = await fetch(ssoUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: normalizedIdentifier, password })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.success === false) {
+    const error = new Error('NIP/NIK/Gmail tidak terdaftar di TND atau password TND salah.');
+    error.status = 400;
+    throw error;
+  }
+
+  const user = payload?.data?.user || payload?.user || {};
+  const nip = user.nip || (/^\d{10,}$/.test(normalizedIdentifier) ? normalizedIdentifier : null);
+  const emailFromTnd = user.email || (normalizedIdentifier.includes('@') ? normalizedIdentifier : null);
+  const email = emailFromTnd || `${nip || normalizedIdentifier}@kotabogor.go.id`;
+  const fullName = user.nama || payload?.data?.nama_lengkap || user.name || '';
+  const department = user.nama_pd || user.unit_kerja || payload?.data?.opd_name || '';
+
+  if (!fullName || !department) {
+    const error = new Error('Data nama atau OPD tidak ditemukan pada akun TND.');
+    error.status = 422;
+    throw error;
+  }
+
+  return {
+    email: String(email).trim().toLowerCase(),
+    nip,
+    full_name: String(fullName).trim(),
+    department: String(department).trim(),
+    phone_number: user.no_hp || user.no_telepon || '0000000000'
+  };
+}
+
+exports.verifyTndManualUser = async (req, res) => {
+  try {
+    const profile = await authenticateTndUser(req.body.identifier, req.body.password);
+    res.json({ success: true, data: profile });
+  } catch (error) {
+    res.status(error.status || 502).json({
+      success: false,
+      message: error.status ? error.message : 'Layanan login TND tidak dapat dihubungi. Periksa koneksi server.'
+    });
+  }
+};
 
 exports.getAllUsers = async (req, res) => {
   try {
@@ -130,34 +186,52 @@ exports.reset2FA = async (req, res) => {
   }
 };
 
-const bcrypt = require('bcryptjs');
-
 exports.createUserManual = async (req, res) => {
-  const { email, password, full_name, phone_number, department, roleName } = req.body;
-  const client = await db.pool.connect();
+  const { identifier, password } = req.body;
   try {
+    const profile = await authenticateTndUser(identifier, password);
+    const client = await db.pool.connect();
+    try {
     await client.query('BEGIN');
+    const existingUser = await client.query(
+      `SELECT id FROM users
+       WHERE LOWER(email) = LOWER($1) OR ($2 IS NOT NULL AND nip = $2)
+       LIMIT 1`,
+      [profile.email, profile.nip]
+    );
+    if (existingUser.rows.length > 0) {
+      const error = new Error('Akun dengan email atau NIP/NIK tersebut sudah terdaftar.');
+      error.status = 409;
+      throw error;
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
     const userRes = await client.query(
-      `INSERT INTO users (email, password_hash, full_name, phone_number, department, is_active)
-       VALUES ($1, $2, $3, $4, $5, true) RETURNING id`,
-      [email, hashedPassword, full_name, phone_number, department]
+      `INSERT INTO users (
+         email, nip, password_hash, full_name, phone_number, department, is_active,
+         is_two_factor_enabled, two_factor_secret, backup_codes
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, true, false, NULL, '[]'::jsonb)
+       RETURNING id`,
+      [profile.email, profile.nip, hashedPassword, profile.full_name, profile.phone_number, profile.department]
     );
     const userId = userRes.rows[0].id;
 
-    if (roleName) {
-      const roleRes = await client.query('SELECT id FROM roles WHERE name = $1', [roleName]);
-      if (roleRes.rows.length > 0) {
-        await client.query('INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)', [userId, roleRes.rows[0].id]);
-      }
+    const roleRes = await client.query("SELECT id FROM roles WHERE name = 'USER'");
+    if (roleRes.rows.length === 0) {
+      throw new Error('Role USER belum tersedia.');
     }
+    await client.query('INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)', [userId, roleRes.rows[0].id]);
 
     await client.query('COMMIT');
-    res.json({ success: true, message: 'User created successfully', userId });
+    res.json({ success: true, message: 'Akun OPD berhasil dibuat.', userId });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   } catch (error) {
-    await client.query('ROLLBACK');
-    res.status(500).json({ success: false, message: error.message });
-  } finally {
-    client.release();
+    res.status(error.status || 500).json({ success: false, message: error.message });
   }
 };

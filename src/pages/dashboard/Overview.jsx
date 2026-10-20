@@ -98,7 +98,7 @@ const isTicketForTeam = (tk, teamName) => {
 };
 
 export const Overview = () => {
-  const { user } = useAuth();
+  const { user, services } = useAuth();
   const [tickets, setTickets] = useState([]);
   const [globalRatings, setGlobalRatings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -141,7 +141,25 @@ export const Overview = () => {
           raw = data.data || [];
         }
 
+        if (userRole === 'USER' || userRole === 'MASYARAKAT' || !['ADMIN', 'HELPDESK', 'PEGAWAI'].includes(userRole)) {
+          raw = raw.filter(t => {
+            const isHelpdeskTicket = 
+              t.form_data?.submitted_by_helpdesk === true ||
+              t.form_data?.submitted_by_helpdesk === 'true' ||
+              String(t.pemohon || '').toLowerCase().includes('helpdesk') ||
+              String(t.form_data?.['Nama Pemohon'] || '').toLowerCase().includes('helpdesk') ||
+              String(t.opd || '').toLowerCase().includes('helpdesk') ||
+              String(t.form_data?.['Instansi / Asal Pemohon'] || '').toLowerCase().includes('helpdesk');
+            return !isHelpdeskTicket;
+          });
+        }
+
         const mapped = raw.map(t => {
+          const serviceName = String(t.service_name || t.service || '').trim().toLocaleLowerCase('id-ID');
+          const configuredService = (services || []).find(service => String(service.id) === String(t.service_id))
+            || (services || []).find(service =>
+              [service.service_name, service.name].some(name => String(name || '').trim().toLocaleLowerCase('id-ID') === serviceName)
+            );
           const status = t.status_name === 'PENDING' ? 'Verifikasi'
             : t.status_name === 'VERIFIED' ? 'Menunggu Validasi'
               : t.status_name === 'REJECTED' ? 'Pending'
@@ -167,7 +185,7 @@ export const Overview = () => {
             pemohon: t.pemohon || t.form_data?.['Nama Pemohon'] || 'Pemohon',
             date: t.created_at ? new Date(t.created_at).toLocaleDateString('id-ID') : (t.date || '-'),
             requestType: 'Baru',
-            slaDuration: 7,
+            slaDuration: configuredService?.target_sla || configuredService?.sla || t.target_sla || '7 Hari',
             remainingDays: 7,
             slaRemainingDays: 7
           };
@@ -180,7 +198,7 @@ export const Overview = () => {
       }
     };
     fetchData();
-  }, [user]);
+  }, [user, services]);
 
   const getUserTeam = (u) => {
     return user.teamId ? 'Tim Teknis' : '';
@@ -682,7 +700,6 @@ export const Overview = () => {
   const userConfirmCount = userTickets.filter(t => (t.status === 'Selesai' && !t.rating) || (t.status_name === 'WAITING_USER_CONFIRMATION')).length;
   const userFinishedCount = userTickets.filter(t => t.status === 'Selesai & Dinilai' || (t.status === 'Selesai' && t.rating) || (t.status_name === 'COMPLETED')).length;
 
-  const userConfirmTicket = userTickets.find(t => (t.status === 'Selesai' && !t.rating) || t.status_name === 'WAITING_USER_CONFIRMATION');
   const userInProgressTicket = userTickets.find(t => t.status === 'Diproses' || t.status === 'Verifikasi' || t.status === 'Pending' || t.status === 'Menunggu Validasi' || t.status_name === 'PENDING' || t.status_name === 'ASSIGNED' || t.status_name === 'IN_PROGRESS');
 
   const renderUserDashboard = () => (
@@ -733,32 +750,15 @@ export const Overview = () => {
           </div>
         </div>
 
-        <div className="md:col-span-12 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
+        {userInProgressTicket && <div className="md:col-span-12 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-4">
             <h3 className="font-extrabold text-base text-slate-800 uppercase tracking-wider">Pelacakan Tiket Terakhir</h3>
             <span className="text-xs font-bold bg-sky-50 text-sky-700 px-3 py-1 rounded-lg border border-sky-200">
-              SLA Standar: 7 Hari
+              SLA Standar: {userInProgressTicket.slaDuration}
             </span>
           </div>
           <div className="space-y-6 text-left">
-            {!userConfirmTicket && !userInProgressTicket ? (
-              <p className="text-slate-400 font-semibold text-sm">Tidak ada tiket pengajuan aktif saat ini.</p>
-            ) : (
-              <>
-                {userConfirmTicket && (
-                  <div className="flex items-start gap-4 hover:bg-slate-50/50 p-2.5 rounded-xl transition-all">
-                    <div className="w-3.5 h-3.5 rounded-full bg-indigo-500 mt-1.5 border-2 border-white ring-2 ring-indigo-100 animate-pulse"></div>
-                    <div className="space-y-1">
-                      <p className="text-sm font-bold text-indigo-600 uppercase tracking-wider">Butuh Evaluasi SKM & Rating</p>
-                      <h4 className="font-bold text-slate-850 text-base">{userConfirmTicket.title}</h4>
-                      <p className="text-base text-slate-500 leading-relaxed">
-                        Status: Pekerjaan telah selesai dikerjakan 100% (SLA Terpenuhi). Silakan klik menu "Tiket Selesai" untuk mengisi kuesioner SKM dan memberikan ulasan bintang.
-                      </p>
-                    </div>
-                  </div>
-                )}
-                
-                {userInProgressTicket && (
+            <>
                   <div className="flex items-start gap-4 hover:bg-slate-50/50 p-2.5 rounded-xl transition-all">
                     <div className={`w-3.5 h-3.5 rounded-full mt-1.5 border-2 border-white ring-2 ${
                       userInProgressTicket.status === 'Pending' ? 'bg-amber-500 ring-amber-100' : 'bg-sky-500 ring-sky-100'
@@ -782,16 +782,14 @@ export const Overview = () => {
                         Status: {userInProgressTicket.status === 'Pending' 
                           ? 'Berkas permohonan kurang lengkap / ditangguhkan untuk perbaikan berkas.' 
                           : userInProgressTicket.status === 'Verifikasi' || userInProgressTicket.status === 'Menunggu Validasi'
-                            ? `Menunggu verifikasi berkas oleh Helpdesk | SLA Standar: ${userInProgressTicket.slaDuration || 7} Hari (SLA Belum Berjalan)`
-                            : `Pekerjaan teknis sedang berjalan | SLA Standar: ${userInProgressTicket.slaDuration || 7} Hari (Sisa ${userInProgressTicket.remainingDays !== undefined ? userInProgressTicket.remainingDays : 7} Hari)`}
+                            ? `Menunggu verifikasi berkas oleh Helpdesk | SLA Standar: ${userInProgressTicket.slaDuration} (SLA Belum Berjalan)`
+                            : `Pekerjaan teknis sedang berjalan | SLA Standar: ${userInProgressTicket.slaDuration} (Sisa ${userInProgressTicket.remainingDays !== undefined ? userInProgressTicket.remainingDays : 7} Hari)`}
                       </p>
                     </div>
                   </div>
-                )}
-              </>
-            )}
+            </>
           </div>
-        </div>
+        </div>}
       </div>
     </div>
   );

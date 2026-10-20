@@ -104,13 +104,14 @@ export const MyTickets = () => {
     return tickets;
   };
 
-  const fetchTickets = async () => {
+  const fetchTickets = async (silent = false) => {
     if (!user) {
       setLoading(false);
       return;
     }
     try {
-      setLoading(true);
+      // Hanya tampilkan loading spinner jika belum ada data (first load)
+      if (!silent && tickets.length === 0) setLoading(true);
       let res;
       if (user?.role === 'ADMIN') {
         res = await api.getAdminTickets();
@@ -123,7 +124,21 @@ export const MyTickets = () => {
       }
       
       if (res.data) {
-        const mapped = res.data.map(t => ({
+        let rawTickets = res.data;
+        const currentRole = String(user?.role || '').toUpperCase();
+        if (currentRole === 'USER' || currentRole === 'MASYARAKAT' || !['ADMIN', 'HELPDESK', 'PEGAWAI'].includes(currentRole)) {
+          rawTickets = rawTickets.filter(t => {
+            const isHelpdeskTicket = 
+              t.form_data?.submitted_by_helpdesk === true ||
+              t.form_data?.submitted_by_helpdesk === 'true' ||
+              String(t.pemohon || '').toLowerCase().includes('helpdesk') ||
+              String(t.form_data?.['Nama Pemohon'] || '').toLowerCase().includes('helpdesk') ||
+              String(t.opd || '').toLowerCase().includes('helpdesk') ||
+              String(t.form_data?.['Instansi / Asal Pemohon'] || '').toLowerCase().includes('helpdesk');
+            return !isHelpdeskTicket;
+          });
+        }
+        const mapped = rawTickets.map(t => ({
           ...t,
           status: t.status_name === 'PENDING' ? 'Pending'
                 : t.status_name === 'VERIFIED' ? 'Menunggu Validasi'
@@ -169,16 +184,7 @@ export const MyTickets = () => {
   });
 
   const selectTicket = async (ticket) => {
-    try {
-      window.dispatchEvent(new CustomEvent('ticket-opened', {
-        detail: {
-          ticketId: ticket.id,
-          ticketUuid: ticket.uuid,
-          ticketNumber: ticket.ticket_number
-        }
-      }));
-    } catch (e) {}
-
+    // Notifikasi hanya hilang/terbaca bila tombol/item notifikasi dipencet langsung
     let ticketWithLogs = { ...ticket };
     try {
       const res = await api.getHistory(ticket.id);

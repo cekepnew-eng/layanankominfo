@@ -49,15 +49,19 @@ exports.createTicket = async (req, res) => {
     const isSubmittedByHelpdesk = Boolean(form_data.submitted_by_helpdesk === true || form_data.submitted_by_helpdesk === 'true');
     if (!isSubmittedByHelpdesk && !isHelpdeskOrAdmin) {
       const activeRes = await client.query(`
-        SELECT id, ticket_number FROM tickets 
+        SELECT t.id, t.ticket_number FROM tickets t
+        LEFT JOIN ticket_details td ON td.ticket_id = t.id
         WHERE (
-          user_id = $1 
-          OR user_id IN (
+          t.user_id = $1 
+          OR t.user_id IN (
             SELECT id FROM users 
             WHERE (email IS NOT NULL AND email = (SELECT email FROM users WHERE id = $1))
                OR (nip IS NOT NULL AND nip = (SELECT nip FROM users WHERE id = $1))
           )
-        ) AND status_id != 7
+        ) 
+        AND t.status_id != 7
+        AND (td.form_data->>'submitted_by_helpdesk' IS NULL OR td.form_data->>'submitted_by_helpdesk' != 'true')
+        AND (td.form_data->>'Nama Pemohon' IS NULL OR td.form_data->>'Nama Pemohon' NOT ILIKE '%via Helpdesk%')
       `, [req.user.id]);
 
       if (activeRes.rows.length > 0) {
@@ -192,7 +196,7 @@ exports.createTicket = async (req, res) => {
 exports.getMyTickets = async (req, res) => {
   try {
     const result = await db.query(`
-      SELECT t.id, t.ticket_number, t.progress, t.priority, t.created_at, t.status_id as status_id,
+      SELECT t.id, t.ticket_number, t.service_id, t.progress, t.priority, t.created_at, t.status_id as status_id,
              COALESCE(NULLIF(td.form_data->>'Nama Pemohon', ''), u.full_name) as pemohon,
              (CASE 
                WHEN td.form_data->>'Instansi / Asal Pemohon' IS NOT NULL AND TRIM(td.form_data->>'Instansi / Asal Pemohon') != '' 
@@ -203,7 +207,7 @@ exports.getMyTickets = async (req, res) => {
                  THEN u.department 
                ELSE 'Masyarakat Umum'
              END) as opd,
-             s.service_name as service_name, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
+             s.service_name as service_name, s.target_sla as target_sla, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
              tf.rating,
              (SELECT file_name FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_name,
              (SELECT file_url FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_url,
@@ -215,6 +219,11 @@ exports.getMyTickets = async (req, res) => {
       LEFT JOIN ticket_details td ON td.ticket_id = t.id
       LEFT JOIN ticket_feedback tf ON tf.ticket_id = t.id
       WHERE (
+        (td.form_data->>'submitted_by_helpdesk' IS NULL OR (td.form_data->>'submitted_by_helpdesk' != 'true' AND td.form_data->>'submitted_by_helpdesk' != '1'))
+        AND (td.form_data->>'Nama Pemohon' IS NULL OR td.form_data->>'Nama Pemohon' NOT ILIKE '%via Helpdesk%')
+        AND (td.form_data->>'Instansi / Asal Pemohon' IS NULL OR td.form_data->>'Instansi / Asal Pemohon' NOT ILIKE '%Helpdesk%')
+      )
+      AND (
         t.user_id = $1 
         OR t.user_id IN (
           SELECT id FROM users 
@@ -222,12 +231,14 @@ exports.getMyTickets = async (req, res) => {
              OR (nip IS NOT NULL AND nip = (SELECT nip FROM users WHERE id = $1))
         )
         OR (
-          td.form_data->>'Email Pemohon' IS NOT NULL 
-          AND td.form_data->>'Email Pemohon' = (SELECT email FROM users WHERE id = $1)
-        )
-        OR (
-          td.form_data->>'NIP' IS NOT NULL 
-          AND td.form_data->>'NIP' = (SELECT nip FROM users WHERE id = $1)
+          (
+            td.form_data->>'Email Pemohon' IS NOT NULL 
+            AND td.form_data->>'Email Pemohon' = (SELECT email FROM users WHERE id = $1)
+          )
+          OR (
+            td.form_data->>'NIP' IS NOT NULL 
+            AND td.form_data->>'NIP' = (SELECT nip FROM users WHERE id = $1)
+          )
         )
       )
       ORDER BY t.created_at DESC
@@ -404,34 +415,66 @@ exports.disputeTicket = async (req, res) => {
       throw new Error('Alasan sanggah harus diisi.');
     }
 
-    const ticketRes = await client.query('SELECT status_id, ticket_number, progress FROM tickets WHERE id = $1 AND user_id = $2', [id, req.user.id]);
+    const ticketRes = await client.query(
+      `SELECT t.id, t.status_id, t.ticket_number, t.progress, t.user_id 
+       FROM tickets t 
+       WHERE t.id = $1 
+         AND (
+           t.user_id = $2 
+           OR EXISTS (
+             SELECT 1 FROM users u 
+             WHERE u.id = $2 
+               AND (u.role_id = (SELECT id FROM roles WHERE name = 'ADMIN')
+                    OR (u.email IS NOT NULL AND u.email = (SELECT email FROM users WHERE id = t.user_id))
+                    OR (u.nip IS NOT NULL AND u.nip = (SELECT nip FROM users WHERE id = t.user_id)))
+           )
+         )`,
+      [id, req.user.id]
+    );
     if (ticketRes.rows.length === 0) {
-      throw new Error('Tiket tidak ditemukan atau Anda tidak berhak.');
+      throw new Error('Tiket tidak ditemukan atau Anda tidak berhak menyanggah tiket ini.');
     }
 
-    // Hanya bisa disanggah jika status WAITING_USER_CONFIRMATION (6)
-    if (ticketRes.rows[0].status_id !== 6) {
-      throw new Error('Tiket belum selesai atau sudah dinilai, tidak bisa disanggah.');
+    const currentStatus = Number(ticketRes.rows[0].status_id);
+    // Tiket bisa disanggah jika dalam status selesai/menunggu konfirmasi (status 6 atau 7)
+    if (currentStatus !== 6 && currentStatus !== 7) {
+      throw new Error('Tiket belum selesai, tidak bisa disanggah.');
     }
 
-    // Set kembali status ke IN_PROGRESS (5) dan kurangi progress ke 90%
-    await client.query('UPDATE tickets SET status_id = 5, progress = 90 WHERE id = $1', [id]);
+    // Hapus ulasan/rating jika sudah ada agar tiket benar-benar kembali bersih ke status proses
+    await client.query('DELETE FROM ticket_feedback WHERE ticket_id = $1', [id]);
 
-    const historyText = `Hasil disanggah: "${reason}". Dikembalikan ke Tim.`;
-    await createHistory(client, id, req.user.id, null, 5, historyText);
+    // Set kembali status ke IN_PROGRESS (5) dan kurangi progress ke 85%
+    await client.query('UPDATE tickets SET status_id = 5, progress = 85, updated_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
 
-    // Dapatkan tim yang bertugas untuk diberi notifikasi
-    const assignRes = await client.query('SELECT team_id FROM ticket_assignments WHERE ticket_id = $1', [id]);
+    const historyText = `Hasil disanggah: "${reason}". Tiket dialihkan kembali ke status Diproses untuk perbaikan oleh Tim Pelaksana.`;
+    await createHistory(client, id, req.user.id, currentStatus, 5, historyText);
+
+    // Dapatkan tim dan pegawai yang bertugas untuk diberi notifikasi agar langsung muncul di dashboard pegawai
+    const assignRes = await client.query('SELECT team_id, assigned_to_user_id FROM ticket_assignments WHERE ticket_id = $1', [id]);
     if (assignRes.rows.length > 0) {
-      const teamId = assignRes.rows[0].team_id;
-      const teamMembers = await client.query("SELECT user_id FROM team_members WHERE team_id = $1", [teamId]);
-      for (let member of teamMembers.rows) {
-        await createNotification(client, member.user_id, id, 'ACTION_REQUIRED', 'Sanggahan Pemohon', `Tiket ${ticketRes.rows[0].ticket_number} disanggah oleh pemohon. Harap diperbaiki.`);
+      const { team_id, assigned_to_user_id } = assignRes.rows[0];
+      if (assigned_to_user_id) {
+        await createNotification(client, assigned_to_user_id, id, 'ACTION_REQUIRED', 'Sanggahan Pemohon', `Tiket ${ticketRes.rows[0].ticket_number} disanggah oleh pemohon: "${reason}". Harap diperbaiki.`);
+      }
+      if (team_id) {
+        const teamMembers = await client.query("SELECT user_id FROM team_members WHERE team_id = $1", [team_id]);
+        for (let member of teamMembers.rows) {
+          if (member.user_id !== assigned_to_user_id) {
+            await createNotification(client, member.user_id, id, 'ACTION_REQUIRED', 'Sanggahan Pemohon', `Tiket ${ticketRes.rows[0].ticket_number} disanggah oleh pemohon: "${reason}". Harap diperbaiki.`);
+          }
+        }
       }
     }
 
+    // Beri notifikasi ke Helpdesk
+    const helpdesks = await client.query("SELECT u.id FROM users u JOIN user_roles ur ON u.id = ur.user_id JOIN roles r ON ur.role_id = r.id WHERE r.name='HELPDESK'");
+    for (let hd of helpdesks.rows) {
+      await createNotification(client, hd.id, id, 'ACTION_REQUIRED', 'Sanggahan Pemohon', `Tiket ${ticketRes.rows[0].ticket_number} disanggah oleh pemohon.`);
+    }
+
     await client.query('COMMIT');
-    res.json({ success: true, message: 'Tiket berhasil disanggah dan dikembalikan ke Pegawai.' });
+    res.json({ success: true, message: 'Tiket berhasil disanggah dan dialihkan kembali ke status Diproses.' });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('disputeTicket error:', err);
@@ -448,7 +491,7 @@ exports.disputeTicket = async (req, res) => {
 exports.getHelpdeskTickets = async (req, res) => {
   try {
     const result = await db.query(`
-      SELECT t.id, t.ticket_number, t.progress, t.created_at, t.status_id as status_id, 
+      SELECT t.id, t.ticket_number, t.service_id, t.progress, t.created_at, t.status_id as status_id,
              COALESCE(NULLIF(td.form_data->>'Nama Pemohon', ''), u.full_name) as pemohon, 
              (CASE 
                WHEN td.form_data->>'Instansi / Asal Pemohon' IS NOT NULL AND TRIM(td.form_data->>'Instansi / Asal Pemohon') != '' 
@@ -459,7 +502,7 @@ exports.getHelpdeskTickets = async (req, res) => {
                  THEN u.department 
                ELSE 'Masyarakat Umum'
              END) as opd,
-             s.service_name as service_name, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
+             s.service_name as service_name, s.target_sla as target_sla, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
              tf.rating,
              (SELECT file_name FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_name,
              (SELECT file_url FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_url,
@@ -546,7 +589,7 @@ exports.assignTicket = async (req, res) => {
 exports.getEmployeeTickets = async (req, res) => {
   try {
     const result = await db.query(`
-      SELECT DISTINCT ON (t.id) t.id, t.ticket_number, t.progress, t.created_at, t.status_id as status_id,
+      SELECT DISTINCT ON (t.id) t.id, t.ticket_number, t.service_id, t.progress, t.created_at, t.status_id as status_id,
              tm.team_name as team, tm.team_name as team_name, 
              COALESCE(NULLIF(td.form_data->>'Nama Pemohon', ''), u.full_name) as pemohon, 
              (CASE 
@@ -558,7 +601,7 @@ exports.getEmployeeTickets = async (req, res) => {
                  THEN u.department 
                ELSE 'Masyarakat Umum'
              END) as opd,
-             s.service_name as service_name, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
+             s.service_name as service_name, s.target_sla as target_sla, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
              tf.rating,
              (SELECT file_name FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_name,
              (SELECT file_url FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_url,
@@ -624,14 +667,15 @@ exports.updateProgress = async (req, res) => {
     const oldStatus = oldRes.rows[0].status_id;
     let newStatus = oldStatus;
 
+    const numProgress = parseInt(progress, 10);
     if (statusAction === 'REJECT') {
       newStatus = 3; // REJECTED (Return to User)
     } else {
       if (oldStatus === 4 || oldStatus === 3) newStatus = 5; // IN_PROGRESS
-      if (progress === 100) newStatus = 6; // WAITING_USER_CONFIRMATION
+      if (numProgress === 100) newStatus = 6; // WAITING_USER_CONFIRMATION
     }
 
-    await client.query('UPDATE tickets SET progress = $1, status_id = $2 WHERE id = $3', [progress, newStatus, id]);
+    await client.query('UPDATE tickets SET progress = $1, status_id = $2 WHERE id = $3', [numProgress, newStatus, id]);
 
     const hasBast = Boolean(bastFileName && bastFileBase64 && bastFileBase64.trim() !== '' && bastFileBase64 !== '/bast_selesai.pdf');
     let finalNote = note;
@@ -669,9 +713,11 @@ exports.updateProgress = async (req, res) => {
       `, [id, bastFileName, bastFileBase64]);
     }
 
-    if (progress === 100) {
-      const tRes = await client.query('SELECT user_id FROM tickets WHERE id = $1', [id]);
-      await createNotification(client, tRes.rows[0].user_id, id, 'INFO', 'Pekerjaan Selesai', 'Tiket Anda telah 100% dikerjakan. Silakan konfirmasi dan berikan rating.');
+    if (numProgress === 100) {
+      const tRes = await client.query('SELECT user_id, ticket_number FROM tickets WHERE id = $1', [id]);
+      if (tRes.rows.length > 0) {
+        await createNotification(client, tRes.rows[0].user_id, id, 'INFO', 'Pekerjaan Selesai', `Tiket ${tRes.rows[0].ticket_number} telah 100% dikerjakan. Silakan konfirmasi dan berikan rating.`);
+      }
     }
 
     await client.query('COMMIT');
@@ -691,7 +737,7 @@ exports.updateProgress = async (req, res) => {
 exports.getAdminTickets = async (req, res) => {
   try {
     const result = await db.query(`
-      SELECT t.id, t.ticket_number, t.progress, t.created_at, t.status_id as status_id, 
+      SELECT t.id, t.ticket_number, t.service_id, t.progress, t.created_at, t.status_id as status_id,
              COALESCE(NULLIF(td.form_data->>'Nama Pemohon', ''), u.full_name) as pemohon, 
              (CASE 
                WHEN td.form_data->>'Instansi / Asal Pemohon' IS NOT NULL AND TRIM(td.form_data->>'Instansi / Asal Pemohon') != '' 
@@ -702,7 +748,7 @@ exports.getAdminTickets = async (req, res) => {
                  THEN u.department 
                ELSE 'Masyarakat Umum'
              END) as opd,
-             s.service_name as service_name, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
+             s.service_name as service_name, s.target_sla as target_sla, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
              tf.rating,
              (SELECT file_name FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_name,
              (SELECT file_url FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_url,

@@ -79,11 +79,19 @@ const getTargetShortDate = (targetDateStr) => {
   return `${day} ${monthShort}`;
 };
 
+const formatSlaDuration = (duration) => {
+  const value = String(duration ?? '').trim();
+  if (!value) return '7 Hari';
+  return /hari/i.test(value) ? value : `${value} Hari`;
+};
+
 export const TicketHistory = ({ mode = 'active' }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, services } = useAuth();
   const [tickets, setTickets] = useState([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedTicket, setSelectedTicket] = useState(null);
@@ -103,7 +111,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
   const [progressNote, setProgressNote] = useState('');
   const [tempRemainingDays, setTempRemainingDays] = useState(3);
   const [isFinished, setIsFinished] = useState(false);
-  const [pegawaiAction, setPegawaiAction] = useState('pending');
+  const [pegawaiAction, setPegawaiAction] = useState('approve');
   const [fileName, setFileName] = useState('');
   const [bastFileSize, setBastFileSize] = useState('');
   const [bastFileUrl, setBastFileUrl] = useState('');
@@ -118,9 +126,11 @@ export const TicketHistory = ({ mode = 'active' }) => {
   const [rejectSubtaskReason, setRejectSubtaskReason] = useState('');
   const [showRejectSubtaskModal, setShowRejectSubtaskModal] = useState(false);
 
-  const loadTickets = async () => {
+  const loadTickets = async (silent = false) => {
     try {
       if (!user) return;
+      // Hanya tampilkan loading spinner saat tidak ada data sama sekali (first load)
+      if (!silent && tickets.length === 0) setLoading(true);
       const role = String(user?.role || (user?.roles && user.roles[0]) || '').toUpperCase();
       let res;
       if (role === 'ADMIN') {
@@ -134,7 +144,24 @@ export const TicketHistory = ({ mode = 'active' }) => {
       }
 
       if (res && res.data) {
-        const mapped = res.data.map(t => {
+        let rawTickets = res.data;
+        if (role === 'USER' || role === 'MASYARAKAT' || !['ADMIN', 'HELPDESK', 'PEGAWAI'].includes(role)) {
+          rawTickets = rawTickets.filter(t => {
+            const isHelpdeskTicket = 
+              t.form_data?.submitted_by_helpdesk === true ||
+              t.form_data?.submitted_by_helpdesk === 'true' ||
+              String(t.pemohon || '').toLowerCase().includes('helpdesk') ||
+              String(t.form_data?.['Nama Pemohon'] || '').toLowerCase().includes('helpdesk') ||
+              String(t.opd || '').toLowerCase().includes('helpdesk') ||
+              String(t.form_data?.['Instansi / Asal Pemohon'] || '').toLowerCase().includes('helpdesk');
+            return !isHelpdeskTicket;
+          });
+        }
+        const mapped = rawTickets.map(t => {
+          const normalizedServiceName = String(t.service_name || t.service || '').trim().toLocaleLowerCase('id-ID');
+          const configuredService = services.find(service =>
+            [service.service_name, service.name].some(name => String(name || '').trim().toLocaleLowerCase('id-ID') === normalizedServiceName)
+          );
           const statusName = String(t.status_name || '').toUpperCase();
           const mappedStatus = statusName === 'PENDING' ? 'Verifikasi'
             : statusName === 'VERIFIED' ? 'Menunggu Validasi'
@@ -160,7 +187,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
             pemohon: t.pemohon || t.form_data?.['Nama Pemohon'] || 'Pemohon',
             date: t.created_at ? new Date(t.created_at).toLocaleDateString('id-ID') : (t.date || '-'),
             requestType: 'Baru',
-            slaDuration: 7,
+            slaDuration: configuredService?.target_sla || configuredService?.sla || t.target_sla || 7,
             remainingDays: 7,
             bastFile: (t.bast_file_name && t.bast_file_url && t.bast_file_url !== '/bast_selesai.pdf') ? t.bast_file_name : null,
             bastFileUrl: (t.bast_file_name && t.bast_file_url && t.bast_file_url !== '/bast_selesai.pdf') ? t.bast_file_url : null
@@ -176,7 +203,9 @@ export const TicketHistory = ({ mode = 'active' }) => {
   };
 
   useEffect(() => {
-    loadTickets();
+    // Saat pindah halaman (location/mode berubah), refresh di background tanpa reset loading
+    const isFirstLoad = tickets.length === 0;
+    loadTickets(!isFirstLoad);
   }, [user, location.pathname, location.search, mode]);
 
   useEffect(() => {
@@ -211,16 +240,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
     };
   }, []);
 
-  useEffect(() => {
-    if (selectedTicket && typeof window !== 'undefined' && window.innerWidth < 1024) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [selectedTicket]);
+  // Body overflow locking removed to prevent scrollbar freeze/error in Tiket Proses
 
   const handleClearSelectedTicket = () => {
     setSelectedTicket(null);
@@ -514,10 +534,15 @@ export const TicketHistory = ({ mode = 'active' }) => {
       setModalConfig({
         isOpen: true,
         type: 'success',
-        title: 'Sanggahan Berhasil',
-        message: 'Tiket telah dikembalikan ke Tim Pelaksana untuk diperbaiki.',
-        confirmText: 'Tutup',
-        onConfirm: closeModal
+        title: 'Sanggahan Berhasil Dikirim',
+        message: 'Tiket berhasil disanggah dan telah dialihkan kembali ke status Diproses pada dasbor Tim Pelaksana / Pegawai.',
+        confirmText: 'Buka Tiket Proses',
+        cancelText: '',
+        onConfirm: () => {
+          closeModal();
+          handleClearSelectedTicket();
+          navigate('/dashboard/history');
+        }
       });
       loadTickets();
       if (selectedTicket) {
@@ -526,7 +551,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
         });
       }
     } catch (err) {
-      alert('Gagal mengirim sanggahan: ' + err.message);
+      alert('Gagal mengirim sanggahan: ' + (err.response?.data?.message || err.message));
     }
   };
   const [showInlineRating, setShowInlineRating] = useState(false);
@@ -565,7 +590,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
     if (selectedTicket) {
       setTempProgress(selectedTicket.progress || 0);
       setProgressNote('');
-      setPegawaiAction('pending');
+      setPegawaiAction('approve');
       setTempRemainingDays(selectedTicket.remainingDays !== undefined ? selectedTicket.remainingDays : 3);
       setIsFinished(selectedTicket.status.includes('Selesai'));
       setFileName('');
@@ -574,17 +599,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
   }, [selectedTicket?.id]);
 
   const handleSelectTicket = async (t) => {
-    // Beritahu DashboardLayout untuk menghilangkan notifikasi / titik biru tiket ini (seperti WhatsApp)
-    try {
-      window.dispatchEvent(new CustomEvent('ticket-opened', {
-        detail: {
-          ticketId: t.id,
-          ticketUuid: t.uuid,
-          ticketNumber: t.ticket_number
-        }
-      }));
-    } catch (e) {}
-
+    // Notifikasi hanya hilang/terbaca bila tombol/item notifikasi dipencet langsung, tidak otomatis saat tiket dipilih
     let ticketWithLogs = { ...t };
     try {
       const res = await api.getHistory(t.uuid || t.id);
@@ -947,7 +962,12 @@ export const TicketHistory = ({ mode = 'active' }) => {
     return base;
   };
 
-  const filteredTickets = getFilteredTickets();
+  const normalizedSearch = searchQuery.trim().toLocaleLowerCase('id-ID');
+  const filteredTickets = getFilteredTickets().filter((ticket) => {
+    if (!normalizedSearch) return true;
+    return [ticket.ticket_number, ticket.id, ticket.title, ticket.service_name, ticket.service, ticket.pemohon, ticket.opd]
+      .some(value => String(value || '').toLocaleLowerCase('id-ID').includes(normalizedSearch));
+  });
 
   const renderRatingStars = (score) => {
     return (
@@ -975,7 +995,8 @@ export const TicketHistory = ({ mode = 'active' }) => {
         </p>
       </div>
 
-      <div className="flex gap-2 border-b border-slate-200 overflow-x-auto pb-px hide-scrollbar">
+      <div className="flex items-center gap-3 border-b border-slate-200 pb-px">
+        <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto custom-scrollbar">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
           const count = getTabCount(tab.id);
@@ -999,6 +1020,31 @@ export const TicketHistory = ({ mode = 'active' }) => {
             </button>
           );
         })}
+        </div>
+        <div className="flex shrink-0 items-center gap-2 pb-1">
+          {searchOpen && (
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Cari tiket..."
+              aria-label="Cari tiket berdasarkan nomor, layanan, judul, pemohon, atau instansi"
+              className="w-36 sm:w-52 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+            />
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              if (searchOpen) setSearchQuery('');
+              setSearchOpen(!searchOpen);
+            }}
+            aria-label={searchOpen ? 'Tutup pencarian' : 'Cari tiket'}
+            title={searchOpen ? 'Tutup pencarian' : 'Cari tiket'}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700"
+          >
+            {searchOpen ? <X className="h-4 w-4" /> : <Search className="h-4 w-4" />}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -1035,7 +1081,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
 
                       <div className="text-xs text-slate-450 font-bold mt-2.5 flex items-center gap-1.5 flex-wrap">
                         <Clock className="w-3.5 h-3.5 text-slate-400" />
-                        <span>SLA Standar: {t.slaDuration || 7} Hari</span>
+                        <span>SLA Standar: {formatSlaDuration(t.slaDuration)}</span>
                         <span className="text-slate-300">|</span>
                         {t.status.includes('Selesai') ? (
                           <span className="text-emerald-600 font-extrabold">Selesai</span>
@@ -1081,7 +1127,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
         </div>
 
         <div 
-          className={`lg:col-span-5 ${selectedTicket ? 'fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-3 sm:p-4 overflow-y-auto lg:overflow-visible lg:relative lg:inset-auto lg:bg-transparent lg:backdrop-blur-none lg:p-0 lg:z-auto lg:block hide-scrollbar' : 'hidden lg:block'}`}
+          className={`lg:col-span-5 ${selectedTicket ? 'fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-3 sm:p-4 overflow-y-auto lg:overflow-visible lg:relative lg:inset-auto lg:bg-transparent lg:backdrop-blur-none lg:p-0 lg:z-auto lg:block custom-scrollbar' : 'hidden lg:block'}`}
           onClick={() => {
             if (typeof window !== 'undefined' && window.innerWidth < 1024) {
               handleClearSelectedTicket();
@@ -1164,7 +1210,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
                 <div>
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Durasi SLA</span>
                   <p className="text-sm font-extrabold text-slate-700 mt-0.5">
-                    {selectedTicket.slaDuration || 7} Hari
+                    {formatSlaDuration(selectedTicket.slaDuration)}
                   </p>
                 </div>
                 <div>
@@ -1497,8 +1543,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
                       }}
                       className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
                     >
-                      <option value="approve">Approve</option>
-                      <option value="pending">Pending</option>
+                      <option value="approve">Proses</option>
                       <option value="done">Sudah Selesai</option>
                       <option value="reject">Reject</option>
                     </select>

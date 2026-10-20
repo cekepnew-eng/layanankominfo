@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Edit2, Trash2, X, Users, Building, Mail, Search, Lock, KeyRound } from 'lucide-react';
+import { Edit2, Trash2, X, Users, Building, Mail, Search, Lock, KeyRound, CheckCircle2, Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
 import { ActionModal } from '../../components/ActionModal';
@@ -41,8 +41,11 @@ export const ManageUsers = () => {
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [newUserData, setNewUserData] = useState({
-    full_name: '', email: '', password: '', department: '', roleName: 'USER'
+    identifier: '', password: ''
   });
+  const [verifiedTndUser, setVerifiedTndUser] = useState(null);
+  const [verifyingTnd, setVerifyingTnd] = useState(false);
+  const [tndVerificationError, setTndVerificationError] = useState('');
 
   const [modalConfig, setModalConfig] = useState({
     isOpen: false,
@@ -147,10 +150,16 @@ export const ManageUsers = () => {
 
   const handleAddUserManual = async (e) => {
     e.preventDefault();
+    if (!verifiedTndUser) {
+      setTndVerificationError('Verifikasi akun TND terlebih dahulu.');
+      return;
+    }
     try {
       await api.createUserManual(newUserData);
       setShowAddModal(false);
-      setNewUserData({ full_name: '', email: '', password: '', department: '', roleName: 'USER' });
+      setNewUserData({ identifier: '', password: '' });
+      setVerifiedTndUser(null);
+      setTndVerificationError('');
       await fetchUsers();
       setModalConfig({
         isOpen: true,
@@ -164,6 +173,31 @@ export const ManageUsers = () => {
     } catch (err) {
       alert('Gagal menambahkan pengguna: ' + err.message);
     }
+  };
+
+  const handleVerifyTndUser = async () => {
+    if (!newUserData.identifier.trim() || !newUserData.password) {
+      setTndVerificationError('NIP/NIK/Gmail dan password TND wajib diisi.');
+      return;
+    }
+    setVerifyingTnd(true);
+    setTndVerificationError('');
+    setVerifiedTndUser(null);
+    try {
+      const result = await api.verifyTndManualUser(newUserData);
+      setVerifiedTndUser(result.data);
+    } catch (error) {
+      setTndVerificationError(error.message || 'Verifikasi TND gagal.');
+    } finally {
+      setVerifyingTnd(false);
+    }
+  };
+
+  const closeAddUserModal = () => {
+    setShowAddModal(false);
+    setNewUserData({ identifier: '', password: '' });
+    setVerifiedTndUser(null);
+    setTndVerificationError('');
   };
 
   const handleSaveEdit = async () => {
@@ -660,41 +694,78 @@ export const ManageUsers = () => {
           <div className="bg-white max-w-lg w-full rounded-3xl p-6 sm:p-7 border border-slate-100 shadow-2xl space-y-5 text-left animate-in fade-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center pb-3 border-b border-slate-100">
               <h3 className="font-black text-slate-900 text-xl tracking-tight">Tambah Pengguna Manual</h3>
-              <button onClick={() => setShowAddModal(false)} className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer">
+              <button onClick={closeAddUserModal} className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
             
             <form onSubmit={handleAddUserManual} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nama Lengkap</label>
-                <input required type="text" value={newUserData.full_name} onChange={e => setNewUserData({...newUserData, full_name: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-sky-500 text-sm font-semibold" />
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">NIP / NIK / Gmail TND</label>
+                <input
+                  required
+                  type="text"
+                  value={newUserData.identifier}
+                  onChange={event => {
+                    setNewUserData({ ...newUserData, identifier: event.target.value });
+                    setVerifiedTndUser(null);
+                    setTndVerificationError('');
+                  }}
+                  autoComplete="username"
+                  className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-sky-500 text-sm font-semibold"
+                />
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email / NIK</label>
-                <input required type="text" value={newUserData.email} onChange={e => setNewUserData({...newUserData, email: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-sky-500 text-sm font-semibold" />
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Password TND</label>
+                <input
+                  required
+                  type="password"
+                  value={newUserData.password}
+                  onChange={event => {
+                    setNewUserData({ ...newUserData, password: event.target.value });
+                    setVerifiedTndUser(null);
+                    setTndVerificationError('');
+                  }}
+                  autoComplete="current-password"
+                  className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-sky-500 text-sm font-semibold"
+                />
               </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Password</label>
-                <input required type="password" value={newUserData.password} onChange={e => setNewUserData({...newUserData, password: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-sky-500 text-sm font-semibold" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">OPD / Instansi</label>
-                <input required type="text" value={newUserData.department} onChange={e => setNewUserData({...newUserData, department: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-sky-500 text-sm font-semibold" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Role</label>
-                <select value={newUserData.roleName} onChange={e => setNewUserData({...newUserData, roleName: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-sky-500 text-sm font-semibold">
-                  <option value="USER">User (OPD)</option>
-                  <option value="PEGAWAI">Pegawai (Teknisi)</option>
-                  <option value="HELPDESK">Helpdesk</option>
-                  <option value="ADMIN">Admin</option>
-                </select>
-              </div>
+              <button
+                type="button"
+                onClick={handleVerifyTndUser}
+                disabled={verifyingTnd || !newUserData.identifier.trim() || !newUserData.password}
+                className="w-full py-2.5 px-4 rounded-xl border border-sky-200 bg-sky-50 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50 text-sm font-bold text-sky-700 transition-colors flex items-center justify-center gap-2"
+              >
+                {verifyingTnd ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                {verifyingTnd ? 'Memverifikasi ke TND...' : 'Verifikasi Akun TND'}
+              </button>
+
+              {tndVerificationError && (
+                <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+                  {tndVerificationError}
+                </p>
+              )}
+
+              {verifiedTndUser && (
+                <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
+                  <p className="flex items-center gap-2 text-sm font-bold text-emerald-700">
+                    <CheckCircle2 className="h-4 w-4" /> Akun TND berhasil diverifikasi
+                  </p>
+                  <div>
+                    <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Nama Lengkap</label>
+                    <input readOnly value={verifiedTndUser.full_name} className="w-full rounded-lg border border-slate-200 bg-white p-2.5 text-sm font-semibold text-slate-700" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-bold uppercase text-slate-500">OPD / Instansi</label>
+                    <input readOnly value={verifiedTndUser.department} className="w-full rounded-lg border border-slate-200 bg-white p-2.5 text-sm font-semibold text-slate-700" />
+                  </div>
+                  <p className="text-xs font-semibold text-slate-600">Akun akan dibuat dengan role User (OPD).</p>
+                </div>
+              )}
               
               <div className="flex gap-3 pt-3 border-t border-slate-100">
-                <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 py-3 px-5 border border-slate-200 hover:bg-slate-50 rounded-xl text-sm sm:text-base font-bold text-slate-700 transition-all cursor-pointer">Batal</button>
-                <button type="submit" className="flex-1 py-3 px-5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md shadow-sky-500/20 cursor-pointer">Tambah User</button>
+                <button type="button" onClick={closeAddUserModal} className="flex-1 py-3 px-5 border border-slate-200 hover:bg-slate-50 rounded-xl text-sm sm:text-base font-bold text-slate-700 transition-all cursor-pointer">Batal</button>
+                <button type="submit" disabled={!verifiedTndUser} className="flex-1 py-3 px-5 bg-sky-600 hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md shadow-sky-500/20 cursor-pointer">Tambah User OPD</button>
               </div>
             </form>
           </div>

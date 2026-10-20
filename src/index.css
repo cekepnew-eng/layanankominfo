@@ -110,6 +110,8 @@ body {
 .custom-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: #cbd5e1 transparent;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
 }
 
 /* Utility to cleanly hide scrollbar while preserving scroll functionality */

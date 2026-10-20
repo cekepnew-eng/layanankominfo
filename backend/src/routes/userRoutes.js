@@ -8,6 +8,7 @@ router.put('/:id/role', authenticateToken, authorizeRole(['ADMIN']), userControl
 router.delete('/:id', authenticateToken, authorizeRole(['ADMIN']), userController.deleteUser);
 router.post('/:id/reset2fa', authenticateToken, authorizeRole(['ADMIN']), userController.reset2FA);
 
+router.post('/manual/verify-tnd', authenticateToken, authorizeRole(['ADMIN']), userController.verifyTndManualUser);
 router.post('/manual', authenticateToken, authorizeRole(['ADMIN']), userController.createUserManual);
 
 module.exports = router;

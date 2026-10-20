@@ -156,7 +156,9 @@ export const TicketDetailModal = ({ isOpen, onClose, ticket, onBagiTugas }) => {
                       <div className={`${showBuiltInTitle || showBuiltInDesc ? 'pt-2 border-t border-slate-100 ' : ''}grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs overflow-hidden`}>
                         {(() => {
                           const subServiceName = (ticket.requestType && ticket.requestType !== 'Baru') ? ticket.requestType : (ticket.service || '');
-                          const srv = (services || []).find(s => s.name === subServiceName);
+                          const srv = (services || []).find(s =>
+                            ticket.service_id != null && String(s.id) === String(ticket.service_id)
+                          ) || (services || []).find(s => s.name === subServiceName);
                           let schema = srv?.form_schema || [];
                           
                           if (typeof schema === 'string') {

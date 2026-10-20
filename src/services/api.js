@@ -24,6 +24,7 @@ const handleResponse = async (res) => {
     }
     const err = new Error(data.message || `HTTP Error ${res.status}`);
     err.data = data;
+    err.status = res.status;
     err.isOldPassword = Boolean(data.isOldPassword);
     throw err;
   }
@@ -72,6 +73,21 @@ export const api = {
       body: JSON.stringify(payload)
     });
     return handleResponse(res);
+  },
+  verifyTndManualUser: async (payload) => {
+    const res = await fetch(`${BASE_URL}/admin/users/manual/verify-tnd`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload)
+    });
+    try {
+      return await handleResponse(res);
+    } catch (error) {
+      if (error.status === 404) {
+        throw new Error('Endpoint verifikasi TND belum aktif. Restart backend Helpdesk lalu coba lagi.');
+      }
+      throw error;
+    }
   },
   updateUserRole: async (userId, payload) => {
     const res = await fetch(`${BASE_URL}/admin/users/${userId}/role`, {
