@@ -195,7 +195,7 @@ exports.createUserManual = async (req, res) => {
     await client.query('BEGIN');
     const existingUser = await client.query(
       `SELECT id FROM users
-       WHERE LOWER(email) = LOWER($1) OR ($2 IS NOT NULL AND nip = $2)
+       WHERE LOWER(email) = LOWER($1) OR ($2::text IS NOT NULL AND nip = $2)
        LIMIT 1`,
       [profile.email, profile.nip]
     );

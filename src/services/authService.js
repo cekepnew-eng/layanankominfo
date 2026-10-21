@@ -4,8 +4,8 @@ const TOTP_ISSUER = 'Diskominfo Kota Bogor';
 const TOTP_SECRET = 'JBSWY3DPEHPK3PXP';
 
 export const authService = {
-  getOtpSecret: async (email = 'mortazaaazkaa2509@gmail.com') => {
-    const userEmail = (email && typeof email === 'string') ? email.trim() : 'mortazaaazkaa2509@gmail.com';
+  getOtpSecret: async (email = 'user@bogor.go.id') => {
+    const userEmail = (email && typeof email === 'string') ? email.trim() : 'user@bogor.go.id';
     const totpUri = `otpauth://totp/${encodeURIComponent(TOTP_ISSUER)}:${encodeURIComponent(userEmail)}?secret=${TOTP_SECRET}&issuer=${encodeURIComponent(TOTP_ISSUER)}&algorithm=SHA1&digits=6&period=30`;
 
     let dynamicQr = '/google_authenticator_qr.png';

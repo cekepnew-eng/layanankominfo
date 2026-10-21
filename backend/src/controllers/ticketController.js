@@ -719,12 +719,6 @@ exports.getEmployeeTickets = async (req, res) => {
           WHERE user_id = $1 
              OR user_id IN (SELECT id FROM users WHERE (email IS NOT NULL AND email = (SELECT email FROM users WHERE id = $1)) OR (nip IS NOT NULL AND nip = (SELECT nip FROM users WHERE id = $1)))
         )
-        OR a.team_id IN (
-          SELECT team_id FROM users 
-          WHERE id = $1 
-             OR (email IS NOT NULL AND email = (SELECT email FROM users WHERE id = $1))
-             OR (nip IS NOT NULL AND nip = (SELECT nip FROM users WHERE id = $1))
-        )
         OR t.id IN (
           SELECT ticket_id FROM subtasks 
           WHERE assigned_to = $1 
@@ -876,6 +870,20 @@ exports.getAdminTickets = async (req, res) => {
 // ==========================================
 exports.getHistory = async (req, res) => {
   try {
+    const ticketId = req.params.id;
+    const userRoles = req.user?.roles || [req.user?.role];
+    const isStaff = userRoles.some(r => ['ADMIN', 'HELPDESK', 'PEGAWAI'].includes(r));
+
+    if (!isStaff) {
+      const checkOwner = await db.query('SELECT user_id FROM tickets WHERE id = $1', [ticketId]);
+      if (checkOwner.rows.length === 0) {
+        return res.status(404).json({ success: false, message: 'Tiket tidak ditemukan' });
+      }
+      if (checkOwner.rows[0].user_id !== req.user.id) {
+        return res.status(403).json({ success: false, message: 'Akses ditolak: Anda bukan pemilik tiket ini' });
+      }
+    }
+
     const result = await db.query(`
       SELECT h.*, u.full_name as user_name, r.name as user_role, os.name as old_status, ns.name as new_status
       FROM ticket_histories h

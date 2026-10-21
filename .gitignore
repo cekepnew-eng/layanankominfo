@@ -23,6 +23,9 @@ build/
 *.env*
 backend/.env
 backend/.env*
+!.env.example
+!*.env.example
+!backend/.env.example
 backend/.reset_2fa_done
 
 # Certificates, Keys & Credentials
@@ -35,6 +38,7 @@ backend/.reset_2fa_done
 credentials.json
 token.json
 id_rsa*
+*firebase-adminsdk*.json
 
 # Editor directories and files
 .vscode/*

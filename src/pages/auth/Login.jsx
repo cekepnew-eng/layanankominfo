@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { authService } from '../../services/authService';
 import { api } from '../../services/api';
 import { ActionModal } from '../../components/ActionModal';
 import { ForgotPasswordModal } from '../../components/ForgotPasswordModal';

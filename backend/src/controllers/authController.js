@@ -64,11 +64,7 @@ async function getUserTeams(userId) {
     const fromTeamMembers = await db.query(
       `SELECT t.team_name FROM teams t
        JOIN team_members tm ON tm.team_id = t.id
-       WHERE tm.user_id = $1
-       UNION
-       SELECT t.team_name FROM teams t
-       JOIN users u ON u.team_id = t.id
-       WHERE u.id = $1`,
+       WHERE tm.user_id = $1`,
       [userId]
     );
     return fromTeamMembers.rows.map(row => row.team_name);

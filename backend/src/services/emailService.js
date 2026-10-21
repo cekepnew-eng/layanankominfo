@@ -6,8 +6,8 @@ const createTransporter = () => {
   // Muat ulang .env secara dinamis agar perubahan konfigurasi langsung terbaca
   dotenv.config({ path: path.resolve(__dirname, '../../.env'), override: true });
 
-  const user = process.env.SMTP_USER || 'adrianmaull16@gmail.com';
-  const pass = process.env.SMTP_PASS || 'dfodkpyxvyscmvjd';
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
 
   if (!pass) {
     return null;
@@ -26,8 +26,8 @@ const createTransporter = () => {
 const sendResetOtpEmail = async ({ to, name, otp }) => {
   dotenv.config({ path: path.resolve(__dirname, '../../.env'), override: true });
 
-  const senderEmail = process.env.SMTP_USER || 'adrianmaull16@gmail.com';
-  const senderName = process.env.SMTP_FROM || `"Adrian Maulana" <${senderEmail}>`;
+  const senderEmail = process.env.SMTP_USER;
+  const senderName = process.env.SMTP_FROM || (senderEmail ? `"Layanan Kominfo" <${senderEmail}>` : '"Layanan Kominfo"');
 
   const textContent = `Halo ${name || 'Pengguna'},
 
