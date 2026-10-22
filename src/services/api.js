@@ -180,6 +180,22 @@ export const api = {
     });
     return handleResponse(res);
   },
+  requestRegistrationOtp: async (email) => {
+    const res = await fetch(`${BASE_URL}/auth/register/request-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    return handleResponse(res);
+  },
+  verifyRegistrationOtp: async (email, otp) => {
+    const res = await fetch(`${BASE_URL}/auth/register/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp })
+    });
+    return handleResponse(res);
+  },
   getMe: async () => {
     const res = await fetch(`${BASE_URL}/auth/me`, { headers: getHeaders() });
     return handleResponse(res);

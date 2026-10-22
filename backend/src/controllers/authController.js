@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 const { generateSecret, generateURI, verifySync } = require('otplib');
 const qrcode = require('qrcode');
 const crypto = require('crypto');
-const { sendResetOtpEmail } = require('../services/emailService');
+const { sendResetOtpEmail, sendRegistrationOtpEmail } = require('../services/emailService');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret-key-kominfo-2026';
 
@@ -104,6 +104,17 @@ async function ensurePasswordCols() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
       CREATE INDEX IF NOT EXISTS idx_reset_otps_email ON password_reset_otps(email);
+      CREATE TABLE IF NOT EXISTS registration_email_otps (
+        id SERIAL PRIMARY KEY,
+        email VARCHAR(255) NOT NULL,
+        otp_hash VARCHAR(64) NOT NULL,
+        attempts INT NOT NULL DEFAULT 0,
+        is_used BOOLEAN NOT NULL DEFAULT false,
+        expires_at TIMESTAMP NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_registration_email_otps_email
+        ON registration_email_otps(email);
     `);
     colsEnsured = true;
   } catch (err) {
@@ -412,48 +423,263 @@ exports.login = async (req, res) => {
   }
 };
 
-exports.register = async (req, res) => {
-  const { email, password, fullName, phone } = req.body;
+const normalizeRegistrationEmail = (email) =>
+  typeof email === 'string' ? email.trim().toLowerCase() : '';
+
+const isValidRegistrationEmail = (email) =>
+  email.length <= 255 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+const hashRegistrationOtp = (otp) =>
+  crypto.createHash('sha256').update(otp).digest('hex');
+
+const registrationOtpMatches = (otp, otpHash) => {
+  const inputHash = Buffer.from(hashRegistrationOtp(otp), 'hex');
+  const storedHash = Buffer.from(otpHash, 'hex');
+  return inputHash.length === storedHash.length && crypto.timingSafeEqual(inputHash, storedHash);
+};
+
+exports.requestRegistrationOtp = async (req, res) => {
+  const email = normalizeRegistrationEmail(req.body?.email);
+  if (!isValidRegistrationEmail(email)) {
+    return res.status(400).json({ success: false, message: 'Masukkan alamat email yang valid.' });
+  }
+
   try {
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
-    if (!passwordRegex.test(password)) {
-      return res.status(400).json({ success: false, message: 'Password harus minimal 8 karakter, mengandung huruf besar, huruf kecil, dan angka.' });
+    await ensurePasswordCols();
+    const existingUser = await db.query(
+      'SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1',
+      [email]
+    );
+    if (existingUser.rows.length > 0) {
+      return res.status(400).json({ success: false, message: 'Email sudah terdaftar.' });
     }
 
-    const roleRes = await db.query("SELECT id FROM roles WHERE name = 'MASYARAKAT'");
-    const roleId = roleRes.rows[0].id;
-
-    const salt = await bcrypt.genSalt(10);
-    const hash = await bcrypt.hash(password, salt);
-
-    const client = await db.pool.connect();
-    let insertRes;
-    try {
-      await client.query('BEGIN');
-      insertRes = await client.query(
-        `INSERT INTO users (email, password_hash, full_name, phone_number, department) 
-         VALUES ($1, $2, $3, $4, $5) RETURNING id, email, full_name`,
-        [email, hash, fullName, phone, 'Masyarakat Umum']
+    const cooldown = await db.query(
+      `SELECT created_at FROM registration_email_otps
+       WHERE email = $1 AND created_at > NOW() - INTERVAL '60 seconds'
+       ORDER BY created_at DESC LIMIT 1`,
+      [email]
+    );
+    if (cooldown.rows.length > 0) {
+      const secondsRemaining = Math.max(
+        1,
+        60 - Math.floor((Date.now() - new Date(cooldown.rows[0].created_at).getTime()) / 1000)
       );
+      return res.status(429).json({
+        success: false,
+        message: `Mohon tunggu ${secondsRemaining} detik sebelum meminta kode OTP baru.`
+      });
+    }
+
+    const otp = crypto.randomInt(0, 1000000).toString().padStart(6, '0');
+    const otpHash = hashRegistrationOtp(otp);
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await db.query(
+      'UPDATE registration_email_otps SET is_used = true WHERE email = $1 AND is_used = false',
+      [email]
+    );
+    const insertedOtp = await db.query(
+      `INSERT INTO registration_email_otps (email, otp_hash, attempts, is_used, expires_at)
+       VALUES ($1, $2, 0, false, $3) RETURNING id`,
+      [email, otpHash, expiresAt]
+    );
+
+    try {
+      await sendRegistrationOtpEmail({ to: email, otp });
+    } catch (emailError) {
+      await db.query(
+        'UPDATE registration_email_otps SET is_used = true WHERE id = $1',
+        [insertedOtp.rows[0].id]
+      );
+      console.error('Registration OTP email delivery failed:', emailError.message);
+      return res.status(503).json({
+        success: false,
+        message: 'Email OTP belum dapat dikirim. Periksa konfigurasi email lalu coba lagi.'
+      });
+    }
+
+    return res.json({
+      success: true,
+      maskedEmail: maskEmail(email),
+      message: `Kode verifikasi telah dikirim ke ${maskEmail(email)}. Kode berlaku selama 10 menit.`
+    });
+  } catch (err) {
+    console.error('Error in requestRegistrationOtp:', err.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Terjadi kesalahan sistem saat mengirim kode verifikasi.'
+    });
+  }
+};
+
+exports.verifyRegistrationOtp = async (req, res) => {
+  const email = normalizeRegistrationEmail(req.body?.email);
+  const otp = typeof req.body?.otp === 'string' ? req.body.otp.trim() : '';
+
+  if (!isValidRegistrationEmail(email) || !/^\d{6}$/.test(otp)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Masukkan email yang valid dan kode OTP 6 digit.'
+    });
+  }
+
+  try {
+    await ensurePasswordCols();
+    const result = await db.query(
+      `SELECT id, otp_hash, attempts, expires_at FROM registration_email_otps
+       WHERE email = $1 AND is_used = false
+       ORDER BY created_at DESC LIMIT 1`,
+      [email]
+    );
+    const otpRecord = result.rows[0];
+
+    if (!otpRecord || new Date(otpRecord.expires_at) <= new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Kode OTP sudah kedaluwarsa atau tidak valid. Minta kode baru.'
+      });
+    }
+
+    if (otpRecord.attempts >= 5) {
+      await db.query('UPDATE registration_email_otps SET is_used = true WHERE id = $1', [otpRecord.id]);
+      return res.status(400).json({
+        success: false,
+        message: 'Batas percobaan OTP habis. Minta kode verifikasi baru.'
+      });
+    }
+
+    if (!registrationOtpMatches(otp, otpRecord.otp_hash)) {
+      const attempts = otpRecord.attempts + 1;
+      await db.query(
+        'UPDATE registration_email_otps SET attempts = $1, is_used = $2 WHERE id = $3',
+        [attempts, attempts >= 5, otpRecord.id]
+      );
+      return res.status(400).json({
+        success: false,
+        message: `Kode OTP salah. Sisa percobaan: ${Math.max(0, 5 - attempts)}.`
+      });
+    }
+
+    return res.json({ success: true, message: 'Email berhasil diverifikasi.' });
+  } catch (err) {
+    console.error('Error in verifyRegistrationOtp:', err.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Terjadi kesalahan sistem saat memverifikasi email.'
+    });
+  }
+};
+
+exports.register = async (req, res) => {
+  const email = normalizeRegistrationEmail(req.body?.email);
+  const { password, fullName, phone } = req.body || {};
+  const otp = typeof req.body?.otp === 'string' ? req.body.otp.trim() : '';
+
+  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+  if (!isValidRegistrationEmail(email)) {
+    return res.status(400).json({ success: false, message: 'Masukkan alamat email yang valid.' });
+  }
+  if (typeof fullName !== 'string' || !fullName.trim() || fullName.trim().length > 255) {
+    return res.status(400).json({ success: false, message: 'Nama lengkap wajib diisi.' });
+  }
+  if (typeof password !== 'string' || !passwordRegex.test(password)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Password harus minimal 8 karakter, mengandung huruf besar, huruf kecil, dan angka.'
+    });
+  }
+  if (!/^\d{6}$/.test(otp)) {
+    return res.status(400).json({ success: false, message: 'Verifikasi email dengan OTP 6 digit terlebih dahulu.' });
+  }
+
+  let client;
+  let transactionStarted = false;
+  try {
+    await ensurePasswordCols();
+    const hash = await bcrypt.hash(password, 10);
+    client = await db.pool.connect();
+    await client.query('BEGIN');
+    transactionStarted = true;
+
+    const otpResult = await client.query(
+      `SELECT id, otp_hash, attempts, expires_at FROM registration_email_otps
+       WHERE email = $1 AND is_used = false
+       ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
+      [email]
+    );
+    const otpRecord = otpResult.rows[0];
+
+    if (!otpRecord || new Date(otpRecord.expires_at) <= new Date()) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(400).json({
+        success: false,
+        message: 'Kode OTP sudah kedaluwarsa atau tidak valid. Verifikasi email kembali.'
+      });
+    }
+
+    if (otpRecord.attempts >= 5) {
+      await client.query('UPDATE registration_email_otps SET is_used = true WHERE id = $1', [otpRecord.id]);
+      await client.query('COMMIT');
+      transactionStarted = false;
+      return res.status(400).json({
+        success: false,
+        message: 'Batas percobaan OTP habis. Minta kode verifikasi baru.'
+      });
+    }
+
+    if (!registrationOtpMatches(otp, otpRecord.otp_hash)) {
+      const attempts = otpRecord.attempts + 1;
       await client.query(
-        `INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)`,
-        [insertRes.rows[0].id, roleId]
+        'UPDATE registration_email_otps SET attempts = $1, is_used = $2 WHERE id = $3',
+        [attempts, attempts >= 5, otpRecord.id]
       );
       await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
+      transactionStarted = false;
+      return res.status(400).json({
+        success: false,
+        message: `Kode OTP salah. Sisa percobaan: ${Math.max(0, 5 - attempts)}.`
+      });
     }
 
-    res.status(201).json({ success: true, message: 'Registration successful', user: insertRes.rows[0] });
-  } catch (err) {
-    if (err.code === '23505') { // Unique violation
-      return res.status(400).json({ success: false, message: 'Email already exists' });
+    const roleResult = await client.query("SELECT id FROM roles WHERE name = 'MASYARAKAT'");
+    if (roleResult.rows.length === 0) {
+      throw new Error('Role MASYARAKAT is not configured');
     }
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Server error during registration' });
+
+    const insertResult = await client.query(
+      `INSERT INTO users (email, password_hash, full_name, phone_number, department)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id, email, full_name`,
+      [email, hash, fullName.trim(), phone || '00000', 'Masyarakat Umum']
+    );
+    await client.query(
+      'INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)',
+      [insertResult.rows[0].id, roleResult.rows[0].id]
+    );
+    await client.query(
+      'UPDATE registration_email_otps SET is_used = true WHERE id = $1',
+      [otpRecord.id]
+    );
+    await client.query('COMMIT');
+    transactionStarted = false;
+
+    return res.status(201).json({
+      success: true,
+      message: 'Registration successful',
+      user: insertResult.rows[0]
+    });
+  } catch (err) {
+    if (client && transactionStarted) {
+      await client.query('ROLLBACK');
+    }
+    if (err.code === '23505') {
+      return res.status(400).json({ success: false, message: 'Email sudah terdaftar.' });
+    }
+    console.error('Error during registration:', err.message);
+    return res.status(500).json({ success: false, message: 'Server error during registration' });
+  } finally {
+    if (client) client.release();
   }
 };
 
@@ -1077,4 +1303,3 @@ exports.verifyResetOtp = async (req, res) => {
     });
   }
 };
-

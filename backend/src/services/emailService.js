@@ -13,7 +13,21 @@ const createTransporter = () => {
     return null;
   }
 
-  // Gunakan service: 'gmail' agar Nodemailer mengonfigurasi host, TLS, dan connection pool resmi Gmail
+  const host = process.env.SMTP_HOST;
+  const port = Number(process.env.SMTP_PORT) || (process.env.SMTP_SECURE === 'true' ? 465 : 587);
+  const secure = process.env.SMTP_SECURE
+    ? process.env.SMTP_SECURE.toLowerCase() === 'true'
+    : port === 465;
+
+  if (host) {
+    return nodemailer.createTransport({
+      host,
+      port,
+      secure,
+      auth: { user, pass }
+    });
+  }
+
   return nodemailer.createTransport({
     service: 'gmail',
     auth: {
@@ -131,6 +145,35 @@ Layanan Kominfo`;
   }
 };
 
+const sendRegistrationOtpEmail = async ({ to, otp }) => {
+  dotenv.config({ path: path.resolve(__dirname, '../../.env'), override: true });
+
+  const senderEmail = process.env.SMTP_USER;
+  const senderName = process.env.SMTP_FROM || (senderEmail ? `"Layanan Kominfo" <${senderEmail}>` : '"Layanan Kominfo"');
+  const transporter = createTransporter();
+
+  if (!transporter) {
+    throw new Error('SMTP belum dikonfigurasi untuk mengirim OTP pendaftaran.');
+  }
+
+  await transporter.sendMail({
+    from: senderName,
+    to,
+    replyTo: senderEmail,
+    subject: 'Kode verifikasi email pendaftaran Layanan Kominfo',
+    text: `Kode verifikasi email Anda adalah ${otp}. Kode ini berlaku selama 10 menit. Jangan berikan kode ini kepada siapa pun.`,
+    html: `
+      <div style="font-family: Arial, sans-serif; color: #1e293b; max-width: 520px; margin: 0 auto; padding: 24px;">
+        <h2 style="color: #0284c7;">Verifikasi Email</h2>
+        <p>Gunakan kode berikut untuk melanjutkan pendaftaran akun Layanan Kominfo:</p>
+        <p style="font-family: monospace; font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #0284c7;">${otp}</p>
+        <p>Kode berlaku selama 10 menit. Jangan berikan kode ini kepada siapa pun.</p>
+      </div>
+    `
+  });
+};
+
 module.exports = {
-  sendResetOtpEmail
+  sendResetOtpEmail,
+  sendRegistrationOtpEmail
 };

@@ -138,7 +138,26 @@ const runAutoMigrations = async () => {
       handleMigrationError('password_reset_otps', err);
     }
 
-    // 7. Auto-seed services from official PDF if table is unpopulated
+    // 7. CREATE TABLE registration_email_otps for email verification during registration
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS registration_email_otps (
+          id SERIAL PRIMARY KEY,
+          email VARCHAR(255) NOT NULL,
+          otp_hash VARCHAR(64) NOT NULL,
+          attempts INT NOT NULL DEFAULT 0,
+          is_used BOOLEAN NOT NULL DEFAULT false,
+          expires_at TIMESTAMP NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_registration_email_otps_email
+          ON registration_email_otps(email);
+      `);
+    } catch (err) {
+      handleMigrationError('registration_email_otps', err);
+    }
+
+    // 8. Auto-seed services from official PDF if table is unpopulated
     try {
       const srvCheck = await pool.query('SELECT count(*) FROM services');
       if (parseInt(srvCheck.rows[0].count, 10) < 5) {

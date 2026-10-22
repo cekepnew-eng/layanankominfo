@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const rateLimit = require('express-rate-limit');
+const { ipKeyGenerator } = require('express-rate-limit');
 const authController = require('../controllers/authController');
 const { authenticateToken, authenticateTempToken } = require('../middleware/auth');
 
@@ -14,11 +15,34 @@ const login2FaLimiter = rateLimit({
   message: { success: false, message: 'Too many OTP attempts, please try again later.' }
 });
 
+const registrationOtpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    return `${ipKeyGenerator(req.ip)}:${email || 'invalid-email'}`;
+  },
+  message: { success: false, message: 'Terlalu banyak permintaan OTP. Coba lagi beberapa saat.' }
+});
+
+const registrationOtpIpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: { success: false, message: 'Terlalu banyak permintaan OTP dari perangkat ini. Coba lagi beberapa saat.' }
+});
+
+const registrationVerifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { success: false, message: 'Terlalu banyak percobaan OTP. Coba lagi beberapa saat.' }
+});
 
 router.get('/captcha', authController.getCaptcha);
 router.post('/login', authController.login);
 router.post('/login-2fa', login2FaLimiter, authController.login2FA);
-router.post('/register', authController.register);
+router.post('/register/request-otp', registrationOtpIpLimiter, registrationOtpLimiter, authController.requestRegistrationOtp);
+router.post('/register/verify-otp', registrationVerifyLimiter, authController.verifyRegistrationOtp);
+router.post('/register', registrationVerifyLimiter, authController.register);
 router.post('/logout', authenticateToken, authController.logout);
 router.get('/me', authenticateToken, authController.getMe);
 router.put('/profile', authenticateToken, authController.updateProfile);
