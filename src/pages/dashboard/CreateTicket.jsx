@@ -211,9 +211,8 @@ export const CreateTicket = () => {
     }
   }, [formData, title, description, selectedSubService]);
 
-  const isHelpdesk = user?.role?.toUpperCase() === 'HELPDESK' || (user?.roles && user.roles.map(r => String(r).toUpperCase()).includes('HELPDESK'));
-  const isAdmin = user?.role?.toUpperCase() === 'ADMIN' || (user?.roles && user.roles.map(r => String(r).toUpperCase()).includes('ADMIN'));
-  const isStaff = isHelpdesk || isAdmin;
+  const isHelpdesk = user?.role?.toUpperCase() === 'HELPDESK';
+  const isStaff = isHelpdesk;
 
   // Load registered OPD accounts for Helpdesk / Staff
   useEffect(() => {
@@ -330,7 +329,7 @@ export const CreateTicket = () => {
     const finalFormData = { ...formData };
     let targetUserIdPayload = null;
 
-    if (isHelpdesk || isAdmin) {
+    if (isHelpdesk) {
       finalFormData['submitted_by_helpdesk'] = true;
       if (selectedOpdUserId) {
         const opdObj = opdUsers.find(u => String(u.id) === String(selectedOpdUserId));
@@ -829,7 +828,7 @@ export const CreateTicket = () => {
             </div>
           </div>
 
-          {(isHelpdesk || isAdmin) && (
+          {isHelpdesk && (
             <div className="p-5 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-4 shadow-sm">
               <div className="flex items-center justify-between gap-2 flex-wrap border-b border-amber-200/80 pb-3">
                 <div className="flex items-center gap-2 text-amber-900 font-extrabold text-xs uppercase tracking-wider">
