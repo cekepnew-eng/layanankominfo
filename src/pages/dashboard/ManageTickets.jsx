@@ -98,8 +98,8 @@ export const TicketHistory = ({ mode = 'active' }) => {
   const location = useLocation();
   const { user, services } = useAuth();
   const [tickets, setTickets] = useState([]);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef(null);
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedTicket, setSelectedTicket] = useState(null);
@@ -1015,7 +1015,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
       </div>
 
       <div className="flex items-center gap-3 border-b border-slate-200 pb-px">
-        <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto custom-scrollbar">
+        <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto hide-scrollbar">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
           const count = getTabCount(tab.id);
@@ -1041,27 +1041,23 @@ export const TicketHistory = ({ mode = 'active' }) => {
         })}
         </div>
         <div className="flex shrink-0 items-center gap-2 pb-1">
-          {searchOpen && (
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Cari tiket..."
-              aria-label="Cari tiket berdasarkan nomor, layanan, judul, pemohon, atau instansi"
-              className="w-36 sm:w-52 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
-            />
-          )}
+          <input
+            ref={searchInputRef}
+            type="search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Cari tiket..."
+            aria-label="Cari tiket berdasarkan nomor, layanan, judul, pemohon, atau instansi"
+            className="w-36 sm:w-52 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+          />
           <button
             type="button"
-            onClick={() => {
-              if (searchOpen) setSearchQuery('');
-              setSearchOpen(!searchOpen);
-            }}
-            aria-label={searchOpen ? 'Tutup pencarian' : 'Cari tiket'}
-            title={searchOpen ? 'Tutup pencarian' : 'Cari tiket'}
+            onClick={() => searchInputRef.current?.focus()}
+            aria-label="Fokus ke pencarian tiket"
+            title="Cari tiket"
             className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700"
           >
-            {searchOpen ? <X className="h-4 w-4" /> : <Search className="h-4 w-4" />}
+            <Search className="h-4 w-4" />
           </button>
         </div>
       </div>
