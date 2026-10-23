@@ -20,6 +20,7 @@ export const Profile = () => {
   const [successMessage, setSuccessMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingProfileImage, setIsUploadingProfileImage] = useState(false);
+  const [imageLoadError, setImageLoadError] = useState(false);
 
   const [modalConfig, setModalConfig] = useState({
     isOpen: false,
@@ -58,6 +59,10 @@ export const Profile = () => {
   const isTndProfileImage = String(user?.profileImageSource || user?.profile_image_source || '').toUpperCase() === 'TND';
   const canUploadProfileImage = isMasyarakat || userRoles.some(role => String(role).toUpperCase() === 'USER');
   const passwordMinLength = isMasyarakat ? 8 : 6;
+
+  useEffect(() => {
+    setImageLoadError(false);
+  }, [profileImage]);
 
   const handleProfileImageChange = async (event) => {
     const file = event.target.files?.[0];
@@ -292,8 +297,15 @@ export const Profile = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-xs pt-10 pb-8 px-6 flex flex-col items-center text-center">
           <div className="w-24 h-24 rounded-2xl bg-sky-50 border-2 border-sky-200/80 text-sky-600 flex items-center justify-center shadow-xs shrink-0 overflow-hidden">
-            {profileImage
-              ? <img src={profileImage} alt="Foto profil" className="h-full w-full object-cover" />
+            {profileImage && !imageLoadError
+              ? (
+                <img 
+                  src={profileImage} 
+                  alt="Foto profil" 
+                  onError={() => setImageLoadError(true)}
+                  className="h-full w-full object-cover" 
+                />
+              )
               : <User className="w-12 h-12 stroke-[1.75]" />}
           </div>
           {canUploadProfileImage && !isTndProfileImage && (
