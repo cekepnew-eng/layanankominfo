@@ -5,6 +5,10 @@ const db = require('../config/database');
 // -----------------------------------------
 exports.getPublicServices = async (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+
     const catsRes = await db.query('SELECT id, category_name as name FROM service_categories ORDER BY id ASC');
     const servicesRes = await db.query(`
       SELECT s.*, s.service_name as name, c.category_name as category
@@ -24,10 +28,10 @@ exports.getPublicServices = async (req, res) => {
     let stats = {
       totalSubServices: services.length,
       totalCategories: catsRes.rows.length,
-      totalTickets: 0,
-      slaCompliance: '100.0%',
-      topCategories: catsRes.rows.slice(0, 3).map(c => ({ name: c.name, count: 0 })),
-      avgRating: '5.00'
+      totalTickets: null,
+      slaCompliance: null,
+      topCategories: null,
+      avgRating: null
     };
 
     try {
@@ -42,9 +46,9 @@ exports.getPublicServices = async (req, res) => {
       const allTickets = ticketsRes.rows;
       const completedOrWaiting = allTickets.filter(t => t.status_name === 'COMPLETED' || t.status_name === 'WAITING_USER_CONFIRMATION');
       const inSlaTickets = completedOrWaiting.filter(t => t.progress === 100);
-      const slaCompliancePct = completedOrWaiting.length > 0 
-        ? ((inSlaTickets.length / completedOrWaiting.length) * 100).toFixed(1) + '%' 
-        : '100.0%';
+      const slaCompliancePct = completedOrWaiting.length > 0
+        ? ((inSlaTickets.length / completedOrWaiting.length) * 100).toFixed(1) + '%'
+        : null;
 
       const categoryCountsMap = {};
       catsRes.rows.forEach(c => { categoryCountsMap[c.name] = 0; });
@@ -76,7 +80,7 @@ exports.getPublicServices = async (req, res) => {
         avgRating
       };
     } catch (statsErr) {
-      console.error('Error fetching public stats:', statsErr);
+      console.error('Error fetching public stats:', statsErr.message);
     }
 
     res.json({ success: true, data: services, categories: catsRes.rows, stats });

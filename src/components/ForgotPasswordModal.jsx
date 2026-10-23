@@ -25,9 +25,10 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
   const [step, setStep] = useState(1);
 
   const [identifier, setIdentifier] = useState('');
-  const [targetEmail, setTargetEmail] = useState('');
+  const [resetIdentifier, setResetIdentifier] = useState('');
   const [maskedEmail, setMaskedEmail] = useState('');
   const [resetToken, setResetToken] = useState('');
+  const [method, setMethod] = useState('email');
   
   // OTP input state
   const [otp, setOtp] = useState('');
@@ -87,9 +88,10 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
   const handleReset = () => {
     setStep(1);
     setIdentifier('');
-    setTargetEmail('');
+    setResetIdentifier('');
     setMaskedEmail('');
     setResetToken('');
+    setMethod('email');
     setOtp('');
     setShowWrongOtpModal(false);
     setWrongOtpMessage('');
@@ -103,8 +105,8 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
     setCooldown(0);
   };
 
-  // STEP 1: Request OTP
-  const handleRequestOtp = async (e) => {
+  // STEP 1: Choose a recovery method
+  const handleContinue = async (e) => {
     e.preventDefault();
     setError('');
 
@@ -116,16 +118,21 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
 
     setLoading(true);
     try {
-      const res = await api.requestResetOtp(cleanId);
-      if (res.success) {
-        setTargetEmail(res.email || cleanId);
-        setMaskedEmail(res.maskedEmail || res.email || cleanId);
-        setStep(2);
-        setOtp('');
+      setResetIdentifier(cleanId);
+      if (method === 'email') {
+        const res = await api.requestResetOtp(cleanId);
+        if (!res.success) {
+          setError(res.message || 'Gagal mengirim kode pemulihan.');
+          return;
+        }
+        setMaskedEmail(res.maskedEmail || '');
         setCooldown(60);
       } else {
-        setError(res.message || 'Gagal mengirim kode OTP.');
+        setMaskedEmail('');
+        setCooldown(0);
       }
+      setStep(2);
+      setOtp('');
     } catch (err) {
       setError(err.data?.message || err.message || 'Terjadi kesalahan saat meminta kode OTP.');
     } finally {
@@ -135,15 +142,15 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
 
   // Resend OTP in Step 2
   const handleResendOtp = async () => {
-    if (cooldown > 0 || resending) return;
+    if (method !== 'email' || cooldown > 0 || resending) return;
     setError('');
     setSuccessMsg('');
     setResending(true);
 
     try {
-      const res = await api.requestResetOtp(targetEmail || identifier);
+      const res = await api.requestResetOtp(resetIdentifier || identifier);
       if (res.success) {
-        setSuccessMsg('Kode OTP baru telah berhasil dikirimkan!');
+        setSuccessMsg('Permintaan kode diproses. Jika akun terdaftar, periksa inbox atau spam email Anda.');
         setCooldown(60);
         setTimeout(() => setSuccessMsg(''), 4000);
       } else {
@@ -169,9 +176,12 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
 
     setLoading(true);
     try {
-      const res = await api.validateResetOtp(targetEmail, cleanOtp);
+      const res = method === '2fa'
+        ? await api.verifyReset2FA(resetIdentifier, cleanOtp)
+        : await api.validateResetOtp(resetIdentifier, cleanOtp);
       if (res.success) {
         setResetToken(res.resetToken || '');
+        if (res.maskedEmail) setMaskedEmail(res.maskedEmail);
         setError('');
         // Alur berhasil: arahkan ke halaman ganti kata sandi baru!
         setStep(3);
@@ -181,6 +191,16 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
         setShowWrongOtpModal(true);
       }
     } catch (err) {
+      if (method === 'email' && err.status === 404) {
+        setResetToken('');
+        setSuccessMsg('Verifikasi akan dilakukan bersama saat kata sandi baru disimpan.');
+        setStep(3);
+        return;
+      }
+      if (err.status === 404) {
+        setError('Layanan verifikasi 2FA belum tersedia. Muat ulang aplikasi atau hubungi administrator.');
+        return;
+      }
       const errMsg = err.data?.message || err.message || 'Kode OTP yang kamu masukkan salah. Silakan coba lagi!';
       setWrongOtpMessage(errMsg);
       setShowWrongOtpModal(true);
@@ -194,8 +214,8 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
     e.preventDefault();
     setError('');
 
-    if (!newPassword || newPassword.length < 6) {
-      setError('Kata sandi baru minimal harus 6 karakter.');
+    if (!newPassword || newPassword.length < 8) {
+      setError('Kata sandi baru minimal harus 8 karakter.');
       return;
     }
 
@@ -207,7 +227,7 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
     setLoading(true);
     try {
       const payload = {
-        email: targetEmail,
+        email: resetIdentifier,
         otp: otp.trim(),
         resetToken: resetToken || undefined,
         newPassword,
@@ -222,7 +242,9 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
         setError(res.message || 'Gagal memperbarui kata sandi.');
       }
     } catch (err) {
-      setError(err.data?.message || err.message || 'Gagal memperbarui kata sandi.');
+      setError(err.status === 404
+        ? 'Layanan reset kata sandi belum tersedia di server. Restart atau perbarui backend, lalu coba lagi.'
+        : err.data?.message || err.message || 'Gagal memperbarui kata sandi.');
     } finally {
       setLoading(false);
     }
@@ -277,11 +299,11 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
                   Lupa Kata Sandi?
                 </h3>
                 <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
-                  Masukkan <strong className="text-slate-800">Email</strong> atau <strong className="text-slate-800">NIP</strong> yang terdaftar pada akun Anda. Kami akan mengirimkan 6 digit kode OTP verifikasi.
+                  Masukkan <strong className="text-slate-800">Email</strong> atau <strong className="text-slate-800">NIP</strong>, lalu pilih cara verifikasi untuk memulihkan akun.
                 </p>
               </div>
 
-              <form onSubmit={handleRequestOtp} className="space-y-4 pt-1">
+              <form onSubmit={handleContinue} className="space-y-4 pt-1">
                 <div className="space-y-1.5">
                   <label htmlFor="reset-identifier" className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
                     NIP / Alamat Email Terdaftar
@@ -305,6 +327,46 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
                     />
                   </div>
                 </div>
+
+                <fieldset className="space-y-2">
+                  <legend className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Pilih cara verifikasi
+                  </legend>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      aria-pressed={method === 'email'}
+                      onClick={() => setMethod('email')}
+                      className={`flex items-start gap-3 rounded-xl border p-3 text-left transition-all ${
+                        method === 'email'
+                          ? 'border-sky-500 bg-sky-50 ring-2 ring-sky-500/10'
+                          : 'border-slate-200 bg-white hover:border-sky-300'
+                      }`}
+                    >
+                      <Mail className={`mt-0.5 h-5 w-5 shrink-0 ${method === 'email' ? 'text-sky-600' : 'text-slate-400'}`} />
+                      <span>
+                        <span className="block text-sm font-bold text-slate-800">Kirim kode ke email</span>
+                        <span className="mt-0.5 block text-xs text-slate-500">Kode OTP dikirim ke email akun</span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={method === '2fa'}
+                      onClick={() => setMethod('2fa')}
+                      className={`flex items-start gap-3 rounded-xl border p-3 text-left transition-all ${
+                        method === '2fa'
+                          ? 'border-sky-500 bg-sky-50 ring-2 ring-sky-500/10'
+                          : 'border-slate-200 bg-white hover:border-sky-300'
+                      }`}
+                    >
+                      <ShieldCheck className={`mt-0.5 h-5 w-5 shrink-0 ${method === '2fa' ? 'text-sky-600' : 'text-slate-400'}`} />
+                      <span>
+                        <span className="block text-sm font-bold text-slate-800">Kode authenticator 2FA</span>
+                        <span className="mt-0.5 block text-xs text-slate-500">Gunakan kode 6 digit dari aplikasi 2FA</span>
+                      </span>
+                    </button>
+                  </div>
+                </fieldset>
 
                 {error && (
                   <div className="flex items-start gap-2.5 p-3.5 bg-rose-50 border border-rose-100 rounded-xl text-xs sm:text-sm font-semibold text-rose-600 animate-in fade-in duration-200">
@@ -330,10 +392,10 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
                     {loading ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Mengirim...</span>
+                        <span>{method === 'email' ? 'Mengirim...' : 'Melanjutkan...'}</span>
                       </>
                     ) : (
-                      <span>Kirim Kode OTP &rarr;</span>
+                      <span>{method === 'email' ? 'Kirim Kode OTP' : 'Lanjut Verifikasi 2FA'} &rarr;</span>
                     )}
                   </button>
                 </div>
@@ -351,25 +413,35 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
                   <ShieldCheck className="w-6 h-6 text-sky-600" />
                 </div>
                 <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight leading-tight">
-                  Verifikasi Kode OTP
+                  {method === '2fa' ? 'Verifikasi Authenticator 2FA' : 'Verifikasi Kode OTP'}
                 </h3>
-                <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
-                  Kode 6 digit telah dikirim ke email{' '}
-                  <span className="inline-block px-2 py-0.5 bg-sky-50 text-sky-700 font-bold rounded-md border border-sky-200/60">
-                    {maskedEmail}
-                  </span>. Masukkan kode tersebut untuk melanjutkan.
-                </p>
+                {method === '2fa' ? (
+                  <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
+                    Masukkan kode 6 digit terbaru dari aplikasi authenticator yang sudah ditautkan ke akun Anda.
+                  </p>
+                ) : (
+                  <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
+                    Jika akun terdaftar dan memiliki email, kode verifikasi akan dikirim ke{' '}
+                    {maskedEmail ? (
+                      <span className="inline-block px-2 py-0.5 bg-sky-50 text-sky-700 font-bold rounded-md border border-sky-200/60">
+                        {maskedEmail}
+                      </span>
+                    ) : 'alamat email akun'}. Masukkan kode tersebut untuk melanjutkan.
+                  </p>
+                )}
               </div>
 
               <form onSubmit={handleVerifyOtp} className="space-y-4 pt-1">
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <label htmlFor="otp-input" className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
-                      Kode OTP 6-Digit
+                      {method === '2fa' ? 'Kode Authenticator 6-Digit' : 'Kode OTP 6-Digit'}
                     </label>
-                    <span className="text-xs text-slate-400 font-medium flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5" /> Berlaku 10 menit
-                    </span>
+                    {method === 'email' && (
+                      <span className="text-xs text-slate-400 font-medium flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5" /> Berlaku 10 menit
+                      </span>
+                    )}
                   </div>
                   <input
                     ref={otpInputRef}
@@ -387,30 +459,34 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
                     className="w-full px-4 py-3.5 border-2 border-sky-200 focus:border-sky-500 rounded-2xl text-3xl font-black tracking-[0.5em] text-center font-mono focus:outline-none focus:ring-4 focus:ring-sky-500/15 bg-slate-50/70 transition-all"
                   />
                   <p className="text-xs text-slate-500 text-center">
-                    Periksa folder <strong>Kotak Masuk (Inbox)</strong> atau <strong>Spam</strong> email Anda.
+                    {method === '2fa'
+                      ? 'Kode authenticator berubah secara berkala. Gunakan kode yang sedang aktif.'
+                      : <>Periksa folder <strong>Kotak Masuk (Inbox)</strong> atau <strong>Spam</strong> email Anda.</>}
                   </p>
                 </div>
 
                 {/* Resend OTP Link */}
-                <div className="flex items-center justify-between pt-1 pb-1">
-                  <span className="text-xs text-slate-500">Tidak menerima kode?</span>
-                  {cooldown > 0 ? (
-                    <span className="text-xs font-semibold text-slate-400 flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5" />
-                      Kirim ulang dalam {cooldown}s
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={handleResendOtp}
-                      disabled={resending}
-                      className="text-xs font-bold text-sky-600 hover:text-sky-700 transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${resending ? 'animate-spin' : ''}`} />
-                      Kirim Ulang Kode OTP
-                    </button>
-                  )}
-                </div>
+                {method === 'email' && (
+                  <div className="flex items-center justify-between pt-1 pb-1">
+                    <span className="text-xs text-slate-500">Tidak menerima kode?</span>
+                    {cooldown > 0 ? (
+                      <span className="text-xs font-semibold text-slate-400 flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5" />
+                        Kirim ulang dalam {cooldown}s
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleResendOtp}
+                        disabled={resending}
+                        className="text-xs font-bold text-sky-600 hover:text-sky-700 transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${resending ? 'animate-spin' : ''}`} />
+                        Kirim Ulang Kode OTP
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {/* Alerts */}
                 {successMsg && (
@@ -449,10 +525,10 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
                     {loading ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Memeriksa OTP...</span>
+                        <span>Memeriksa kode...</span>
                       </>
                     ) : (
-                      <span>Verifikasi OTP &rarr;</span>
+                      <span>Verifikasi Kode &rarr;</span>
                     )}
                   </button>
                 </div>
@@ -473,8 +549,16 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
                   Buat Kata Sandi Baru
                 </h3>
                 <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
-                  Kode OTP berhasil diverifikasi! Silakan tentukan kata sandi baru untuk akun <strong className="text-slate-800">{maskedEmail}</strong>.
+                  {successMsg
+                    ? <>Masukkan kata sandi baru untuk akun <strong className="text-slate-800">{maskedEmail || resetIdentifier}</strong>. Kode email akan diverifikasi saat kata sandi disimpan.</>
+                    : <>Verifikasi berhasil. Silakan tentukan kata sandi baru untuk akun <strong className="text-slate-800">{maskedEmail || resetIdentifier}</strong>.</>}
                 </p>
+                {successMsg && (
+                  <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{successMsg}</span>
+                  </div>
+                )}
               </div>
 
               <form onSubmit={handleChangePassword} className="space-y-4 pt-1">
@@ -497,7 +581,7 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
                         setNewPassword(e.target.value);
                         if (error) setError('');
                       }}
-                      placeholder="Minimal 6 karakter"
+                      placeholder="Minimal 8 karakter"
                       className="block w-full pl-11 pr-12 py-3 bg-transparent text-slate-800 text-base placeholder-slate-400 focus:outline-none"
                     />
                     <button
@@ -544,8 +628,10 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
                 {/* Validation hint */}
                 <div className="text-xs space-y-1 pt-1 text-slate-500">
                   <div className="flex items-center gap-1.5">
-                    <span className={`w-2 h-2 rounded-full ${newPassword.length >= 6 ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                    <span>Minimal 6 karakter</span>
+                    <span className={`w-2 h-2 rounded-full ${newPassword.length >= 8 ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                    <span className={newPassword.length >= 8 ? 'text-emerald-600 font-medium' : 'text-slate-500'}>
+                      {newPassword.length >= 8 ? 'Minimal 8 karakter terpenuhi' : `Masih kurang ${8 - newPassword.length} karakter dari minimal 8.`}
+                    </span>
                   </div>
                   {confirmPassword && (
                     <div className="flex items-center gap-1.5">
@@ -580,7 +666,7 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
                   </button>
                   <button
                     type="submit"
-                    disabled={loading || !newPassword || !confirmPassword || newPassword !== confirmPassword || newPassword.length < 6}
+                    disabled={loading || !newPassword || !confirmPassword || newPassword !== confirmPassword || newPassword.length < 8}
                     className="flex-1 py-3 px-5 bg-gradient-to-r from-blue-600 to-sky-500 hover:from-blue-500 hover:to-sky-400 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md shadow-blue-500/20 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     {loading ? (

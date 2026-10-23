@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Edit2, Trash2, X, Users, Building, Mail, Search, Lock, KeyRound, CheckCircle2, Loader2 } from 'lucide-react';
+import { Edit2, Trash2, X, Users, Building, Mail, Search, Lock, KeyRound, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
 import { ActionModal } from '../../components/ActionModal';
@@ -40,12 +40,12 @@ export const ManageUsers = () => {
   const [editTeamAssignments, setEditTeamAssignments] = useState({});
 
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newUserData, setNewUserData] = useState({
-    identifier: '', password: ''
+  const [newMasyarakatData, setNewMasyarakatData] = useState({
+    fullName: '', email: '', password: '', confirmPassword: ''
   });
-  const [verifiedTndUser, setVerifiedTndUser] = useState(null);
-  const [verifyingTnd, setVerifyingTnd] = useState(false);
-  const [tndVerificationError, setTndVerificationError] = useState('');
+  const [masyarakatFormError, setMasyarakatFormError] = useState('');
+  const [showMasyarakatPassword, setShowMasyarakatPassword] = useState(false);
+  const [showMasyarakatPasswordConfirmation, setShowMasyarakatPasswordConfirmation] = useState(false);
 
   const [modalConfig, setModalConfig] = useState({
     isOpen: false,
@@ -56,6 +56,13 @@ export const ManageUsers = () => {
     cancelText: 'Batal',
     onConfirm: null
   });
+
+  const masyarakatPasswordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+  const masyarakatPasswordIsValid = masyarakatPasswordPattern.test(newMasyarakatData.password);
+  const masyarakatPasswordConfirmationMismatch = Boolean(
+    newMasyarakatData.confirmPassword &&
+    newMasyarakatData.password !== newMasyarakatData.confirmPassword
+  );
 
   useEffect(() => {
     if (editingUser) {
@@ -150,16 +157,21 @@ export const ManageUsers = () => {
 
   const handleAddUserManual = async (e) => {
     e.preventDefault();
-    if (!verifiedTndUser) {
-      setTndVerificationError('Verifikasi akun TND terlebih dahulu.');
+    if (!masyarakatPasswordIsValid) {
+      setMasyarakatFormError('Password minimal 8 karakter serta harus memiliki huruf besar, huruf kecil, dan angka.');
+      return;
+    }
+    if (masyarakatPasswordConfirmationMismatch || !newMasyarakatData.confirmPassword) {
+      setMasyarakatFormError('Konfirmasi password tidak cocok.');
       return;
     }
     try {
-      await api.createUserManual(newUserData);
+      await api.createMasyarakatUserManual(newMasyarakatData);
       setShowAddModal(false);
-      setNewUserData({ identifier: '', password: '' });
-      setVerifiedTndUser(null);
-      setTndVerificationError('');
+      setNewMasyarakatData({ fullName: '', email: '', password: '', confirmPassword: '' });
+      setMasyarakatFormError('');
+      setShowMasyarakatPassword(false);
+      setShowMasyarakatPasswordConfirmation(false);
       await fetchUsers();
       setModalConfig({
         isOpen: true,
@@ -175,29 +187,12 @@ export const ManageUsers = () => {
     }
   };
 
-  const handleVerifyTndUser = async () => {
-    if (!newUserData.identifier.trim() || !newUserData.password) {
-      setTndVerificationError('NIP/NIK/Gmail dan password TND wajib diisi.');
-      return;
-    }
-    setVerifyingTnd(true);
-    setTndVerificationError('');
-    setVerifiedTndUser(null);
-    try {
-      const result = await api.verifyTndManualUser(newUserData);
-      setVerifiedTndUser(result.data);
-    } catch (error) {
-      setTndVerificationError(error.message || 'Verifikasi TND gagal.');
-    } finally {
-      setVerifyingTnd(false);
-    }
-  };
-
   const closeAddUserModal = () => {
     setShowAddModal(false);
-    setNewUserData({ identifier: '', password: '' });
-    setVerifiedTndUser(null);
-    setTndVerificationError('');
+    setNewMasyarakatData({ fullName: '', email: '', password: '', confirmPassword: '' });
+    setMasyarakatFormError('');
+    setShowMasyarakatPassword(false);
+    setShowMasyarakatPasswordConfirmation(false);
   };
 
   const handleSaveEdit = async () => {
@@ -375,7 +370,7 @@ export const ManageUsers = () => {
           onClick={() => setShowAddModal(true)}
           className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-sky-500/20 cursor-pointer flex items-center gap-2"
         >
-          <span>+ Tambah User Manual</span>
+          <span>+ Tambah Akun Masyarakat</span>
         </button>
       </div>
 
@@ -693,79 +688,146 @@ export const ManageUsers = () => {
         <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 overflow-hidden">
           <div className="bg-white max-w-lg w-full rounded-3xl p-6 sm:p-7 border border-slate-100 shadow-2xl space-y-5 text-left animate-in fade-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-              <h3 className="font-black text-slate-900 text-xl tracking-tight">Tambah Pengguna Manual</h3>
+              <h3 className="font-black text-slate-900 text-xl tracking-tight">Tambah Akun Masyarakat</h3>
               <button onClick={closeAddUserModal} className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <form onSubmit={handleAddUserManual} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">NIP / NIK / Gmail TND</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nama Lengkap</label>
                 <input
                   required
+                  maxLength={255}
                   type="text"
-                  value={newUserData.identifier}
-                  onChange={event => {
-                    setNewUserData({ ...newUserData, identifier: event.target.value });
-                    setVerifiedTndUser(null);
-                    setTndVerificationError('');
-                  }}
-                  autoComplete="username"
+                  value={newMasyarakatData.fullName}
+                  onChange={event => setNewMasyarakatData({ ...newMasyarakatData, fullName: event.target.value })}
+                  autoComplete="name"
                   className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-sky-500 text-sm font-semibold"
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Password TND</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email</label>
                 <input
                   required
-                  type="password"
-                  value={newUserData.password}
-                  onChange={event => {
-                    setNewUserData({ ...newUserData, password: event.target.value });
-                    setVerifiedTndUser(null);
-                    setTndVerificationError('');
-                  }}
-                  autoComplete="current-password"
+                  maxLength={255}
+                  type="email"
+                  value={newMasyarakatData.email}
+                  onChange={event => setNewMasyarakatData({ ...newMasyarakatData, email: event.target.value })}
+                  autoComplete="email"
                   className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-sky-500 text-sm font-semibold"
                 />
               </div>
-              <button
-                type="button"
-                onClick={handleVerifyTndUser}
-                disabled={verifyingTnd || !newUserData.identifier.trim() || !newUserData.password}
-                className="w-full py-2.5 px-4 rounded-xl border border-sky-200 bg-sky-50 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50 text-sm font-bold text-sky-700 transition-colors flex items-center justify-center gap-2"
-              >
-                {verifyingTnd ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                {verifyingTnd ? 'Memverifikasi ke TND...' : 'Verifikasi Akun TND'}
-              </button>
-
-              {tndVerificationError && (
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Password Akun</label>
+                <div className="relative">
+                  <input
+                    required
+                    minLength={8}
+                    pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}"
+                    type={showMasyarakatPassword ? 'text' : 'password'}
+                    value={newMasyarakatData.password}
+                    onChange={event => {
+                      setNewMasyarakatData({ ...newMasyarakatData, password: event.target.value });
+                      setMasyarakatFormError('');
+                    }}
+                    autoComplete="new-password"
+                    aria-invalid={Boolean(newMasyarakatData.password && !masyarakatPasswordIsValid)}
+                    aria-describedby="masyarakat-password-feedback"
+                    className={`w-full rounded-xl border p-3 pr-12 text-sm font-semibold focus:ring-2 focus:ring-sky-500 ${
+                      newMasyarakatData.password && !masyarakatPasswordIsValid
+                        ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-200'
+                        : 'border-slate-200'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowMasyarakatPassword(value => !value)}
+                    aria-label={showMasyarakatPassword ? 'Sembunyikan password' : 'Lihat password'}
+                    className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 transition-colors hover:text-sky-600"
+                  >
+                    {showMasyarakatPassword
+                      ? <EyeOff className="h-5 w-5" />
+                      : <Eye className="h-5 w-5" />}
+                  </button>
+                </div>
+                <p
+                  id="masyarakat-password-feedback"
+                  className={`mt-1.5 text-xs font-semibold ${
+                    newMasyarakatData.password && !masyarakatPasswordIsValid
+                      ? 'text-rose-600'
+                      : masyarakatPasswordIsValid ? 'text-emerald-600' : 'text-slate-500'
+                  }`}
+                  aria-live="polite"
+                >
+                  {!newMasyarakatData.password
+                    ? 'Minimal 8 karakter, dengan huruf besar, huruf kecil, dan angka.'
+                    : masyarakatPasswordIsValid
+                      ? 'Password sudah memenuhi semua syarat.'
+                      : 'Password belum sesuai. Gunakan minimal 8 karakter yang terdiri dari huruf besar, huruf kecil, dan angka.'}
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Konfirmasi Password</label>
+                <div className="relative">
+                  <input
+                    required
+                    minLength={8}
+                    type={showMasyarakatPasswordConfirmation ? 'text' : 'password'}
+                    value={newMasyarakatData.confirmPassword}
+                    onChange={event => {
+                      setNewMasyarakatData({ ...newMasyarakatData, confirmPassword: event.target.value });
+                      setMasyarakatFormError('');
+                    }}
+                    autoComplete="new-password"
+                    aria-invalid={masyarakatPasswordConfirmationMismatch}
+                    aria-describedby="masyarakat-password-confirmation-feedback"
+                    className={`w-full rounded-xl border p-3 pr-12 text-sm font-semibold focus:ring-2 focus:ring-sky-500 ${
+                      masyarakatPasswordConfirmationMismatch
+                        ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-200'
+                        : 'border-slate-200'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowMasyarakatPasswordConfirmation(value => !value)}
+                    aria-label={showMasyarakatPasswordConfirmation ? 'Sembunyikan konfirmasi password' : 'Lihat konfirmasi password'}
+                    className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 transition-colors hover:text-sky-600"
+                  >
+                    {showMasyarakatPasswordConfirmation
+                      ? <EyeOff className="h-5 w-5" />
+                      : <Eye className="h-5 w-5" />}
+                  </button>
+                </div>
+                <p
+                  id="masyarakat-password-confirmation-feedback"
+                  className={`mt-1.5 text-xs font-semibold ${
+                    masyarakatPasswordConfirmationMismatch ? 'text-rose-600' :
+                      newMasyarakatData.confirmPassword ? 'text-emerald-600' : 'text-slate-500'
+                  }`}
+                  aria-live="polite"
+                >
+                  {masyarakatPasswordConfirmationMismatch
+                    ? 'Konfirmasi password belum sama dengan password di atas.'
+                    : newMasyarakatData.confirmPassword
+                      ? 'Konfirmasi password cocok.'
+                      : 'Masukkan kembali password yang sama.'}
+                </p>
+              </div>
+              {masyarakatFormError && (
                 <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
-                  {tndVerificationError}
+                  {masyarakatFormError}
                 </p>
               )}
-
-              {verifiedTndUser && (
-                <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
-                  <p className="flex items-center gap-2 text-sm font-bold text-emerald-700">
-                    <CheckCircle2 className="h-4 w-4" /> Akun TND berhasil diverifikasi
-                  </p>
-                  <div>
-                    <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Nama Lengkap</label>
-                    <input readOnly value={verifiedTndUser.full_name} className="w-full rounded-lg border border-slate-200 bg-white p-2.5 text-sm font-semibold text-slate-700" />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-bold uppercase text-slate-500">OPD / Instansi</label>
-                    <input readOnly value={verifiedTndUser.department} className="w-full rounded-lg border border-slate-200 bg-white p-2.5 text-sm font-semibold text-slate-700" />
-                  </div>
-                  <p className="text-xs font-semibold text-slate-600">Akun akan dibuat dengan role User (OPD).</p>
-                </div>
-              )}
-              
+              <p className="rounded-xl border border-sky-100 bg-sky-50 p-3 text-sm font-medium text-sky-800">
+                Akun dibuat dengan role Masyarakat dan dapat langsung digunakan untuk login.
+              </p>
               <div className="flex gap-3 pt-3 border-t border-slate-100">
                 <button type="button" onClick={closeAddUserModal} className="flex-1 py-3 px-5 border border-slate-200 hover:bg-slate-50 rounded-xl text-sm sm:text-base font-bold text-slate-700 transition-all cursor-pointer">Batal</button>
-                <button type="submit" disabled={!verifiedTndUser} className="flex-1 py-3 px-5 bg-sky-600 hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md shadow-sky-500/20 cursor-pointer">Tambah User OPD</button>
+                <button type="submit" className="flex-1 py-3 px-5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md shadow-sky-500/20 cursor-pointer">
+                  Buat Akun Masyarakat
+                </button>
               </div>
             </form>
           </div>

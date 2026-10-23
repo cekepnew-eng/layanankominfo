@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Mail, ShieldCheck, Building, Tag, Info, Activity, Lock, Eye, EyeOff, Check, Briefcase } from 'lucide-react';
+import { User, Mail, ShieldCheck, Building, Tag, Info, Activity, Lock, Eye, EyeOff, Check, Briefcase, Camera } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
 import { ActionModal } from '../../components/ActionModal';
@@ -19,6 +19,7 @@ export const Profile = () => {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploadingProfileImage, setIsUploadingProfileImage] = useState(false);
 
   const [modalConfig, setModalConfig] = useState({
     isOpen: false,
@@ -39,6 +40,88 @@ export const Profile = () => {
   const userRoles = (user?.roles && user.roles.length > 0)
     ? user.roles
     : (user?.role ? [user.role] : ['user']);
+  const passwordStrengthChecks = [
+    newPassword.length >= (isMasyarakat ? 8 : 6),
+    newPassword.length >= 8,
+    /[a-z]/.test(newPassword),
+    /[A-Z]/.test(newPassword),
+    /\d/.test(newPassword),
+    /[^A-Za-z0-9]/.test(newPassword)
+  ];
+  const passwordStrengthScore = passwordStrengthChecks.filter(Boolean).length;
+  const passwordStrength = passwordStrengthScore >= 5
+    ? { label: 'Kuat', color: 'bg-emerald-500', text: 'text-emerald-700' }
+    : passwordStrengthScore >= 3
+      ? { label: 'Sedang', color: 'bg-amber-400', text: 'text-amber-700' }
+      : { label: 'Lemah', color: 'bg-rose-500', text: 'text-rose-700' };
+  const profileImage = user?.profileImage || user?.profile_image;
+  const isTndProfileImage = String(user?.profileImageSource || user?.profile_image_source || '').toUpperCase() === 'TND';
+  const canUploadProfileImage = isMasyarakat || userRoles.some(role => String(role).toUpperCase() === 'USER');
+  const passwordMinLength = isMasyarakat ? 8 : 6;
+
+  const handleProfileImageChange = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setModalConfig({
+        isOpen: true,
+        type: 'warning',
+        title: 'Format Foto Tidak Didukung',
+        message: 'Gunakan foto berformat JPG, PNG, atau WEBP.',
+        confirmText: 'Mengerti',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setModalConfig({
+        isOpen: true,
+        type: 'warning',
+        title: 'Ukuran Foto Terlalu Besar',
+        message: 'Ukuran foto maksimal 2 MB.',
+        confirmText: 'Mengerti',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
+      return;
+    }
+
+    setIsUploadingProfileImage(true);
+    try {
+      const imageData = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => typeof reader.result === 'string'
+          ? resolve(reader.result)
+          : reject(new Error('Foto tidak dapat dibaca.'));
+        reader.onerror = () => reject(new Error('Foto tidak dapat dibaca.'));
+        reader.readAsDataURL(file);
+      });
+      const response = await api.updateProfile({ profileImage: imageData });
+      const updatedUser = {
+        ...user,
+        profileImage: response.user?.profileImage || imageData,
+        profileImageSource: response.user?.profileImageSource || 'MANUAL'
+      };
+      setUser(updatedUser);
+      sessionStorage.setItem('spbe_user', JSON.stringify(updatedUser));
+      setSuccessMessage('Foto profil berhasil diperbarui.');
+      setTimeout(() => setSuccessMessage(''), 4000);
+    } catch (error) {
+      setModalConfig({
+        isOpen: true,
+        type: 'danger',
+        title: 'Gagal Memperbarui Foto',
+        message: error.message || 'Terjadi kesalahan saat menyimpan foto profil.',
+        confirmText: 'Tutup',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
+    } finally {
+      setIsUploadingProfileImage(false);
+    }
+  };
 
   const getBadgeClass = (r) => {
     switch (r) {
@@ -76,6 +159,18 @@ export const Profile = () => {
       });
       return;
     }
+    if (isMasyarakat && user?.passwordChangeRequired && !newPassword) {
+      setModalConfig({
+        isOpen: true,
+        type: 'warning',
+        title: 'Kata Sandi Wajib Diperbarui',
+        message: 'Demi keamanan, akun masyarakat wajib mengganti kata sandi setidaknya satu tahun sekali.',
+        confirmText: 'Ganti Kata Sandi',
+        cancelText: 'Tutup',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
+      return;
+    }
     if (oldPassword || newPassword || confirmPassword) {
       if (!oldPassword) {
         setModalConfig({
@@ -101,12 +196,12 @@ export const Profile = () => {
         });
         return;
       }
-      if (newPassword.length < 6) {
+      if (newPassword.length < passwordMinLength) {
         setModalConfig({
           isOpen: true,
           type: 'warning',
           title: 'Kata Sandi Terlalu Pendek',
-          message: 'Kata sandi baru minimal harus terdiri dari 6 karakter.',
+          message: `Kata sandi baru minimal harus terdiri dari ${passwordMinLength} karakter.`,
           confirmText: 'Perbaiki Kata Sandi',
           cancelText: '',
           onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
@@ -136,9 +231,13 @@ export const Profile = () => {
 
       const res = await api.updateProfile(payload);
 
+      if (res.token) {
+        sessionStorage.setItem('spbe_token', res.token);
+      }
       const updatedUser = {
         ...user,
-        name: res.user?.name || res.user?.full_name || nameVal.trim()
+        name: res.user?.name || res.user?.full_name || nameVal.trim(),
+        passwordChangeRequired: res.user?.passwordChangeRequired ?? (newPassword ? false : user?.passwordChangeRequired)
       };
 
       setUser(updatedUser);
@@ -192,9 +291,27 @@ export const Profile = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-xs pt-10 pb-8 px-6 flex flex-col items-center text-center">
-          <div className="w-24 h-24 rounded-2xl bg-sky-50 border-2 border-sky-200/80 text-sky-600 flex items-center justify-center shadow-xs shrink-0">
-            <User className="w-12 h-12 stroke-[1.75]" />
+          <div className="w-24 h-24 rounded-2xl bg-sky-50 border-2 border-sky-200/80 text-sky-600 flex items-center justify-center shadow-xs shrink-0 overflow-hidden">
+            {profileImage
+              ? <img src={profileImage} alt="Foto profil" className="h-full w-full object-cover" />
+              : <User className="w-12 h-12 stroke-[1.75]" />}
           </div>
+          {canUploadProfileImage && !isTndProfileImage && (
+            <label className={`mt-3 inline-flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-bold text-sky-700 transition-colors ${isUploadingProfileImage ? 'cursor-wait opacity-60' : 'cursor-pointer hover:bg-sky-100'}`}>
+              <Camera className="h-4 w-4" />
+              {isUploadingProfileImage ? 'Mengunggah foto...' : profileImage ? 'Ganti Foto Profil' : 'Tambah Foto Profil'}
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="sr-only"
+                disabled={isUploadingProfileImage}
+                onChange={handleProfileImageChange}
+              />
+            </label>
+          )}
+          {isTndProfileImage && (
+            <p className="mt-2 text-[11px] font-semibold text-slate-400">Foto profil tersinkronisasi dari TND</p>
+          )}
 
           <h3 className="text-xl font-black text-slate-900 mt-4 tracking-tight">
             {user?.name || 'Pengguna SPBE'}
@@ -294,6 +411,12 @@ export const Profile = () => {
               <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800 flex items-center gap-2 animate-in fade-in duration-150">
                 <Check className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span>{successMessage}</span>
+              </div>
+            )}
+
+            {isMasyarakat && user?.passwordChangeRequired && (
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm font-semibold text-amber-900">
+                Demi keamanan, akun masyarakat wajib mengganti kata sandi setidaknya satu tahun sekali. Ganti kata sandi sekarang untuk melanjutkan menggunakan layanan.
               </div>
             )}
 
@@ -412,7 +535,7 @@ export const Profile = () => {
                           type={showNewPassword ? 'text' : 'password'}
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
-                          placeholder="Minimal 6 karakter"
+                          placeholder={`Minimal ${passwordMinLength} karakter`}
                           className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 pr-10"
                         />
                         <button
@@ -423,6 +546,31 @@ export const Profile = () => {
                           {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </button>
                       </div>
+                      {newPassword && (
+                        <div className="mt-2 space-y-1.5" aria-live="polite">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-semibold text-slate-500">Kekuatan password</span>
+                            <span className={`text-[11px] font-bold ${passwordStrength.text}`}>
+                              {passwordStrength.label}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-6 gap-1" aria-hidden="true">
+                            {passwordStrengthChecks.map((meetsRequirement, index) => (
+                              <span
+                                key={index}
+                                className={`h-1.5 rounded-full ${
+                                  meetsRequirement ? passwordStrength.color : 'bg-slate-200'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          <p className={`text-[11px] ${newPassword.length >= passwordMinLength ? 'text-emerald-700' : 'text-rose-600'}`}>
+                            {newPassword.length >= passwordMinLength
+                              ? `Minimal ${passwordMinLength} karakter terpenuhi.`
+                              : `Masih kurang ${passwordMinLength - newPassword.length} karakter dari minimal ${passwordMinLength}.`}
+                          </p>
+                        </div>
+                      )}
                     </div>
 
                     <div>

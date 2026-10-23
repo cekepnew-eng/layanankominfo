@@ -26,6 +26,9 @@ export const Login = () => {
   const [captchaAnswer, setCaptchaAnswer] = useState('');
   const [trustDevice, setTrustDevice] = useState(false);
   const [passwordError, setPasswordError] = useState('');
+  const [loginLockoutUntil, setLoginLockoutUntil] = useState(0);
+  const [loginLockoutIdentifier, setLoginLockoutIdentifier] = useState('');
+  const [loginLockoutSeconds, setLoginLockoutSeconds] = useState(0);
   
   const [modalConfig, setModalConfig] = useState({
     isOpen: false,
@@ -57,6 +60,32 @@ export const Login = () => {
   useEffect(() => {
     loadCaptcha();
   }, []);
+
+  useEffect(() => {
+    if (!loginLockoutUntil) {
+      setLoginLockoutSeconds(0);
+      return undefined;
+    }
+
+    const updateCountdown = () => {
+      const remaining = Math.max(0, Math.ceil((loginLockoutUntil - Date.now()) / 1000));
+      setLoginLockoutSeconds(remaining);
+      if (remaining === 0) {
+        setLoginLockoutUntil(0);
+        setLoginLockoutIdentifier('');
+      }
+    };
+
+    updateCountdown();
+    const timer = window.setInterval(updateCountdown, 250);
+    return () => window.clearInterval(timer);
+  }, [loginLockoutUntil]);
+
+  const isLoginLocked = loginLockoutSeconds > 0
+    && loginLockoutIdentifier === identifier.trim().toLowerCase();
+  const lockoutMinutes = Math.floor(loginLockoutSeconds / 60);
+  const lockoutSecondsRemainder = loginLockoutSeconds % 60;
+  const lockoutCountdown = `${String(lockoutMinutes).padStart(2, '0')}:${String(lockoutSecondsRemainder).padStart(2, '0')}`;
 
   const identifyRoleFromTnd = (username) => {
     const userLower = (username || '').toLowerCase().trim();
@@ -98,7 +127,21 @@ export const Login = () => {
     } else if (loginResult && loginResult.success) {
       navigate('/dashboard');
     } else {
-      if (loginResult?.isOldPassword) {
+      if (loginResult?.isLoginLocked) {
+        const duration = Math.max(1, loginResult.retryAfterSeconds || 75);
+        setLoginLockoutIdentifier(identifier.trim().toLowerCase());
+        setLoginLockoutUntil(Date.now() + duration * 1000);
+        setModalConfig({
+          isOpen: true,
+          type: 'warning',
+          title: 'Login Dikunci Sementara',
+          message: 'Anda telah memasukkan kata sandi salah sebanyak 5 kali. Mohon tunggu 1 menit 15 detik. Waktu tunggu tersisa ditampilkan pada tombol Masuk.',
+          confirmText: 'Mengerti',
+          cancelText: '',
+          onConfirm: () => navigate('/auth/login', { replace: true })
+        });
+        loadCaptcha();
+      } else if (loginResult?.isOldPassword) {
         setPasswordError(loginResult.message);
         loadCaptcha();
       } else {
@@ -151,6 +194,7 @@ export const Login = () => {
 
   const handleStandardLogin = (e) => {
     if (e) e.preventDefault();
+    if (isLoginLocked) return;
     if (!identifier.trim() || !password) {
       setModalConfig({ isOpen: true, type: 'warning', title: 'Perhatian', message: 'Silakan masukkan Email/Username dan password terlebih dahulu!' });
       return;
@@ -395,11 +439,22 @@ export const Login = () => {
               <button
                 type="button"
                 onClick={handleStandardLogin}
-                className="group relative w-full py-4 rounded-xl bg-gradient-to-r from-blue-600 to-sky-500 hover:from-blue-500 hover:to-sky-400 text-base font-black text-white shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 transition-all duration-300 transform hover:-translate-y-0.5 flex items-center justify-center gap-2 cursor-pointer overflow-hidden"
+                disabled={isLoginLocked}
+                className={`group relative w-full py-4 rounded-xl text-base font-black text-white shadow-lg transition-all duration-300 flex items-center justify-center gap-2 overflow-hidden ${
+                  isLoginLocked
+                    ? 'bg-slate-400 shadow-slate-500/20 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-blue-600 to-sky-500 hover:from-blue-500 hover:to-sky-400 shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 transform hover:-translate-y-0.5 cursor-pointer'
+                }`}
               >
-                <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out"></div>
-                <span className="relative z-10 tracking-[0.2em]">MASUK</span>
-                <ChevronRight className="relative z-10 w-5 h-5 group-hover:translate-x-1 transition-transform duration-300" />
+                {!isLoginLocked && (
+                  <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out"></div>
+                )}
+                <span className="relative z-10 tracking-[0.1em]">
+                  {isLoginLocked ? `TUNGGU ${lockoutCountdown}` : 'MASUK'}
+                </span>
+                {isLoginLocked
+                  ? <Lock className="relative z-10 w-4 h-4" />
+                  : <ChevronRight className="relative z-10 w-5 h-5 group-hover:translate-x-1 transition-transform duration-300" />}
               </button>
             </div>
           </div>

@@ -15,7 +15,7 @@ const getHeaders = () => {
 const handleResponse = async (res) => {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    if (res.status === 401 || res.status === 403) {
+    if ((res.status === 401 || res.status === 403) && !data.requiresPasswordChange) {
       if (!window.location.pathname.startsWith('/auth/login')) {
         localStorage.removeItem('spbe_token');
         localStorage.removeItem('spbe_user');
@@ -86,6 +86,14 @@ export const api = {
   },
   createUserManual: async (payload) => {
     const res = await fetch(`${BASE_URL}/admin/users/manual`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload)
+    });
+    return handleResponse(res);
+  },
+  createMasyarakatUserManual: async (payload) => {
+    const res = await fetch(`${BASE_URL}/admin/users/manual/masyarakat`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(payload)
@@ -216,11 +224,19 @@ export const api = {
     });
     return handleResponse(res);
   },
-  validateResetOtp: async (email, otp) => {
+  validateResetOtp: async (identifier, otp) => {
     const res = await fetch(`${BASE_URL}/auth/forgot-password/validate-otp`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, otp })
+      body: JSON.stringify({ identifier, otp })
+    });
+    return handleResponse(res);
+  },
+  verifyReset2FA: async (identifier, otp) => {
+    const res = await fetch(`${BASE_URL}/auth/forgot-password/verify-2fa`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier, otp })
     });
     return handleResponse(res);
   },
@@ -253,7 +269,10 @@ export const api = {
 
   // SERVICES
   getPublicServices: async () => {
-    const res = await fetch(`${BASE_URL}/services`, { headers: getHeaders() });
+    const res = await fetch(`${BASE_URL}/services`, {
+      headers: getHeaders(),
+      cache: 'no-store'
+    });
     return handleResponse(res);
   },
   getAdminServices: async () => {
@@ -410,6 +429,44 @@ export const api = {
   // ADMIN
   getAdminTickets: async () => {
     const res = await fetch(`${BASE_URL}/admin/tickets`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+  getAdminRatings: async () => {
+    const res = await fetch(`${BASE_URL}/admin/ratings`, { headers: getHeaders() });
+    try {
+      return await handleResponse(res);
+    } catch (error) {
+      if (error.status !== 404) throw error;
+
+      const ticketsResponse = await api.getAdminTickets();
+      const tickets = ticketsResponse.data || [];
+      const completedStatuses = ['COMPLETED', 'WAITING_USER_CONFIRMATION'];
+      const ratedTickets = tickets.filter(ticket => Number(ticket.rating) > 0);
+      const unratedCount = tickets.filter(ticket =>
+        completedStatuses.includes(String(ticket.status_name || '').toUpperCase()) &&
+        !(Number(ticket.rating) > 0)
+      ).length;
+
+      return {
+        success: true,
+        canManageLanding: false,
+        data: ratedTickets.map(ticket => ({
+          ...ticket,
+          id: ticket.feedback_id || ticket.uuid || ticket.id,
+          name: ticket.opd || ticket.pemohon || 'Pengguna',
+          service: ticket.service_name || ticket.service,
+          selectedForLanding: Boolean(ticket.selectedForLanding)
+        })),
+        unratedCount
+      };
+    }
+  },
+  setRatingLandingVisibility: async (ratingId, selectedForLanding) => {
+    const res = await fetch(`${BASE_URL}/admin/ratings/${ratingId}/landing`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify({ selectedForLanding })
+    });
     return handleResponse(res);
   },
 

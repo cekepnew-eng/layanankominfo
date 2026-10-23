@@ -110,17 +110,11 @@ const isTicketForTeam = (tk, teamName) => {
 export const Overview = () => {
   const { user, services } = useAuth();
   const [tickets, setTickets] = useState([]);
-  const [globalRatings, setGlobalRatings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [adminUsers, setAdminUsers] = useState([]);
   const [adminTeams, setAdminTeams] = useState([]);
   const [adminServicesCount, setAdminServicesCount] = useState(0);
   const [adminServices, setAdminServices] = useState([]);
-
-  // Fallback variables to prevent ReferenceErrors
-  const users = [];
-  const teams = [];
-  const ratings = [];
 
   useEffect(() => {
     const fetchData = async () => {
@@ -135,7 +129,7 @@ export const Overview = () => {
             api.getHelpdeskTickets(),
             api.getPublicServices()
           ]);
-          raw = tData.data || data.data || [];
+          raw = data.data || tData.data || [];
           setAdminUsers(uData.data || []);
           setAdminTeams(teamsData.data || []);
           setAdminServicesCount(sData.data ? sData.data.length : 0);
@@ -220,10 +214,10 @@ export const Overview = () => {
   const inSlaTickets = completedOrWaiting.filter(t => t.progress === 100 || (t.status || '').includes('Selesai')); 
   const slaCompliancePct = completedOrWaiting.length > 0 ? ((inSlaTickets.length / completedOrWaiting.length) * 100).toFixed(1) + '%' : '100.0%';
 
-  const ratedTickets = tickets.filter(t => t.rating);
+  const ratedTickets = tickets.filter(t => Number(t.rating) > 0);
   const avgRating = ratedTickets.length > 0 
-    ? (ratedTickets.reduce((acc, curr) => acc + curr.rating, 0) / ratedTickets.length).toFixed(2)
-    : '5.00';
+    ? (ratedTickets.reduce((acc, curr) => acc + Number(curr.rating), 0) / ratedTickets.length).toFixed(2)
+    : '0.00';
   const calculatedRating = avgRating;
 
   if (loading) return <div className="p-8 text-slate-500 font-bold">Loading dashboard data...</div>;

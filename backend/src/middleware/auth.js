@@ -8,6 +8,17 @@ const authenticateToken = (req, res, next) => {
   jwt.verify(token, process.env.JWT_SECRET || 'secret-key-kominfo-2026', (err, user) => {
     if (err) return res.status(403).json({ success: false, message: 'Invalid or Expired Token' });
     if (user.purpose) return res.status(403).json({ success: false, message: 'Temporary tokens cannot access this route' });
+    if (
+      user.passwordChangeRequired
+      && !(req.method === 'PUT' && req.baseUrl === '/api/auth' && req.path === '/profile')
+      && !(req.method === 'POST' && req.baseUrl === '/api/auth' && req.path === '/logout')
+    ) {
+      return res.status(403).json({
+        success: false,
+        requiresPasswordChange: true,
+        message: 'Kata sandi akun masyarakat sudah digunakan selama satu tahun. Ganti kata sandi untuk melanjutkan.'
+      });
+    }
     req.user = user;
     next();
   });

@@ -37,6 +37,26 @@ const registrationVerifyLimiter = rateLimit({
   message: { success: false, message: 'Terlalu banyak percobaan OTP. Coba lagi beberapa saat.' }
 });
 
+const resetOtpRequestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => {
+    const identifier = String(req.body?.identifier || req.body?.email || '').trim().toLowerCase();
+    return `${ipKeyGenerator(req.ip)}:${identifier || 'invalid-identifier'}`;
+  },
+  message: { success: false, message: 'Terlalu banyak permintaan pemulihan. Coba lagi beberapa saat.' }
+});
+
+const resetOtpVerifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  keyGenerator: (req) => {
+    const identifier = String(req.body?.identifier || req.body?.email || '').trim().toLowerCase();
+    return `${ipKeyGenerator(req.ip)}:${identifier || 'invalid-identifier'}`;
+  },
+  message: { success: false, message: 'Terlalu banyak percobaan kode. Coba lagi beberapa saat.' }
+});
+
 router.get('/captcha', authController.getCaptcha);
 router.post('/login', authController.login);
 router.post('/login-2fa', login2FaLimiter, authController.login2FA);
@@ -50,8 +70,9 @@ router.post('/2fa/generate', authenticateTempToken, authController.generate2FA);
 router.post('/2fa/verify-setup', authenticateTempToken, authController.verifySetup2FA);
 
 // Forgot Password via Email OTP
-router.post('/forgot-password/request-otp', authController.requestResetOtp);
-router.post('/forgot-password/validate-otp', authController.validateResetOtp);
-router.post('/forgot-password/verify-otp', authController.verifyResetOtp);
+router.post('/forgot-password/request-otp', resetOtpRequestLimiter, authController.requestResetOtp);
+router.post('/forgot-password/validate-otp', resetOtpVerifyLimiter, authController.validateResetOtp);
+router.post('/forgot-password/verify-2fa', resetOtpVerifyLimiter, authController.verifyReset2FA);
+router.post('/forgot-password/verify-otp', resetOtpVerifyLimiter, authController.verifyResetOtp);
 
 module.exports = router;

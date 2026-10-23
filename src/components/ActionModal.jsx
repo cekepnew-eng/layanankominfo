@@ -12,8 +12,6 @@ export const ActionModal = ({
   onConfirm,
   children
 }) => {
-  if (!isOpen) return null;
-
   const getIconConfig = () => {
     switch (type) {
       case 'success':
@@ -59,6 +57,8 @@ export const ActionModal = ({
       document.documentElement.style.overflow = '';
     };
   }, [isOpen]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/65 backdrop-blur-xs flex items-center justify-center p-4 overflow-hidden animate-in fade-in duration-200 font-sans">
@@ -109,13 +109,15 @@ export const ActionModal = ({
             </button>
           ) : (
             <>
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 py-3 px-5 border border-slate-200 hover:bg-slate-50 hover:border-slate-300 rounded-xl text-sm sm:text-base font-bold text-slate-700 transition-all cursor-pointer"
-              >
-                {cancelText}
-              </button>
+              {cancelText && (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex-1 py-3 px-5 border border-slate-200 hover:bg-slate-50 hover:border-slate-300 rounded-xl text-sm sm:text-base font-bold text-slate-700 transition-all cursor-pointer"
+                >
+                  {cancelText}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {

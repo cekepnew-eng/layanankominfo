@@ -23,6 +23,8 @@ router.patch('/employee/tickets/:id/progress', authenticateToken, authorizeRole(
 
 // ADMIN
 router.get('/admin/tickets', authenticateToken, authorizeRole(['ADMIN']), ticketController.getAdminTickets);
+router.get('/admin/ratings', authenticateToken, authorizeRole(['ADMIN']), ticketController.getAdminRatings);
+router.patch('/admin/ratings/:id/landing', authenticateToken, authorizeRole(['ADMIN']), ticketController.setRatingLandingVisibility);
 
 // GENERAL
 router.get('/tickets/:id/history', authenticateToken, ticketController.getHistory);

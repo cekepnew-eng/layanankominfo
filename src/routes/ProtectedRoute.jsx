@@ -1,12 +1,19 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export const ProtectedRoute = ({ children, allowedRoles }) => {
   const { user } = useAuth();
+  const location = useLocation();
 
   if (!user) {
     return <Navigate to="/auth/login" replace />;
+  }
+
+  const isMasyarakat = user.role?.toUpperCase() === 'MASYARAKAT'
+    || (user.roles || []).some(role => String(role).toUpperCase() === 'MASYARAKAT');
+  if (isMasyarakat && user.passwordChangeRequired && location.pathname !== '/dashboard/profile') {
+    return <Navigate to="/dashboard/profile" replace />;
   }
 
   if (allowedRoles) {

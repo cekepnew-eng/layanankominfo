@@ -271,7 +271,7 @@ export const DashboardLayout = () => {
       { path: '/dashboard/admin/users', label: 'Kelola User', icon: Users },
       { path: '/dashboard/admin/services', label: 'Kelola Layanan', icon: Layers },
       { path: '/dashboard/admin/teams', label: 'Kelola Tim Kerja', icon: Briefcase },
-      { path: '/dashboard/admin/ratings', label: 'Kelola Ulasan & Rating', icon: Star, disabled: true }
+      { path: '/dashboard/admin/ratings', label: 'Kelola Ulasan & Rating', icon: Star }
     ];
 
     const userLinks = [

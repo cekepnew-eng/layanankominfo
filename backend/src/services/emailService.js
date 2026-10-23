@@ -9,7 +9,7 @@ const createTransporter = () => {
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
 
-  if (!pass) {
+  if (!user || !pass) {
     return null;
   }
 
@@ -103,24 +103,10 @@ Layanan Kominfo`;
     </html>
   `;
 
-  // Log ke konsol untuk inspeksi developer
-  console.log('====================================================');
-  console.log(`[EMAIL OTP RESET PASSWORD]`);
-  console.log(`Tujuan    : ${to}`);
-  console.log(`Pengguna  : ${name || 'User'}`);
-  console.log(`Kode OTP  : ${otp}`);
-  console.log(`Pengirim  : ${senderName}`);
-  console.log('====================================================');
-
   const transporter = createTransporter();
 
   if (!transporter) {
-    console.log('[EMAIL INFO]: SMTP_PASS belum diisi di backend/.env. Menggunakan logging konsol untuk pengujian.');
-    return {
-      success: true,
-      delivered: false,
-      message: 'OTP berhasil dibuat (Mode Pengujian: cek konsol server untuk kode OTP).'
-    };
+    throw new Error('SMTP belum dikonfigurasi untuk mengirim kode pemulihan kata sandi.');
   }
 
   try {
@@ -132,16 +118,11 @@ Layanan Kominfo`;
       text: textContent,
       html: htmlContent
     });
-    console.log(`[EMAIL SENT]: Berhasil terkirim ke ${to}. MessageId: ${info.messageId}`);
+    console.log('[EMAIL SENT]: Kode pemulihan kata sandi berhasil dikirim.');
     return { success: true, delivered: true, messageId: info.messageId };
   } catch (error) {
     console.error('[EMAIL ERROR]: Gagal mengirim email via SMTP:', error.message);
-    return {
-      success: true,
-      delivered: false,
-      error: error.message,
-      message: 'OTP dibuat (Cek konsol server jika SMTP mengalami kendala koneksi).'
-    };
+    throw error;
   }
 };
 

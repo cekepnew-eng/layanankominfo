@@ -236,6 +236,75 @@ exports.createUserManual = async (req, res) => {
   }
 };
 
+exports.createMasyarakatUserManual = async (req, res) => {
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+  const fullName = typeof req.body?.fullName === 'string' ? req.body.fullName.trim() : '';
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  const confirmPassword = typeof req.body?.confirmPassword === 'string' ? req.body.confirmPassword : '';
+  const phoneNumber = typeof req.body?.phoneNumber === 'string' ? req.body.phoneNumber.trim() : '';
+
+  if (!fullName || fullName.length > 255) {
+    return res.status(400).json({ success: false, message: 'Nama lengkap wajib diisi dan maksimal 255 karakter.' });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 255) {
+    return res.status(400).json({ success: false, message: 'Masukkan alamat email yang valid.' });
+  }
+  if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(password)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Password minimal 8 karakter serta harus memiliki huruf besar, huruf kecil, dan angka.'
+    });
+  }
+  if (password !== confirmPassword) {
+    return res.status(400).json({ success: false, message: 'Konfirmasi password tidak cocok.' });
+  }
+
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+    const existingUser = await client.query(
+      'SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1',
+      [email]
+    );
+    if (existingUser.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ success: false, message: 'Email sudah terdaftar.' });
+    }
+
+    const roleRes = await client.query("SELECT id FROM roles WHERE name = 'MASYARAKAT'");
+    if (roleRes.rows.length === 0) {
+      throw new Error('Role MASYARAKAT belum tersedia.');
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const userRes = await client.query(
+      `INSERT INTO users (
+         email, password_hash, full_name, phone_number, department, is_active,
+         is_two_factor_enabled, two_factor_secret, backup_codes
+       )
+       VALUES ($1, $2, $3, $4, 'Masyarakat Umum', true, false, NULL, '[]'::jsonb)
+       RETURNING id`,
+      [email, passwordHash, fullName, phoneNumber || null]
+    );
+    await client.query(
+      'INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)',
+      [userRes.rows[0].id, roleRes.rows[0].id]
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json({
+      success: true,
+      message: 'Akun masyarakat berhasil dibuat.',
+      userId: userRes.rows[0].id
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ success: false, message: error.message });
+  } finally {
+    client.release();
+  }
+};
+
 exports.getOpdUsers = async (req, res) => {
   try {
     const { search } = req.query;

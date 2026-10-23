@@ -115,9 +115,17 @@ const runAutoMigrations = async () => {
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS previous_password_hash VARCHAR(255);');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMP;');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS nip VARCHAR(50);');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image TEXT;');
+      await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_source VARCHAR(20);");
       await pool.query('CREATE INDEX IF NOT EXISTS idx_users_nip ON users(nip);');
     } catch (err) {
       handleMigrationError('users.password_tracking', err);
+    }
+
+    try {
+      await pool.query('ALTER TABLE ticket_feedback ADD COLUMN IF NOT EXISTS selected_for_landing BOOLEAN NOT NULL DEFAULT false;');
+    } catch (err) {
+      handleMigrationError('ticket_feedback.selected_for_landing', err);
     }
 
     // 6. CREATE TABLE password_reset_otps for Forgot Password OTP

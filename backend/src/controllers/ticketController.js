@@ -843,7 +843,7 @@ exports.getAdminTickets = async (req, res) => {
                ELSE 'Masyarakat Umum'
              END) as opd,
              s.service_name as service_name, s.target_sla as target_sla, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
-             tf.rating,
+             tf.id AS feedback_id, tf.rating, tf.comment,
              (SELECT file_name FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_name,
              (SELECT file_url FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_url,
              (SELECT COALESCE(json_agg(json_build_object('id', sub.id, 'task_name', sub.task_name, 'assigned_to_name', su.full_name, 'status', sub.status)), '[]'::json) FROM subtasks sub LEFT JOIN users su ON sub.assigned_to = su.id WHERE sub.ticket_id = t.id) as subtasks
@@ -869,6 +869,88 @@ exports.getAdminTickets = async (req, res) => {
     res.json({ success: true, data: mappedRows });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+exports.getAdminRatings = async (req, res) => {
+  try {
+    const [ratingsResult, unratedResult] = await Promise.all([
+      db.query(`
+      SELECT tf.id, tf.ticket_id, tf.rating, tf.comment, tf.created_at,
+             tf.selected_for_landing AS "selectedForLanding",
+             COALESCE(NULLIF(u.department, ''), u.full_name) AS name,
+             s.service_name AS service,
+             st.name AS status
+      FROM ticket_feedback tf
+      JOIN tickets t ON t.id = tf.ticket_id
+      JOIN users u ON u.id = t.user_id
+      JOIN services s ON s.id = t.service_id
+      JOIN ticket_statuses st ON st.id = t.status_id
+      ORDER BY tf.created_at DESC
+      `),
+      db.query(`
+        SELECT COUNT(*)::int AS count
+        FROM tickets t
+        JOIN ticket_statuses st ON st.id = t.status_id
+        LEFT JOIN ticket_feedback tf ON tf.ticket_id = t.id
+        WHERE st.name IN ('COMPLETED', 'WAITING_USER_CONFIRMATION')
+          AND tf.id IS NULL
+      `)
+    ]);
+    res.json({
+      success: true,
+      data: ratingsResult.rows,
+      unratedCount: unratedResult.rows[0].count
+    });
+  } catch (err) {
+    console.error('getAdminRatings error:', err.message);
+    res.status(500).json({ success: false, message: 'Gagal mengambil data ulasan dan rating.' });
+  }
+};
+
+exports.setRatingLandingVisibility = async (req, res) => {
+  const { id } = req.params;
+  const { selectedForLanding } = req.body || {};
+  if (typeof selectedForLanding !== 'boolean') {
+    return res.status(400).json({ success: false, message: 'Status tampilan landing tidak valid.' });
+  }
+
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock($1)', [801245]);
+
+    const rating = await client.query(
+      'SELECT id, selected_for_landing FROM ticket_feedback WHERE id = $1 FOR UPDATE',
+      [id]
+    );
+    if (rating.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, message: 'Ulasan tidak ditemukan.' });
+    }
+
+    if (selectedForLanding && !rating.rows[0].selected_for_landing) {
+      const selected = await client.query(
+        'SELECT COUNT(*)::int AS count FROM ticket_feedback WHERE selected_for_landing = true'
+      );
+      if (selected.rows[0].count >= 10) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ success: false, message: 'Kuota 10 ulasan untuk landing page sudah penuh.' });
+      }
+    }
+
+    await client.query(
+      'UPDATE ticket_feedback SET selected_for_landing = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [selectedForLanding, id]
+    );
+    await client.query('COMMIT');
+    res.json({ success: true, selectedForLanding });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('setRatingLandingVisibility error:', err.message);
+    res.status(500).json({ success: false, message: 'Gagal memperbarui tampilan ulasan.' });
+  } finally {
+    client.release();
   }
 };
 

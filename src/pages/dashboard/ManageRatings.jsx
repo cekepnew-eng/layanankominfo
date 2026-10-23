@@ -1,10 +1,49 @@
-import React, { useState } from 'react';
-import { useAuth } from '../../context/AuthContext';
+import React, { useEffect, useState } from 'react';
 import { Star, ShieldAlert, CheckCircle2, AlertCircle } from 'lucide-react';
+import { api } from '../../services/api';
 
 export const ManageRatings = () => {
-  const { ratings, toggleRatingForLanding } = useAuth();
+  const [ratings, setRatings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [unratedTicketCount, setUnratedTicketCount] = useState(0);
+  const [canManageLanding, setCanManageLanding] = useState(true);
+  const [updatingRatingId, setUpdatingRatingId] = useState(null);
   const [selectedStarFilter, setSelectedStarFilter] = useState('all');
+
+  const fetchRatings = async () => {
+    setLoadError('');
+    try {
+      const response = await api.getAdminRatings();
+      setRatings(response.data || []);
+      setUnratedTicketCount(Number(response.unratedCount) || 0);
+      setCanManageLanding(response.canManageLanding !== false);
+    } catch (error) {
+      setLoadError(error.message || 'Gagal memuat ulasan dan rating.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRatings();
+  }, []);
+
+  const toggleRatingForLanding = async (rating) => {
+    setUpdatingRatingId(rating.id);
+    try {
+      const selectedForLanding = !rating.selectedForLanding;
+      await api.setRatingLandingVisibility(rating.id, selectedForLanding);
+      setRatings(current => current.map(item =>
+        item.id === rating.id ? { ...item, selectedForLanding } : item
+      ));
+      setLoadError('');
+    } catch (error) {
+      setLoadError(error.message || 'Gagal memperbarui tampilan ulasan.');
+    } finally {
+      setUpdatingRatingId(null);
+    }
+  };
 
   const totalRatings = ratings.length;
   const commentedRatings = ratings.filter(r => r.comment && r.comment.trim() !== '');
@@ -13,7 +52,7 @@ export const ManageRatings = () => {
 
   const displayedRatings = selectedStarFilter === 'all'
     ? ratings
-    : ratings.filter(r => r.rating === selectedStarFilter);
+    : ratings.filter(r => Number(r.rating) === selectedStarFilter);
 
   return (
     <div className="space-y-8 font-sans text-left">
@@ -22,7 +61,7 @@ export const ManageRatings = () => {
         <p className="text-slate-500 text-base leading-relaxed">Pantau ulasan kepuasan layanan SPBE, rating bintang, dan komentar yang dikirimkan oleh perwakilan OPD daerah Kota Bogor.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Responden Rating</p>
           <p className="text-3xl font-black text-slate-800 mt-1">{totalRatings} Orang</p>
@@ -40,7 +79,19 @@ export const ManageRatings = () => {
           <p className="text-3xl font-black text-slate-800 mt-1">{starOnlyRatings.length} Orang</p>
           <p className="text-sm text-slate-500 mt-1.5">Responden yang hanya memberikan penilaian bintang.</p>
         </div>
+
+        <div className="bg-white p-6 rounded-2xl border border-amber-200 shadow-sm">
+          <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">Tiket Selesai Tanpa Rating</p>
+          <p className="text-3xl font-black text-amber-700 mt-1">{unratedTicketCount} Tiket</p>
+          <p className="text-sm text-slate-500 mt-1.5">Tiket selesai/menunggu konfirmasi yang belum memiliki penilaian SKM, termasuk tiket yang dibantu Helpdesk.</p>
+        </div>
       </div>
+
+      {loadError && (
+        <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">
+          {loadError}
+        </p>
+      )}
 
       <div className={`p-5 rounded-2xl border flex items-start gap-3 transition-all ${
         selectedRatingsCount === 10
@@ -76,7 +127,7 @@ export const ManageRatings = () => {
           Semua ({ratings.length})
         </button>
         {[5, 4, 3, 2, 1].map((stars) => {
-          const count = ratings.filter(r => r.rating === stars).length;
+          const count = ratings.filter(r => Number(r.rating) === stars).length;
           return (
             <button
               key={stars}
@@ -96,6 +147,9 @@ export const ManageRatings = () => {
         })}
       </div>
 
+      {loading ? (
+        <p className="py-10 text-center font-semibold text-slate-500">Memuat ulasan dan rating...</p>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {displayedRatings.length === 0 ? (
           <div className="col-span-full bg-white rounded-2xl border border-slate-200 p-16 text-center text-slate-400 space-y-3">
@@ -169,10 +223,11 @@ export const ManageRatings = () => {
                   <span className="text-sm font-bold text-slate-800">{r.name}</span>
                 </div>
                 
-                {r.comment && r.comment.trim() !== '' ? (
+                {r.comment && r.comment.trim() !== '' && canManageLanding ? (
                   <button
                     type="button"
-                    onClick={() => toggleRatingForLanding(r.id)}
+                    onClick={() => toggleRatingForLanding(r)}
+                    disabled={updatingRatingId === r.id || (!r.selectedForLanding && selectedRatingsCount >= 10)}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                       r.selectedForLanding 
                         ? 'bg-sky-600 hover:bg-sky-700 text-white shadow-sm cursor-pointer' 
@@ -187,6 +242,8 @@ export const ManageRatings = () => {
                         <CheckCircle2 className="w-3.5 h-3.5" />
                         <span>Ditampilkan (Landing)</span>
                       </>
+                    ) : r.comment && r.comment.trim() !== '' ? (
+                      <span className="text-[10px] font-semibold text-slate-400">Aktifkan pengaturan setelah backend diperbarui</span>
                     ) : (
                       <span>Tampilkan</span>
                     )}
@@ -201,6 +258,7 @@ export const ManageRatings = () => {
           ))
         )}
       </div>
+      )}
     </div>
   );
 };

@@ -5,10 +5,7 @@ import { api } from '../../services/api';
 import { 
   Search, 
   ChevronRight, 
-  Star, 
   CheckCircle, 
-  Clock, 
-  TrendingUp,
   Cpu,
   Globe,
   Shield,
@@ -19,8 +16,6 @@ import {
   GraduationCap,
   X,
   ChevronDown,
-  Terminal,
-  Activity,
   Info,
   ExternalLink
 } from 'lucide-react';
@@ -31,47 +26,20 @@ export const LandingPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedDrawerCategory, setSelectedDrawerCategory] = useState(null);
-  const [liveTickets, setLiveTickets] = useState([]);
   const [activeFaqId, setActiveFaqId] = useState(null);
   const [dbCategories, setDbCategories] = useState([]);
+  const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [publicStats, setPublicStats] = useState(null);
 
-  const { ratings, tickets } = useAuth();
-  const displayTestimonials = ratings ? ratings.filter(r => r.selectedForLanding) : [];
-  const commentedRatings = ratings ? ratings.filter(r => r.comment !== '') : [];
-  const paddedTestimonials = [...displayTestimonials];
-  for (let r of commentedRatings) {
-    if (paddedTestimonials.length >= 10) break;
-    if (!paddedTestimonials.some(existing => existing.id === r.id)) {
-      paddedTestimonials.push(r);
-    }
-  }
-  const completedOrWaiting = tickets ? tickets.filter(t => t.status === 'Selesai' || t.status === 'Menunggu Konfirmasi User' || t.status_name === 'COMPLETED' || t.status_name === 'WAITING_USER_CONFIRMATION') : [];
-  const inSlaTickets = completedOrWaiting.filter(t => t.progress === 100);
-  const sla = completedOrWaiting.length > 0 ? ((inSlaTickets.length / completedOrWaiting.length) * 100).toFixed(1) + '%' : '100.0%';
-  const rating = ratings && ratings.length > 0
-    ? (ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length).toFixed(2)
-    : '4.00';
-
-  const defaultTopCategories = [
-    { name: 'Aplikasi Informatika', count: 21 },
-    { name: 'Pengelolaan Sumber Daya & Perangkat Informatika', count: 0 },
-    { name: 'Penerapan Persandian & Sistem Pengamanan Informasi', count: 0 }
-  ];
-
-  const displayedTopCategories = (publicStats?.topCategories && publicStats.topCategories.some(c => c.count > 0))
-    ? publicStats.topCategories
-    : defaultTopCategories;
-
-  const displayedSla = publicStats?.slaCompliance || (completedOrWaiting.length > 0 ? sla : '100.0%');
-  const displayedSubServices = publicStats?.totalSubServices || (dbCategories.length > 0 ? dbCategories.reduce((acc, c) => acc + c.services.length, 0) : 191);
-  const displayedCategories = publicStats?.totalCategories || dbCategories.length || 8;
+  const displayedTopCategories = publicStats?.topCategories || [];
+  const displayedSla = publicStats?.slaCompliance ?? null;
+  const displayedSubServices = publicStats?.totalSubServices ?? null;
+  const displayedCategories = publicStats?.totalCategories ?? null;
+  const slaPercentage = displayedSla === null
+    ? 0
+    : Math.max(0, Math.min(100, Number.parseFloat(displayedSla) || 0));
   const [activeSection, setActiveSection] = useState('beranda');
-
-  const opds = ['Dinas Kesehatan', 'Dinas Pendidikan', 'Dinas PUPR', 'Kecamatan Bogor Tengah', 'DPMPTSP'];
-  const services = ['Pemeliharaan Server', 'Setup Jaringan', 'Konsultasi SPBE', 'Keamanan Aplikasi', 'Pembuatan Website'];
-  const statuses = ['Diterima', 'Diproses', 'Selesai'];
 
   useEffect(() => {
     const handleScroll = () => {
@@ -103,37 +71,16 @@ export const LandingPage = () => {
   }, []);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      const randomOpd = opds[Math.floor(Math.random() * opds.length)];
-      const randomService = services[Math.floor(Math.random() * services.length)];
-      const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
-      
-      setLiveTickets(prev => {
-        const newTicket = {
-          id: Date.now(),
-          opd: randomOpd,
-          service: randomService,
-          status: randomStatus,
-          time: 'Baru saja'
-        };
-        return [newTicket, ...prev.slice(0, 3)];
-      });
-    }, 6000);
+    let isLoading = false;
 
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
     const loadServiceCatalog = async () => {
+      if (isLoading) return;
+      isLoading = true;
       try {
         const res = await api.getPublicServices();
-        if (res?.stats) {
-          setPublicStats(res.stats);
-        }
+        setPublicStats(res?.stats || null);
         const catalog = res?.categories || [];
         const items = res?.data || [];
-
-        if (!catalog.length) return;
 
         const categoryMap = {};
         catalog.forEach((cat) => {
@@ -166,13 +113,26 @@ export const LandingPage = () => {
         });
 
         const mapped = Object.values(categoryMap).filter((cat) => cat.services.length > 0);
-        if (mapped.length > 0) setDbCategories(mapped);
+        setDbCategories(mapped);
+        setCatalogLoaded(true);
       } catch (error) {
         console.error('Gagal memuat katalog layanan dari backend:', error);
+      } finally {
+        isLoading = false;
       }
     };
 
     loadServiceCatalog();
+    const intervalId = setInterval(loadServiceCatalog, 30_000);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') loadServiceCatalog();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   const fallbackCategories = [
@@ -326,7 +286,7 @@ export const LandingPage = () => {
     }
   ];
 
-  const categories = dbCategories.length > 0 ? dbCategories : fallbackCategories;
+  const categories = catalogLoaded ? dbCategories : fallbackCategories;
 
   const filteredCategories = categories.filter(cat => {
     if (!searchQuery) return true;
@@ -476,12 +436,12 @@ export const LandingPage = () => {
                 <div className="relative flex items-center justify-center shrink-0">
                   <svg className="w-14 h-14 transform -rotate-90" viewBox="0 0 36 36">
                     <path className="text-slate-200" strokeWidth="3" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                    <path className="text-emerald-500" strokeDasharray={`${parseFloat(displayedSla) || 100}, 100`} strokeWidth="3" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    <path className="text-emerald-500" strokeDasharray={`${slaPercentage}, 100`} strokeWidth="3" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
                   </svg>
-                  <span className="absolute text-xs font-black text-slate-800">{(parseFloat(displayedSla) || 100).toFixed(0)}%</span>
+                  <span className="absolute text-xs font-black text-slate-800">{displayedSla ?? '—'}</span>
                 </div>
                 <div className="text-left">
-                  <p className="text-2xl font-black text-slate-900">{displayedSla}</p>
+                  <p className="text-2xl font-black text-slate-900">{displayedSla ?? '—'}</p>
                   <p className="text-sm text-slate-500">Tiket selesai sesuai SLA</p>
                 </div>
               </div>
@@ -495,11 +455,11 @@ export const LandingPage = () => {
               <div className="space-y-3 text-left">
                 <div className="flex items-center gap-2 text-sky-600 font-bold text-xs uppercase tracking-wider bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-100 w-fit">
                   <CheckCircle className="w-4 h-4" />
-                  <span>{displayedSubServices} Sub-Layanan</span>
+                  <span>{displayedSubServices ?? '—'} Sub-Layanan</span>
                 </div>
                 <div>
                   <p className="text-2xl font-black text-slate-900">100% Digital</p>
-                  <p className="text-sm text-slate-500">Terhubung di {displayedCategories} Kategori SPBE Resmi</p>
+                  <p className="text-sm text-slate-500">Terhubung di {displayedCategories ?? '—'} Kategori SPBE Resmi</p>
                 </div>
               </div>
             </div>
@@ -510,7 +470,11 @@ export const LandingPage = () => {
                 <h4 className="font-extrabold text-slate-900 text-lg leading-tight">Layanan Paling Sering Digunakan</h4>
               </div>
               <div className="space-y-3.5 text-left">
-                {displayedTopCategories.map((item, idx) => {
+                {displayedTopCategories.length === 0 ? (
+                  <p className="text-sm text-slate-500">
+                    {publicStats ? 'Data statistik belum tersedia.' : 'Memuat data layanan...'}
+                  </p>
+                ) : displayedTopCategories.map((item, idx) => {
                   const barColors = ['bg-sky-500', 'bg-sky-400', 'bg-sky-300'];
                   const color = barColors[idx % barColors.length];
                   const maxCount = Math.max(...displayedTopCategories.map(c => c.count), 1);

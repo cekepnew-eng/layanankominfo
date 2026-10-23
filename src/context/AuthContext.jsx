@@ -76,7 +76,9 @@ export const AuthProvider = ({ children }) => {
       return { 
         success: false, 
         message: err.message, 
-        isOldPassword: Boolean(err.isOldPassword || err.data?.isOldPassword) 
+        isOldPassword: Boolean(err.isOldPassword || err.data?.isOldPassword),
+        isLoginLocked: Boolean(err.data?.isLoginLocked),
+        retryAfterSeconds: Number(err.data?.retryAfterSeconds) || 0
       };
     }
   };

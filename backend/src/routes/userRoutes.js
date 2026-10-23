@@ -11,5 +11,6 @@ router.post('/:id/reset2fa', authenticateToken, authorizeRole(['ADMIN']), userCo
 
 router.post('/manual/verify-tnd', authenticateToken, authorizeRole(['ADMIN']), userController.verifyTndManualUser);
 router.post('/manual', authenticateToken, authorizeRole(['ADMIN']), userController.createUserManual);
+router.post('/manual/masyarakat', authenticateToken, authorizeRole(['ADMIN']), userController.createMasyarakatUserManual);
 
 module.exports = router;
