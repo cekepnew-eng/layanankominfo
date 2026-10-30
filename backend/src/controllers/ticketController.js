@@ -1021,22 +1021,32 @@ exports.getHistory = async (req, res) => {
 
       let detectedRole = log.user_role;
       const lowerDesc = desc.toLowerCase();
-      if (
+
+      // If user is MASYARAKAT, always preserve MASYARAKAT!
+      if (String(log.user_role || '').toUpperCase() === 'MASYARAKAT') {
+        detectedRole = 'MASYARAKAT';
+      } else if (String(log.user_role || '').toUpperCase() === 'USER' || String(log.user_role || '').toUpperCase() === 'OPD') {
+        detectedRole = 'USER';
+      } else if (
+        lowerDesc.startsWith('tiket berhasil diajukan') ||
+        (lowerDesc.includes('diajukan') && !lowerDesc.includes('diajukan oleh helpdesk')) ||
         lowerDesc.includes('skm') ||
         lowerDesc.includes('bintang') ||
         lowerDesc.includes('ulasan') ||
         lowerDesc.includes('rating') ||
         lowerDesc.includes('disanggah') ||
-        lowerDesc.includes('sanggahan') ||
-        (lowerDesc.includes('diajukan') && !lowerDesc.includes('helpdesk'))
+        lowerDesc.includes('sanggahan')
       ) {
-        detectedRole = 'USER';
+        detectedRole = (log.user_role && ['MASYARAKAT', 'USER', 'OPD'].includes(String(log.user_role).toUpperCase()))
+          ? log.user_role
+          : (String(log.user_role).toUpperCase() === 'MASYARAKAT' ? 'MASYARAKAT' : 'USER');
       } else if (
-        lowerDesc.includes('helpdesk') || 
+        lowerDesc.includes('diajukan oleh helpdesk') ||
         lowerDesc.includes('diverifikasi') || 
         lowerDesc.includes('ditugaskan ke tim') || 
         lowerDesc.includes('penugasan tim') ||
-        lowerDesc.includes('ditangguhkan')
+        lowerDesc.includes('ditangguhkan') ||
+        lowerDesc.includes('alasan pending')
       ) {
         detectedRole = 'HELPDESK';
       } else if (
@@ -1049,7 +1059,6 @@ exports.getHistory = async (req, res) => {
       ) {
         detectedRole = 'PEGAWAI';
       }
-
       return {
         ...log,
         user_role: detectedRole,

@@ -20,6 +20,7 @@ import {
   Bell,
   Search,
   Clock,
+  ClipboardList,
   X
 } from 'lucide-react';
 
@@ -62,8 +63,67 @@ export const DashboardLayout = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [liveToast, setLiveToast] = useState(null);
+  const [isToastFading, setIsToastFading] = useState(false);
+  const toastTimerRef = React.useRef(null);
+  const toastFadeTimerRef = React.useRef(null);
   const [showSidebar, setShowSidebar] = useState(false);
   const notifRef = React.useRef(null);
+  const profileImage = user?.profile_image || user?.profileImage;
+  const [profileImageLoadError, setProfileImageLoadError] = useState(false);
+  const profileInitials = String(user?.name || 'U')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(namePart => namePart[0])
+    .join('')
+    .toUpperCase() || 'U';
+
+  React.useEffect(() => {
+    setProfileImageLoadError(false);
+  }, [profileImage]);
+
+  const dismissToastGradually = React.useCallback(() => {
+    setIsToastFading(true);
+    if (toastFadeTimerRef.current) clearTimeout(toastFadeTimerRef.current);
+    toastFadeTimerRef.current = setTimeout(() => {
+      setLiveToast(null);
+      setIsToastFading(false);
+    }, 800); // 800ms duration for fade out animation
+  }, []);
+
+  const handleToastMouseEnter = () => {
+    // Pause auto dismiss when user hovers over notification
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    if (toastFadeTimerRef.current) clearTimeout(toastFadeTimerRef.current);
+    setIsToastFading(false);
+  };
+
+  const handleToastMouseLeave = () => {
+    // Resume gradual fade out 2.5s after mouse leaves
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => {
+      dismissToastGradually();
+    }, 2500);
+  };
+
+  React.useEffect(() => {
+    if (!liveToast) return;
+
+    setIsToastFading(false);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    if (toastFadeTimerRef.current) clearTimeout(toastFadeTimerRef.current);
+
+    // Auto-dismiss smoothly after 5.5 seconds
+    toastTimerRef.current = setTimeout(() => {
+      dismissToastGradually();
+    }, 5500);
+
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      if (toastFadeTimerRef.current) clearTimeout(toastFadeTimerRef.current);
+    };
+  }, [liveToast, dismissToastGradually]);
 
   React.useEffect(() => {
     const handleClickOutside = (event) => {
@@ -95,7 +155,7 @@ export const DashboardLayout = () => {
         readIds.push(id);
         localStorage.setItem('read_notif_ids', JSON.stringify(readIds));
       }
-    } catch (e) {}
+    } catch (e) { }
   };
 
   React.useEffect(() => {
@@ -109,7 +169,7 @@ export const DashboardLayout = () => {
           let readIds = new Set();
           try {
             readIds = new Set(JSON.parse(localStorage.getItem('read_notif_ids') || '[]').map(String));
-          } catch (e) {}
+          } catch (e) { }
 
           const allNotifs = res.data.map(n => {
             const isRead = Boolean(n.is_read || readIds.has(String(n.id)));
@@ -271,6 +331,7 @@ export const DashboardLayout = () => {
       { path: '/dashboard/admin/users', label: 'Kelola User', icon: Users },
       { path: '/dashboard/admin/services', label: 'Kelola Layanan', icon: Layers },
       { path: '/dashboard/admin/teams', label: 'Kelola Tim Kerja', icon: Briefcase },
+      { path: '/dashboard/admin/ticket-recap', label: 'Rekap Tiket', icon: ClipboardList },
       { path: '/dashboard/admin/ratings', label: 'Kelola Ulasan & Rating', icon: Star }
     ];
 
@@ -292,10 +353,11 @@ export const DashboardLayout = () => {
         adminLinks[0],
         adminLinks[1],
         adminLinks[2],
+        adminLinks[3],
         history,
         ticketHistory,
         trackTicket,
-        adminLinks[3],
+        adminLinks[4],
         profile
       ];
     }
@@ -319,6 +381,7 @@ export const DashboardLayout = () => {
       services: 'Kelola Layanan SPBE',
       teams: 'Kelola Tim Kerja',
       ratings: 'Kelola Ulasan & Rating',
+      'ticket-recap': 'Rekap Tiket',
       tasks: 'Tugas Pengerjaan',
       'create-ticket': 'Ajukan Layanan',
       profile: 'Profil Pengguna',
@@ -331,23 +394,25 @@ export const DashboardLayout = () => {
 
   const getProfileRoleLabel = () => {
     if (!user) return '';
-    if (user.role === 'USER') return 'OPD';
-    if (user.role === 'MASYARAKAT') return 'Masyarakat';
-    if (user.role === 'ADMIN') return 'Admin';
-    if (user.role === 'HELPDESK') return 'Helpdesk';
-    if (user.role === 'PEGAWAI') return 'Pegawai';
-    return user.role;
+    const role = String(user.role || user.roles?.[0] || '').trim().toUpperCase();
+    if (role === 'USER' || role === 'OPD') return 'OPD';
+    if (role === 'MASYARAKAT') return 'Masyarakat';
+    if (role === 'ADMIN') return 'Admin';
+    if (role === 'HELPDESK') return 'Helpdesk';
+    if (role === 'PEGAWAI') return 'Pegawai';
+    return role;
   };
 
   const getProfileDeptLabel = () => {
     if (!user) return '';
-    if (user.role === 'MASYARAKAT' || user.roles?.includes('MASYARAKAT') || user.roles?.includes('masyarakat')) return 'Masyarakat Umum';
+    const roles = [user.role, ...(user.roles || [])].map(role => String(role).toUpperCase());
+    if (roles.includes('MASYARAKAT')) return 'Masyarakat Umum';
     return user.department || 'Dinas Komunikasi dan Informatika';
   };
 
   const getProfileRoleBadgeClass = () => {
     if (!user) return 'bg-slate-100 text-slate-700 border-slate-200';
-    switch (user.role) {
+    switch (String(user.role || user.roles?.[0] || '').trim().toUpperCase()) {
       case 'ADMIN':
         return 'bg-rose-50 text-rose-700 border-rose-200';
       case 'HELPDESK':
@@ -366,8 +431,8 @@ export const DashboardLayout = () => {
     <div className="h-screen w-full theme-premium-bg flex font-sans overflow-hidden">
       {/* Mobile Sidebar Overlay */}
       {showSidebar && (
-        <div 
-          className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-30 md:hidden" 
+        <div
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-30 md:hidden"
           onClick={() => setShowSidebar(false)}
         />
       )}
@@ -383,7 +448,7 @@ export const DashboardLayout = () => {
 
         {user && user.roles && user.roles.length > 1 && (
           <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50">
-            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Ganti Dasbor</label>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">Ganti Dasboard</label>
             <select
               value={user.role}
               onChange={(e) => {
@@ -395,11 +460,11 @@ export const DashboardLayout = () => {
             >
               {user.roles.map((r) => {
                 const labels = {
-                  ADMIN: 'Dasbor Admin',
-                  HELPDESK: 'Dasbor Helpdesk',
-                  PEGAWAI: 'Dasbor Pegawai',
-                  USER: 'Dasbor OPD',
-                  MASYARAKAT: 'Dasbor Masyarakat'
+                  ADMIN: 'Dasboard Admin',
+                  HELPDESK: 'Dasboard Helpdesk',
+                  PEGAWAI: 'Dasboard Pegawai',
+                  USER: 'Dasboard OPD',
+                  MASYARAKAT: 'Dasboard Masyarakat'
                 };
                 return <option key={r} value={r} className="bg-white text-slate-800 font-semibold">{labels[r] || r}</option>;
               })}
@@ -447,8 +512,8 @@ export const DashboardLayout = () => {
                   sessionStorage.removeItem('activeTicketId');
                 }}
                 className={`flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-all ${isActive
-                    ? 'bg-sky-600 text-white shadow-md shadow-sky-500/30 translate-x-1 border border-sky-500'
-                    : 'text-slate-550 hover:bg-slate-50 hover:text-slate-800'
+                  ? 'bg-sky-600 text-white shadow-md shadow-sky-500/30 translate-x-1 border border-sky-500'
+                  : 'text-slate-550 hover:bg-slate-50 hover:text-slate-800'
                   }`}
               >
                 <Icon className={`w-5 h-5 transition-colors ${isActive ? 'text-white' : 'text-slate-400'}`} />
@@ -472,7 +537,7 @@ export const DashboardLayout = () => {
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         <header className="h-20 shrink-0 glass-panel border-b-0 flex items-center justify-between px-4 sm:px-8 z-10 sticky top-0">
           <div className="flex items-center gap-2">
-            <button 
+            <button
               onClick={() => setShowSidebar(!showSidebar)}
               className="md:hidden p-2 -ml-2 text-slate-500 hover:text-sky-600 focus:outline-none"
             >
@@ -504,7 +569,7 @@ export const DashboardLayout = () => {
 
               {/* Backdrop to close notification on outside click - transparent without dark shadow overlay */}
               {showNotifications && (
-                <div 
+                <div
                   className="fixed inset-0 z-40 bg-transparent"
                   style={{ boxShadow: 'none' }}
                   onClick={() => setShowNotifications(false)}
@@ -513,7 +578,7 @@ export const DashboardLayout = () => {
               )}
 
               {showNotifications && (
-                <div 
+                <div
                   ref={notifRef}
                   className="fixed inset-x-3 top-20 sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-3 sm:w-96 max-w-[calc(100vw-1.5rem)] bg-white rounded-2xl sm:rounded-3xl shadow-none border border-slate-200 overflow-hidden z-50 animate-in slide-in-from-top-2 duration-200"
                   style={{ boxShadow: 'none', filter: 'none' }}
@@ -543,8 +608,8 @@ export const DashboardLayout = () => {
                           Tandai Dibaca
                         </button>
                       )}
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         onClick={() => setShowNotifications(false)}
                         className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
                         aria-label="Tutup Notifikasi"
@@ -564,26 +629,24 @@ export const DashboardLayout = () => {
                       </div>
                     ) : (
                       notifications.map((n, i) => (
-                        <div 
-                          key={n.id || i} 
-                          onClick={() => handleNotificationClick(n)} 
-                          className={`p-3 sm:p-3.5 rounded-2xl transition-all cursor-pointer group flex items-start gap-3 border shadow-none ${
-                            n.isRead 
-                              ? 'bg-white/60 hover:bg-white border-transparent hover:border-slate-200' 
-                              : 'bg-sky-50/60 hover:bg-white border-sky-100 hover:border-sky-200'
-                          }`}
+                        <div
+                          key={n.id || i}
+                          onClick={() => handleNotificationClick(n)}
+                          className={`p-3 sm:p-3.5 rounded-2xl transition-all cursor-pointer group flex items-start gap-3 border shadow-none ${n.isRead
+                            ? 'bg-white/60 hover:bg-white border-transparent hover:border-slate-200'
+                            : 'bg-sky-50/60 hover:bg-white border-sky-100 hover:border-sky-200'
+                            }`}
                           style={{ boxShadow: 'none' }}
                         >
-                          <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center shrink-0 border transition-colors ${
-                            n.type === 'warning' ? 'bg-amber-50 border-amber-100 text-amber-600 group-hover:bg-amber-100' :
+                          <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center shrink-0 border transition-colors ${n.type === 'warning' ? 'bg-amber-50 border-amber-100 text-amber-600 group-hover:bg-amber-100' :
                             n.type === 'success' ? 'bg-emerald-50 border-emerald-100 text-emerald-600 group-hover:bg-emerald-100' :
-                            n.type === 'processing' ? 'bg-sky-50 border-sky-100 text-sky-600 group-hover:bg-sky-100' :
-                            'bg-slate-50 border-slate-200 text-slate-600 group-hover:bg-slate-100'
-                          }`}>
+                              n.type === 'processing' ? 'bg-sky-50 border-sky-100 text-sky-600 group-hover:bg-sky-100' :
+                                'bg-slate-50 border-slate-200 text-slate-600 group-hover:bg-slate-100'
+                            }`}>
                             {n.type === 'warning' ? <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" /> :
                               n.type === 'success' ? <CheckSquare className="w-4 h-4 sm:w-5 sm:h-5" /> :
-                              n.type === 'processing' ? <Briefcase className="w-4 h-4 sm:w-5 sm:h-5" /> :
-                                <FileText className="w-4 h-4 sm:w-5 sm:h-5" />}
+                                n.type === 'processing' ? <Briefcase className="w-4 h-4 sm:w-5 sm:h-5" /> :
+                                  <FileText className="w-4 h-4 sm:w-5 sm:h-5" />}
                           </div>
                           <div className="flex-1 min-w-0 pt-0.5">
                             <div className="flex items-center justify-between gap-2">
@@ -607,14 +670,14 @@ export const DashboardLayout = () => {
                     )}
                   </div>
                   <div className="p-3 bg-slate-50/90 backdrop-blur-md border-t border-slate-100 text-center rounded-b-2xl sm:rounded-b-3xl shrink-0">
-                    <Link 
-                      to="/dashboard/ticket-history" 
+                    <Link
+                      to="/dashboard/ticket-history"
                       onClick={() => {
                         setShowNotifications(false);
                         sessionStorage.removeItem('fromNotificationTicketId');
                         sessionStorage.removeItem('redirectedForTicket');
                         sessionStorage.removeItem('activeTicketId');
-                      }} 
+                      }}
                       className="text-xs font-bold text-sky-600 hover:text-sky-700 hover:underline flex items-center justify-center gap-1"
                     >
                       <span>Lihat Semua Riwayat Tiket Selesai</span>
@@ -636,8 +699,19 @@ export const DashboardLayout = () => {
               className="flex items-center gap-3 glass-card hover:bg-white/80 border border-white/50 hover:border-sky-300 px-3.5 py-2 rounded-2xl transition-all shadow-xs hover:shadow-sm cursor-pointer group shrink-0"
               title="Lihat & Kelola Profil Pengguna"
             >
-              <div className="w-10 h-10 rounded-xl bg-white/80 border border-white group-hover:border-sky-300 flex items-center justify-center text-sky-600 shadow-2xs shrink-0 group-hover:scale-105 transition-all">
-                <User className="w-5 h-5 text-sky-600" />
+              <div className="w-10 h-10 rounded-xl bg-sky-50 border border-white group-hover:border-sky-300 flex items-center justify-center text-sky-700 shadow-2xs shrink-0 group-hover:scale-105 transition-all overflow-hidden font-black text-xs">
+                {profileImage && !profileImageLoadError ? (
+                  <img
+                    src={profileImage}
+                    alt="Foto Profil"
+                    className="w-full h-full object-cover"
+                    onError={() => setProfileImageLoadError(true)}
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-sky-500 via-blue-600 to-indigo-700 text-white flex items-center justify-center">
+                    {profileInitials}
+                  </div>
+                )}
               </div>
               <div className="text-left hidden sm:block max-w-[160px] lg:max-w-[200px]">
                 <p className="text-sm font-black text-slate-800 leading-tight truncate group-hover:text-sky-700 transition-colors" title={user ? user.name : 'Unknown'}>
@@ -669,38 +743,61 @@ export const DashboardLayout = () => {
         onClose={() => setShowLogoutConfirm(false)}
         type="danger"
         title="Konfirmasi Keluar Sistem"
-        message="Apakah Anda yakin ingin keluar dari sesi akun ini? Anda akan diminta melakukan autentikasi 2FA Google Authenticator saat ingin masuk kembali ke dasbor."
+        message="Apakah Anda yakin ingin keluar dari sesi akun ini? Anda akan diminta melakukan autentikasi 2FA Google Authenticator saat ingin masuk kembali ke dasboard."
         confirmText="Ya, Keluar Akun"
         cancelText="Batal"
         onConfirm={handleConfirmLogout}
       />
 
-      {/* Global Real-time Notification Toast (WhatsApp-like) */}
+      {/* Global Real-time Notification Toast (Hilang Perlahan) */}
       {liveToast && (
-        <div 
+        <div
+          onMouseEnter={handleToastMouseEnter}
+          onMouseLeave={handleToastMouseLeave}
           onClick={() => {
             handleNotificationClick(liveToast);
             setLiveToast(null);
+            setIsToastFading(false);
           }}
-          className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300 cursor-pointer"
+          className={`fixed bottom-6 right-6 z-50 transition-all duration-700 ease-in-out cursor-pointer ${isToastFading
+              ? 'opacity-0 translate-y-4 scale-95 pointer-events-none'
+              : 'opacity-100 translate-y-0 scale-100 animate-in slide-in-from-bottom-5 duration-300'
+            }`}
         >
-          <div className="bg-white rounded-2xl p-4 flex items-start gap-4 border border-slate-200 max-w-sm shadow-none hover:border-sky-300 transition-colors" style={{ boxShadow: 'none' }}>
-            <div className="w-10 h-10 rounded-full bg-sky-100 flex items-center justify-center shrink-0 border border-sky-200" style={{ boxShadow: 'none' }}>
+          <div
+            className="bg-white/95 backdrop-blur-md rounded-2xl p-4 flex items-start gap-4 border border-slate-200/90 max-w-sm shadow-xl shadow-slate-900/10 hover:border-sky-300 transition-all relative overflow-hidden group"
+          >
+            {/* Progress countdown line */}
+            <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-100 overflow-hidden">
+              <div
+                className={`h-full bg-gradient-to-r from-sky-400 to-blue-600 ${!isToastFading ? 'animate-toast-progress' : 'w-0'
+                  }`}
+              />
+            </div>
+
+            <div className="w-10 h-10 rounded-full bg-sky-100 flex items-center justify-center shrink-0 border border-sky-200 shadow-sm">
               <Bell className="w-5 h-5 text-sky-600 animate-pulse" />
             </div>
             <div className="flex-1 min-w-0 pr-2 pt-0.5">
-              <h4 className="text-sm font-black text-slate-800">{liveToast.title}</h4>
+              <div className="flex items-center gap-1.5">
+                <h4 className="text-sm font-black text-slate-800">{liveToast.title}</h4>
+                <span className="w-2 h-2 rounded-full bg-sky-500 animate-ping"></span>
+              </div>
               <p className="text-xs font-semibold text-slate-600 mt-1 line-clamp-2 leading-relaxed">
                 {liveToast.message}
+              </p>
+              <p className="text-[10px] text-slate-400 mt-1.5 font-medium">
+                Klik untuk detail • Menutup otomatis
               </p>
             </div>
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                setLiveToast(null);
+                dismissToastGradually();
               }}
-              className="text-slate-400 hover:text-slate-600 transition-colors shrink-0"
+              className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-1 rounded-lg transition-all shrink-0 cursor-pointer"
               aria-label="Tutup notifikasi"
+              title="Tutup notifikasi"
             >
               <X className="w-4 h-4" />
             </button>

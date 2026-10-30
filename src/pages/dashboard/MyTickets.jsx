@@ -15,30 +15,42 @@ const LogItem = ({ log }) => {
   const roleUpper = (log.user_role || '').toUpperCase();
   let roleTitle = 'Pegawai';
 
-  // 1. Pemohon actions (SKM, ulasan, rating, sanggahan, revisi pemohon)
-  if (
+  const isMasyarakat = roleUpper === 'MASYARAKAT';
+
+  // 1. Masyarakat role check
+  if (isMasyarakat && !lowerText.includes('diajukan oleh helpdesk') && !lowerText.includes('diverifikasi') && !lowerText.includes('ditugaskan ke tim') && !lowerText.includes('pekerjaan teknis')) {
+    roleTitle = 'Masyarakat';
+  }
+  // 2. OPD / User role check
+  else if (roleUpper === 'USER' || roleUpper === 'OPD') {
+    roleTitle = 'Pemohon';
+  }
+  // 3. Pemohon actions (pengajuan awal, SKM, ulasan, rating, sanggahan, revisi pemohon)
+  else if (
+    lowerText.startsWith('tiket berhasil diajukan') ||
+    (lowerText.includes('diajukan') && !lowerText.includes('diajukan oleh helpdesk')) ||
     lowerText.includes('skm') ||
     lowerText.includes('bintang') ||
     lowerText.includes('ulasan') ||
     lowerText.includes('rating') ||
     lowerText.includes('disanggah') || 
     lowerText.includes('sanggahan') ||
-    lowerText.includes('formulir diperbarui') ||
-    (lowerText.includes('diajukan') && !lowerText.includes('helpdesk'))
+    lowerText.includes('formulir diperbarui')
   ) {
-    roleTitle = 'Pemohon';
+    roleTitle = (isMasyarakat || roleUpper === 'MASYARAKAT') ? 'Masyarakat' : 'Pemohon';
   } 
-  // 2. Helpdesk actions (pengajuan oleh Helpdesk, verifikasi, penugasan ke tim)
+  // 4. Helpdesk actions (pengajuan oleh Helpdesk, verifikasi, penugasan ke tim)
   else if (
-    lowerText.includes('helpdesk') || 
+    lowerText.includes('diajukan oleh helpdesk') ||
     lowerText.includes('diverifikasi') || 
     lowerText.includes('ditugaskan ke tim') || 
     lowerText.includes('penugasan tim') ||
-    lowerText.includes('alasan pending:')
+    lowerText.includes('alasan pending:') ||
+    roleUpper === 'HELPDESK'
   ) {
     roleTitle = 'Helpdesk';
   } 
-  // 3. Pegawai actions (mulai pengerjaan teknis, progress, selesai dikerjakan, BAST)
+  // 5. Pegawai actions (mulai pengerjaan teknis, progress, selesai dikerjakan, BAST)
   else if (
     lowerText.includes('mulai') || 
     lowerText.includes('pengerjaan') || 
@@ -46,14 +58,17 @@ const LogItem = ({ log }) => {
     lowerText.includes('selesai dikerjakan') ||
     lowerText.includes('progress') ||
     lowerText.includes('bast') ||
-    lowerText.includes('subtask')
+    lowerText.includes('subtask') ||
+    roleUpper === 'PEGAWAI'
   ) {
     roleTitle = 'Pegawai';
   }
-  // 4. Role-based fallback
+  // 6. Role-based fallback
   else if (roleUpper === 'HELPDESK') {
     roleTitle = 'Helpdesk';
-  } else if (['USER', 'MASYARAKAT', 'OPD'].includes(roleUpper)) {
+  } else if (roleUpper === 'MASYARAKAT') {
+    roleTitle = 'Masyarakat';
+  } else if (['USER', 'OPD'].includes(roleUpper)) {
     roleTitle = 'Pemohon';
   } else if (['PEGAWAI', 'KETUA TIM', 'TEKNISI', 'ADMIN'].includes(roleUpper)) {
     roleTitle = 'Pegawai';

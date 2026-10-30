@@ -60,6 +60,7 @@ const resetOtpVerifyLimiter = rateLimit({
 router.get('/captcha', authController.getCaptcha);
 router.post('/login', authController.login);
 router.post('/login-2fa', login2FaLimiter, authController.login2FA);
+router.post('/2fa/skip-setup', login2FaLimiter, authenticateTempToken, authController.skip2FASetup);
 router.post('/register/request-otp', registrationOtpIpLimiter, registrationOtpLimiter, authController.requestRegistrationOtp);
 router.post('/register/verify-otp', registrationVerifyLimiter, authController.verifyRegistrationOtp);
 router.post('/register', registrationVerifyLimiter, authController.register);
@@ -67,7 +68,8 @@ router.post('/logout', authenticateToken, authController.logout);
 router.get('/me', authenticateToken, authController.getMe);
 router.put('/profile', authenticateToken, authController.updateProfile);
 router.post('/2fa/generate', authenticateTempToken, authController.generate2FA);
-router.post('/2fa/verify-setup', authenticateTempToken, authController.verifySetup2FA);
+router.post('/2fa/verify-setup', login2FaLimiter, authenticateTempToken, authController.verifySetup2FA);
+router.post('/2fa/profile/disable', authenticateToken, authController.disableProfile2FA);
 
 // Forgot Password via Email OTP
 router.post('/forgot-password/request-otp', resetOtpRequestLimiter, authController.requestResetOtp);

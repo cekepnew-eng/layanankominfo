@@ -2,18 +2,135 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
-import { 
-  FileText, 
-  Clock, 
-  CheckCircle, 
-  AlertCircle, 
-  Users, 
-  Layers, 
-  Briefcase, 
+import {
+  FileText,
+  Clock,
+  CheckCircle,
+  AlertCircle,
+  Users,
+  Layers,
+  Briefcase,
   Star,
   Activity,
-  PlusCircle
+  PlusCircle,
+  BarChart3,
+  SlidersHorizontal,
+  TrendingUp,
+  ArrowUpDown,
+  Calendar,
+  Info
 } from 'lucide-react';
+
+const defaultDiskominfoCategories = [
+  'Aplikasi Informatika',
+  'Pengelolaan Sumber Daya & Perangkat Informatika',
+  'Penerapan Persandian & Sistem Pengamanan Informasi',
+  'Tata Kelola SPBE',
+  'Statistik Sektoral',
+  'Informasi & Komunikasi Publik',
+  'Pengembangan SDM'
+];
+
+const formatDateInput = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getInitialStatDateRange = () => {
+  const endDate = new Date();
+  const startDate = new Date(endDate);
+  const dayOfMonth = startDate.getDate();
+  startDate.setDate(1);
+  startDate.setMonth(startDate.getMonth() - 2);
+  const lastDayOfMonth = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0).getDate();
+  startDate.setDate(Math.min(dayOfMonth, lastDayOfMonth));
+
+  return {
+    startDate: formatDateInput(startDate),
+    endDate: formatDateInput(endDate)
+  };
+};
+
+const categoryMetadataMap = {
+  'Aplikasi Informatika': {
+    short: 'Aplikasi',
+    gradientV: 'from-sky-500 to-blue-600',
+    gradientH: 'from-sky-500 to-blue-600',
+    dot: 'bg-sky-500',
+    text: 'text-sky-600',
+    border: 'border-sky-200',
+    bgSoft: 'bg-sky-50'
+  },
+  'Pengelolaan Sumber Daya & Perangkat Informatika': {
+    short: 'Infrastruktur',
+    gradientV: 'from-emerald-500 to-teal-600',
+    gradientH: 'from-emerald-500 to-teal-600',
+    dot: 'bg-emerald-500',
+    text: 'text-emerald-600',
+    border: 'border-emerald-200',
+    bgSoft: 'bg-emerald-50'
+  },
+  'Penerapan Persandian & Sistem Pengamanan Informasi': {
+    short: 'Keamanan',
+    gradientV: 'from-violet-500 to-purple-600',
+    gradientH: 'from-violet-500 to-purple-600',
+    dot: 'bg-violet-500',
+    text: 'text-violet-600',
+    border: 'border-violet-200',
+    bgSoft: 'bg-violet-50'
+  },
+  'Tata Kelola SPBE': {
+    short: 'Tata SPBE',
+    gradientV: 'from-indigo-500 to-blue-700',
+    gradientH: 'from-indigo-500 to-blue-700',
+    dot: 'bg-indigo-500',
+    text: 'text-indigo-600',
+    border: 'border-indigo-200',
+    bgSoft: 'bg-indigo-50'
+  },
+  'Statistik Sektoral': {
+    short: 'Statistik',
+    gradientV: 'from-amber-500 to-orange-500',
+    gradientH: 'from-amber-500 to-orange-500',
+    dot: 'bg-amber-500',
+    text: 'text-amber-600',
+    border: 'border-amber-200',
+    bgSoft: 'bg-amber-50'
+  },
+  'Informasi & Komunikasi Publik': {
+    short: 'IKP / Humas',
+    gradientV: 'from-rose-500 to-pink-600',
+    gradientH: 'from-rose-500 to-pink-600',
+    dot: 'bg-rose-500',
+    text: 'text-rose-600',
+    border: 'border-rose-200',
+    bgSoft: 'bg-rose-50'
+  },
+  'Pengembangan SDM': {
+    short: 'SDM',
+    gradientV: 'from-cyan-500 to-teal-500',
+    gradientH: 'from-cyan-500 to-teal-500',
+    dot: 'bg-cyan-500',
+    text: 'text-cyan-600',
+    border: 'border-cyan-200',
+    bgSoft: 'bg-cyan-50'
+  }
+};
+
+const getCategoryMeta = (catName, index = 0) => {
+  if (categoryMetadataMap[catName]) {
+    return categoryMetadataMap[catName];
+  }
+  const fallbackList = [
+    { short: catName?.slice(0, 10) || 'Lainnya', gradientV: 'from-sky-500 to-blue-600', gradientH: 'from-sky-500 to-blue-600', dot: 'bg-sky-500', text: 'text-sky-600', border: 'border-sky-200', bgSoft: 'bg-sky-50' },
+    { short: catName?.slice(0, 10) || 'Lainnya', gradientV: 'from-emerald-500 to-teal-600', gradientH: 'from-emerald-500 to-teal-600', dot: 'bg-emerald-500', text: 'text-emerald-600', border: 'border-emerald-200', bgSoft: 'bg-emerald-50' },
+    { short: catName?.slice(0, 10) || 'Lainnya', gradientV: 'from-amber-500 to-orange-500', gradientH: 'from-amber-500 to-orange-500', dot: 'bg-amber-500', text: 'text-amber-600', border: 'border-amber-200', bgSoft: 'bg-amber-50' },
+    { short: catName?.slice(0, 10) || 'Lainnya', gradientV: 'from-purple-500 to-pink-600', gradientH: 'from-purple-500 to-pink-600', dot: 'bg-purple-500', text: 'text-purple-600', border: 'border-purple-200', bgSoft: 'bg-purple-50' }
+  ];
+  return fallbackList[index % fallbackList.length];
+};
 
 
 
@@ -89,7 +206,7 @@ const isTicketForTeam = (tk, teamName) => {
       (targetKey && getTeamCategoryKey(assignedName) === targetKey)
     );
   })) return true;
-  
+
   // 1. Direct name match (ignoring generic dinas names)
   const tkTeamRaw = String(tk.team || tk.team_name || '').toLowerCase();
   const targetLower = String(teamName).toLowerCase();
@@ -115,6 +232,11 @@ export const Overview = () => {
   const [adminTeams, setAdminTeams] = useState([]);
   const [adminServicesCount, setAdminServicesCount] = useState(0);
   const [adminServices, setAdminServices] = useState([]);
+  const [statDateRange, setStatDateRange] = useState(getInitialStatDateRange);
+  const [selectedStatPreset, setSelectedStatPreset] = useState(null);
+  const [statSort, setStatSort] = useState('desc');
+  const [statChartType, setStatChartType] = useState('vertical');
+  const [activeHoveredBar, setActiveHoveredBar] = useState(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -147,7 +269,7 @@ export const Overview = () => {
 
         if (userRole === 'USER' || userRole === 'MASYARAKAT' || !['ADMIN', 'HELPDESK', 'PEGAWAI'].includes(userRole)) {
           raw = raw.filter(t => {
-            const isHelpdeskTicket = 
+            const isHelpdeskTicket =
               t.form_data?.submitted_by_helpdesk === true ||
               t.form_data?.submitted_by_helpdesk === 'true' ||
               String(t.pemohon || '').toLowerCase().includes('helpdesk') ||
@@ -210,54 +332,244 @@ export const Overview = () => {
 
   const completedOrWaiting = tickets.filter(t => t.status_name === 'COMPLETED' || t.status_name === 'WAITING_USER_CONFIRMATION' || (t.status || '').includes('Selesai'));
   const completedTickets = tickets.filter(t => t.status_name === 'COMPLETED' || (t.status || '') === 'Selesai & Dinilai');
-  
-  const inSlaTickets = completedOrWaiting.filter(t => t.progress === 100 || (t.status || '').includes('Selesai')); 
+
+  const inSlaTickets = completedOrWaiting.filter(t => t.progress === 100 || (t.status || '').includes('Selesai'));
   const slaCompliancePct = completedOrWaiting.length > 0 ? ((inSlaTickets.length / completedOrWaiting.length) * 100).toFixed(1) + '%' : '100.0%';
 
   const ratedTickets = tickets.filter(t => Number(t.rating) > 0);
-  const avgRating = ratedTickets.length > 0 
+  const avgRating = ratedTickets.length > 0
     ? (ratedTickets.reduce((acc, curr) => acc + Number(curr.rating), 0) / ratedTickets.length).toFixed(2)
     : '0.00';
   const calculatedRating = avgRating;
 
   if (loading) return <div className="p-8 text-slate-500 font-bold">Loading dashboard data...</div>;
 
-  const allCategories = [...new Set(adminServices.map(s => s.category_name || s.category))].filter(Boolean);
-  
-  const initialCounts = {};
-  allCategories.forEach(cat => initialCounts[cat] = 0);
+  const parseTicketDate = (t) => {
+    if (t?.created_at) {
+      const d = new Date(t.created_at);
+      if (!isNaN(d.getTime())) return d;
+    }
+    if (t?.date) {
+      const d = new Date(t.date);
+      if (!isNaN(d.getTime())) return d;
+    }
+    return null;
+  };
 
-  // Count usage across all tickets to show true service utilization
-  tickets.forEach(t => {
-     const svc = adminServices.find(s => s.name === t.service_name);
-     const cat = svc ? (svc.category_name || svc.category) : 'Lain-lain';
-     if (initialCounts[cat] !== undefined) {
-         initialCounts[cat]++;
-     } else {
-         initialCounts[cat] = 1;
-     }
+  const parseDateInput = (date) => {
+    if (!date) return null;
+    const [year, month, day] = date.split('-').map(Number);
+    const parsedDate = new Date(year, month - 1, day);
+    return Number.isNaN(parsedDate.getTime()) ||
+      parsedDate.getFullYear() !== year ||
+      parsedDate.getMonth() !== month - 1 ||
+      parsedDate.getDate() !== day
+      ? null
+      : parsedDate;
+  };
+
+  const applyStatDatePreset = (preset) => {
+    const endDate = new Date();
+    endDate.setHours(0, 0, 0, 0);
+    const startDate = new Date(endDate);
+
+    if (preset === 'weekly') {
+      startDate.setDate(startDate.getDate() - 6);
+    } else if (preset === 'monthly') {
+      const dayOfMonth = startDate.getDate();
+      startDate.setDate(1);
+      startDate.setMonth(startDate.getMonth() - 1);
+      const lastDayOfMonth = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0).getDate();
+      startDate.setDate(Math.min(dayOfMonth, lastDayOfMonth));
+    } else if (preset === 'yearly') {
+      const month = startDate.getMonth();
+      const dayOfMonth = startDate.getDate();
+      startDate.setDate(1);
+      startDate.setFullYear(startDate.getFullYear() - 1);
+      startDate.setMonth(month);
+      const lastDayOfMonth = new Date(startDate.getFullYear(), month + 1, 0).getDate();
+      startDate.setDate(Math.min(dayOfMonth, lastDayOfMonth));
+    }
+
+    setStatDateRange({
+      startDate: formatDateInput(startDate),
+      endDate: formatDateInput(endDate)
+    });
+    setSelectedStatPreset(preset);
+  };
+
+  const selectedStartDate = parseDateInput(statDateRange.startDate);
+  const selectedEndDate = parseDateInput(statDateRange.endDate);
+  const isStatDateRangeValid = Boolean(
+    selectedStartDate &&
+    selectedEndDate &&
+    selectedStartDate.getTime() <= selectedEndDate.getTime()
+  );
+  const statsStartTime = isStatDateRangeValid ? selectedStartDate.getTime() : null;
+  const statsEndTime = isStatDateRangeValid
+    ? new Date(selectedEndDate.getFullYear(), selectedEndDate.getMonth(), selectedEndDate.getDate() + 1).getTime()
+    : null;
+  const filteredTickets = isStatDateRangeValid
+    ? tickets.filter(ticket => {
+      const date = parseTicketDate(ticket);
+      return date && date.getTime() >= statsStartTime && date.getTime() < statsEndTime;
+    })
+    : [];
+
+  const dynamicCategories = [...new Set(adminServices.map(s => s.category_name || s.category))].filter(Boolean);
+  const allCategories = dynamicCategories.length > 0 ? dynamicCategories : defaultDiskominfoCategories;
+
+  const totalPeriodTickets = filteredTickets.length;
+  const periodCompletedOrWaiting = filteredTickets.filter(ticket =>
+    ticket.status_name === 'COMPLETED' ||
+    ticket.status_name === 'WAITING_USER_CONFIRMATION' ||
+    (ticket.status || '').includes('Selesai')
+  );
+  const periodInSlaTickets = periodCompletedOrWaiting.filter(ticket =>
+    ticket.progress === 100 || (ticket.status || '').includes('Selesai')
+  );
+  const periodSlaCompliancePct = periodCompletedOrWaiting.length > 0
+    ? `${((periodInSlaTickets.length / periodCompletedOrWaiting.length) * 100).toFixed(1)}%`
+    : '100.0%';
+  const periodRatedTickets = filteredTickets.filter(ticket => Number(ticket.rating) > 0);
+  const periodCalculatedRating = periodRatedTickets.length > 0
+    ? (periodRatedTickets.reduce((total, ticket) => total + Number(ticket.rating), 0) / periodRatedTickets.length).toFixed(2)
+    : '0.00';
+
+  const periodCounts = {};
+  allCategories.forEach(cat => periodCounts[cat] = 0);
+
+  filteredTickets.forEach(t => {
+    const svc = adminServices.find(s =>
+      (t.service_id && String(s.id) === String(t.service_id)) ||
+      (t.service_name && String(s.name || s.service_name).trim().toLowerCase() === String(t.service_name).trim().toLowerCase()) ||
+      (t.service && String(s.name || s.service_name).trim().toLowerCase() === String(t.service).trim().toLowerCase())
+    );
+    const cat = svc ? (svc.category_name || svc.category) : (t.category_name || null);
+    if (cat && periodCounts[cat] !== undefined) {
+      periodCounts[cat]++;
+    } else {
+      const key = getTeamCategoryKey(t.service_name || t.service || t.title || '');
+      let mappedCat = 'Aplikasi Informatika';
+      if (key === 'aplikasi') mappedCat = 'Aplikasi Informatika';
+      else if (key === 'infrastruktur') mappedCat = 'Pengelolaan Sumber Daya & Perangkat Informatika';
+      else if (key === 'keamanan') mappedCat = 'Penerapan Persandian & Sistem Pengamanan Informasi';
+      else if (key === 'spbe') mappedCat = 'Tata Kelola SPBE';
+      else if (key === 'data') mappedCat = 'Statistik Sektoral';
+      else if (key === 'ikp') mappedCat = 'Informasi & Komunikasi Publik';
+      else if (key === 'sdm') mappedCat = 'Pengembangan SDM';
+
+      if (periodCounts[mappedCat] !== undefined) {
+        periodCounts[mappedCat]++;
+      } else if (cat) {
+        periodCounts[cat] = (periodCounts[cat] || 0) + 1;
+      } else {
+        periodCounts['Aplikasi Informatika'] = (periodCounts['Aplikasi Informatika'] || 0) + 1;
+      }
+    }
   });
 
-  const categoryCounts = Object.entries(initialCounts)
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count);
+  const categoryBarData = Object.entries(periodCounts)
+    .map(([name, count], index) => {
+      const meta = getCategoryMeta(name, index);
+      return {
+        name,
+        shortName: meta.short,
+        count,
+        meta,
+        pct: totalPeriodTickets > 0 ? ((count / totalPeriodTickets) * 100).toFixed(1) : '0'
+      };
+    });
 
-  const totalStatsTickets = tickets.length > 0 ? tickets.length : 1;
-  const barColors = [
-    'bg-sky-500', 
-    'bg-emerald-500', 
-    'bg-amber-500', 
-    'bg-rose-500', 
-    'bg-violet-500', 
-    'bg-indigo-500', 
-    'bg-teal-500', 
-    'bg-pink-500'
+  if (statSort === 'desc') {
+    categoryBarData.sort((a, b) => b.count - a.count);
+  } else if (statSort === 'asc') {
+    categoryBarData.sort((a, b) => a.count - b.count);
+  } else if (statSort === 'az') {
+    categoryBarData.sort((a, b) => a.name.localeCompare(b.name, 'id'));
+  } else if (statSort === 'za') {
+    categoryBarData.sort((a, b) => b.name.localeCompare(a.name, 'id'));
+  }
+
+  const maxCategoryVal = Math.max(...categoryBarData.map(c => c.count), 0);
+  const yMax = maxCategoryVal === 0 ? 5 : (
+    maxCategoryVal <= 5 ? 5 :
+    maxCategoryVal <= 10 ? 10 :
+    maxCategoryVal <= 20 ? 20 :
+    maxCategoryVal <= 50 ? 50 :
+    Math.ceil(maxCategoryVal * 1.25 / 10) * 10
+  );
+  const yTicks = [
+    yMax,
+    Math.round(yMax * 0.75),
+    Math.round(yMax * 0.5),
+    Math.round(yMax * 0.25),
+    0
   ];
+
+  const getTrendData = () => {
+    if (!isStatDateRangeValid) return [];
+
+    const durationDays = Math.ceil((statsEndTime - statsStartTime) / (24 * 60 * 60 * 1000));
+    const bucketType = durationDays <= 14 ? 'day' : durationDays <= 90 ? 'week' : 'month';
+    const buckets = [];
+    let bucketStart = new Date(selectedStartDate);
+
+    while (bucketStart.getTime() < statsEndTime) {
+      const bucketEndDate = new Date(bucketStart);
+      if (bucketType === 'day') bucketEndDate.setDate(bucketEndDate.getDate() + 1);
+      else if (bucketType === 'week') bucketEndDate.setDate(bucketEndDate.getDate() + 7);
+      else {
+        bucketEndDate.setDate(1);
+        bucketEndDate.setMonth(bucketEndDate.getMonth() + 1);
+      }
+
+      const bucketEnd = Math.min(bucketEndDate.getTime(), statsEndTime);
+      const count = filteredTickets.filter(ticket => {
+        const date = parseTicketDate(ticket);
+        return date && date.getTime() >= bucketStart.getTime() && date.getTime() < bucketEnd;
+      }).length;
+      const label = bucketType === 'month'
+        ? bucketStart.toLocaleDateString('id-ID', { month: 'short', year: '2-digit' })
+        : bucketStart.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric' });
+
+      buckets.push({
+        label,
+        fullLabel: bucketType === 'week'
+          ? `${bucketStart.toLocaleDateString('id-ID')} - ${new Date(bucketEnd - 1).toLocaleDateString('id-ID')}`
+          : bucketStart.toLocaleDateString('id-ID', { dateStyle: 'full' }),
+        count
+      });
+      bucketStart = bucketEndDate;
+    }
+
+    return buckets;
+  };
+
+  const trendData = getTrendData();
+  const maxTrendVal = Math.max(...trendData.map(t => t.count), 0);
+  const yTrendMax = maxTrendVal === 0 ? 5 : (
+    maxTrendVal <= 5 ? 5 :
+    maxTrendVal <= 10 ? 10 :
+    maxTrendVal <= 20 ? 20 :
+    Math.ceil(maxTrendVal * 1.25 / 10) * 10
+  );
+  const yTrendTicks = [
+    yTrendMax,
+    Math.round(yTrendMax * 0.75),
+    Math.round(yTrendMax * 0.5),
+    Math.round(yTrendMax * 0.25),
+    0
+  ];
+
+  const getPeriodDescription = () => isStatDateRangeValid
+    ? `${selectedStartDate.toLocaleDateString('id-ID')} – ${selectedEndDate.toLocaleDateString('id-ID')}`
+    : 'Rentang tanggal belum valid';
 
   const renderAdminDashboard = () => (
     <div className="space-y-8 text-left">
       <div className="space-y-1.5">
-        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Dasbor Administrator</h2>
+        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Dashboard Administrator</h2>
         <p className="text-slate-505 text-base leading-relaxed gradient-text font-bold">Kelola data master, konfigurasi layanan SPBE, dan hak akses pengguna sistem.</p>
       </div>
 
@@ -292,28 +604,377 @@ export const Overview = () => {
           </div>
         </div>
 
+        {/* STATISTIK PENGGUNAAN LAYANAN (BAGAN BATANG) */}
         <div className="md:col-span-8 glass-card rounded-3xl p-6 space-y-6">
-          <div className="flex items-center justify-between">
-            <h3 className="font-extrabold text-base text-slate-800 uppercase tracking-wider">Statistik Penggunaan Layanan</h3>
-            <span className="text-sm font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded border border-slate-200/50">Bulan Ini</span>
+          {/* Header & Period Filter */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/40 pb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-sky-600" />
+                <h3 className="font-extrabold text-base text-slate-800 uppercase tracking-wider">
+                  Statistik Penggunaan Layanan
+                </h3>
+              </div>
+              <p className="text-xs font-semibold text-slate-500 mt-0.5">
+                {statChartType === 'trend'
+                  ? `Bagan batang tren volume permohonan tiket (${getPeriodDescription()})`
+                  : `Bagan batang per kategori layanan SPBE (${getPeriodDescription()})`}
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2 self-start sm:self-auto">
+              <div className="flex flex-wrap items-center gap-1 p-1 bg-white/70 rounded-2xl border border-white/80 shadow-sm">
+                {[
+                  { id: 'daily', label: 'Harian' },
+                  { id: 'weekly', label: 'Mingguan' },
+                  { id: 'monthly', label: 'Bulanan' },
+                  { id: 'yearly', label: 'Tahunan' }
+                ].map(preset => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => applyStatDatePreset(preset.id)}
+                    className={`px-2.5 py-1.5 rounded-xl text-xs font-black transition-all ${
+                      selectedStatPreset === preset.id
+                        ? 'bg-gradient-to-r from-sky-500 to-blue-600 text-white shadow-md shadow-sky-500/25'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="flex flex-col gap-1 text-[11px] font-bold text-slate-500">
+                  Tanggal mulai
+                  <input
+                    type="date"
+                    value={statDateRange.startDate}
+                    onChange={event => {
+                      setStatDateRange(current => ({ ...current, startDate: event.target.value }));
+                      setSelectedStatPreset(null);
+                    }}
+                    className="rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-xs font-bold text-slate-700 shadow-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                    aria-label="Tanggal mulai statistik"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-[11px] font-bold text-slate-500">
+                  Tanggal akhir
+                  <input
+                    type="date"
+                    value={statDateRange.endDate}
+                    onChange={event => {
+                      setStatDateRange(current => ({ ...current, endDate: event.target.value }));
+                      setSelectedStatPreset(null);
+                    }}
+                    className="rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-xs font-bold text-slate-700 shadow-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                    aria-label="Tanggal akhir statistik"
+                  />
+                </label>
+              </div>
+            </div>
           </div>
-          <div className="space-y-4">
-            {categoryCounts.map((svc, idx) => {
-              const pct = totalStatsTickets > 0 ? (svc.count / totalStatsTickets * 100).toFixed(0) : 0;
-              const color = barColors[idx % barColors.length];
-              return (
-                <div key={svc.name} className="space-y-2">
-                  <div className="flex justify-between text-base font-bold">
-                    <span className="text-slate-600">{svc.name}</span>
-                    <span className="text-slate-800">{svc.count} Tiket</span>
-                  </div>
-                  <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
-                    <div className={`${color} h-full rounded-full`} style={{ width: `${pct}%` }}></div>
-                  </div>
+
+          {/* Controls Bar: Total Badge + Chart View Toggle + Sorting Order */}
+          <div className="flex flex-wrap items-center justify-between gap-3 text-xs font-semibold">
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1 rounded-xl bg-sky-50/80 text-sky-700 border border-sky-200/60 font-bold flex items-center gap-1.5 shadow-xs">
+                <Calendar className="w-3.5 h-3.5 text-sky-600" />
+                <span className="font-black text-sky-800">{getPeriodDescription()}</span>
+              </span>
+              <span className="px-3 py-1 rounded-xl bg-white/80 text-slate-700 font-bold border border-white shadow-xs">
+                Total: <span className="font-black text-slate-900">{totalPeriodTickets}</span> Tiket
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Chart Mode Toggle */}
+              <div className="flex items-center p-0.5 bg-slate-100/90 rounded-xl border border-slate-200/60">
+                <button
+                  type="button"
+                  onClick={() => setStatChartType('vertical')}
+                  title="Bagan Batang Vertikal"
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                    statChartType === 'vertical' ? 'bg-white text-sky-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <BarChart3 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Vertikal</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatChartType('horizontal')}
+                  title="Bagan Batang Horizontal"
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                    statChartType === 'horizontal' ? 'bg-white text-sky-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Horizontal</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatChartType('trend')}
+                  title="Bagan Tren Waktu"
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                    statChartType === 'trend' ? 'bg-white text-sky-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Tren Waktu</span>
+                </button>
+              </div>
+
+              {/* Sorting Order Dropdown (Only for Category view) */}
+              {statChartType !== 'trend' && (
+                <div className="flex items-center gap-1 bg-white/80 border border-slate-200/70 rounded-xl px-2.5 py-1 text-slate-600 shadow-xs">
+                  <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="text-slate-400 hidden sm:inline">Urutkan:</span>
+                  <select
+                    value={statSort}
+                    onChange={(e) => setStatSort(e.target.value)}
+                    className="bg-transparent font-bold text-slate-700 outline-none cursor-pointer pr-1"
+                  >
+                    <option value="desc">Terbanyak ↓</option>
+                    <option value="asc">Terendah ↑</option>
+                    <option value="az">Nama A - Z</option>
+                    <option value="za">Nama Z - A</option>
+                  </select>
                 </div>
-              );
-            })}
+              )}
+            </div>
           </div>
+
+          {/* CHART BODY */}
+          {statChartType === 'vertical' && (
+            <div className="relative pt-6 pb-2">
+              {/* Y-axis ticks & Horizontal Dashed Gridlines */}
+              <div className="absolute inset-x-0 top-6 bottom-9 flex flex-col justify-between pointer-events-none">
+                {yTicks.map((val, idx) => (
+                  <div key={idx} className="w-full flex items-center">
+                    <span className="w-8 text-[11px] font-bold text-slate-400 text-right pr-2 shrink-0">{val}</span>
+                    <div className="w-full border-b border-dashed border-slate-200/80"></div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Vertical Columns */}
+              <div className="relative pl-8 h-64 flex items-end justify-between gap-1.5 sm:gap-3 z-10">
+                {categoryBarData.map((item, idx) => {
+                  const heightPercent = yMax > 0 ? (item.count / yMax) * 100 : 0;
+                  const meta = item.meta;
+                  const isHovered = activeHoveredBar === idx;
+
+                  return (
+                    <div
+                      key={item.name}
+                      className="flex-1 flex flex-col items-center justify-end h-full group relative cursor-pointer"
+                      onMouseEnter={() => setActiveHoveredBar(idx)}
+                      onMouseLeave={() => setActiveHoveredBar(null)}
+                    >
+                      {/* Floating Tooltip */}
+                      {isHovered && (
+                        <div className="absolute bottom-full mb-2 z-30 flex flex-col items-center pointer-events-none animate-in fade-in zoom-in-95 duration-150">
+                          <div className="bg-slate-900/95 text-white px-3 py-2 rounded-xl shadow-xl backdrop-blur-md border border-white/10 text-center whitespace-nowrap min-w-[140px]">
+                            <p className="font-bold text-xs text-white truncate max-w-[210px]">{item.name}</p>
+                            <div className="flex items-center justify-center gap-2 mt-1 text-[11px]">
+                              <span className="font-black text-sky-400">{item.count} Tiket</span>
+                              <span className="text-slate-400">•</span>
+                              <span className="text-slate-300 font-semibold">{item.pct}%</span>
+                            </div>
+                          </div>
+                          <div className="w-2 h-2 bg-slate-900 rotate-45 -mt-1"></div>
+                        </div>
+                      )}
+
+                      {/* Top Count Badge */}
+                      <span className={`text-xs font-black mb-1.5 transition-all ${isHovered ? 'text-sky-600 scale-125' : item.count > 0 ? 'text-slate-700' : 'text-slate-300'}`}>
+                        {item.count}
+                      </span>
+
+                      {/* Bar Container & Bar Pill */}
+                      <div className="w-full max-w-[44px] flex justify-center items-end h-[calc(100%-32px)]">
+                        <div
+                          className={`w-full rounded-t-xl bg-gradient-to-t ${meta.gradientV} transition-all duration-500 ease-out relative shadow-sm ${
+                            isHovered ? 'brightness-110 shadow-lg scale-y-[1.03] origin-bottom' : 'opacity-90 hover:opacity-100'
+                          }`}
+                          style={{
+                            height: item.count > 0 ? `${Math.max(heightPercent, 8)}%` : '6px',
+                            minHeight: '6px'
+                          }}
+                        >
+                          <div className="absolute inset-0 bg-gradient-to-b from-white/30 to-transparent rounded-t-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
+                        </div>
+                      </div>
+
+                      {/* X-axis Category Label */}
+                      <div className="h-9 flex items-center justify-center pt-2">
+                        <span
+                          className={`text-[11px] font-bold text-center truncate max-w-[56px] sm:max-w-[72px] transition-colors ${
+                            isHovered ? 'text-sky-600 font-black' : 'text-slate-600'
+                          }`}
+                          title={item.name}
+                        >
+                          {item.shortName}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {statChartType === 'horizontal' && (
+            <div className="space-y-3 pt-2">
+              {categoryBarData.map((item, idx) => {
+                const meta = item.meta;
+                const maxVal = maxCategoryVal > 0 ? maxCategoryVal : 1;
+                const widthPct = totalPeriodTickets > 0 ? (item.count / maxVal) * 100 : 0;
+                const isHovered = activeHoveredBar === idx;
+
+                return (
+                  <div
+                    key={item.name}
+                    className={`p-3 rounded-2xl border transition-all cursor-pointer ${
+                      isHovered ? 'bg-white shadow-md border-sky-300 scale-[1.01]' : 'bg-white/40 border-white/60 hover:bg-white/70'
+                    }`}
+                    onMouseEnter={() => setActiveHoveredBar(idx)}
+                    onMouseLeave={() => setActiveHoveredBar(null)}
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className={`w-2.5 h-2.5 rounded-full ${meta.dot} shrink-0`}></div>
+                        <span className="font-bold text-sm text-slate-800 truncate" title={item.name}>
+                          {item.name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-xs font-bold text-slate-500">
+                          {item.pct}%
+                        </span>
+                        <span className="px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-800 font-black text-xs">
+                          {item.count} Tiket
+                        </span>
+                      </div>
+                    </div>
+                    <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden p-0.5">
+                      <div
+                        className={`h-full rounded-full bg-gradient-to-r ${meta.gradientH} transition-all duration-500`}
+                        style={{ width: `${Math.max(widthPct, item.count > 0 ? 5 : 0)}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {statChartType === 'trend' && (
+            <div className="relative pt-6 pb-2">
+              {/* Y-axis & horizontal dashed gridlines */}
+              <div className="absolute inset-x-0 top-6 bottom-9 flex flex-col justify-between pointer-events-none">
+                {yTrendTicks.map((val, idx) => (
+                  <div key={idx} className="w-full flex items-center">
+                    <span className="w-8 text-[11px] font-bold text-slate-400 text-right pr-2 shrink-0">{val}</span>
+                    <div className="w-full border-b border-dashed border-slate-200/80"></div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Trend Columns */}
+              <div className="relative pl-8 h-64 flex items-end justify-between gap-1 sm:gap-2 z-10">
+                {trendData.map((item, idx) => {
+                  const heightPercent = yTrendMax > 0 ? (item.count / yTrendMax) * 100 : 0;
+                  const isHovered = activeHoveredBar === idx;
+
+                  return (
+                    <div
+                      key={item.label + idx}
+                      className="flex-1 flex flex-col items-center justify-end h-full group relative cursor-pointer"
+                      onMouseEnter={() => setActiveHoveredBar(idx)}
+                      onMouseLeave={() => setActiveHoveredBar(null)}
+                    >
+                      {isHovered && (
+                        <div className="absolute bottom-full mb-2 z-30 flex flex-col items-center pointer-events-none animate-in fade-in zoom-in-95 duration-150">
+                          <div className="bg-slate-900/95 text-white px-3 py-2 rounded-xl shadow-xl backdrop-blur-md border border-white/10 text-center whitespace-nowrap">
+                            <p className="font-bold text-xs text-white">{item.fullLabel}</p>
+                            <p className="font-black text-sky-400 text-xs mt-0.5">{item.count} Tiket Diajukan</p>
+                          </div>
+                          <div className="w-2 h-2 bg-slate-900 rotate-45 -mt-1"></div>
+                        </div>
+                      )}
+
+                      <span className={`text-xs font-black mb-1.5 transition-all ${isHovered ? 'text-sky-600 scale-125' : item.count > 0 ? 'text-slate-700' : 'text-slate-300'}`}>
+                        {item.count}
+                      </span>
+
+                      <div className="w-full max-w-[40px] flex justify-center items-end h-[calc(100%-32px)]">
+                        <div
+                          className={`w-full rounded-t-xl bg-gradient-to-t from-sky-500 to-indigo-600 transition-all duration-500 ease-out relative shadow-sm ${
+                            isHovered ? 'brightness-110 shadow-lg scale-y-[1.03] origin-bottom' : 'opacity-90 hover:opacity-100'
+                          }`}
+                          style={{
+                            height: item.count > 0 ? `${Math.max(heightPercent, 8)}%` : '6px',
+                            minHeight: '6px'
+                          }}
+                        >
+                          <div className="absolute inset-0 bg-gradient-to-b from-white/30 to-transparent rounded-t-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
+                        </div>
+                      </div>
+
+                      <div className="h-9 flex items-center justify-center pt-2">
+                        <span
+                          className={`text-[10px] sm:text-xs font-bold text-center truncate max-w-[50px] transition-colors ${
+                            isHovered ? 'text-sky-600 font-black' : 'text-slate-600'
+                          }`}
+                          title={item.fullLabel}
+                        >
+                          {item.label}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* KETERANGAN KATEGORI / LEGENDA (Saat dalam mode Kategori) */}
+          {statChartType !== 'trend' && (
+            <div className="pt-4 border-t border-slate-100/80">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5">Keterangan Kategori Layanan:</p>
+              <div className="flex flex-wrap gap-2">
+                {categoryBarData.map((item, idx) => (
+                  <div
+                    key={item.name}
+                    onClick={() => setActiveHoveredBar(activeHoveredBar === idx ? null : idx)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      activeHoveredBar === idx ? 'bg-white shadow-sm border-sky-400 text-sky-800' : 'bg-white/50 border-white/60 text-slate-600 hover:bg-white'
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${item.meta.dot}`}></span>
+                    <span className="truncate max-w-[130px] sm:max-w-none">{item.name}</span>
+                    <span className="text-slate-400 font-normal">({item.count})</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Empty / Real-time Notification Info */}
+          {!isStatDateRangeValid && (
+            <div className="p-3 bg-amber-50/70 border border-amber-200/70 rounded-2xl flex items-center gap-2.5 text-xs text-amber-800">
+              <Info className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Pilih tanggal mulai dan tanggal akhir yang valid. Tanggal mulai tidak boleh melewati tanggal akhir.</span>
+            </div>
+          )}
+          {isStatDateRangeValid && totalPeriodTickets === 0 && (
+            <div className="p-3 bg-blue-50/60 border border-blue-200/60 rounded-2xl flex items-center gap-2.5 text-xs text-blue-800">
+              <Info className="w-4 h-4 text-blue-600 shrink-0" />
+              <span>Belum ada tiket yang diajukan pada rentang {getPeriodDescription()}. Bagan batang akan terisi dan terupdate otomatis secara real-time saat permohonan tiket baru masuk.</span>
+            </div>
+          )}
         </div>
 
         <div className="md:col-span-4 glass-card rounded-3xl p-6 space-y-5">
@@ -324,19 +985,19 @@ export const Overview = () => {
           <div className="space-y-4 text-left">
             <div className="p-4 bg-white/40 border border-white/50 rounded-2xl shadow-sm">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">SLA Compliance Rate</span>
-              <p className="text-3xl font-black text-slate-800 mt-1 gradient-text">{slaCompliancePct}</p>
-              <p className="text-sm text-slate-500 mt-0.5 font-medium">Rasio penyelesaian tepat waktu dari total {completedOrWaiting.length} tiket selesai/menunggu konfirmasi.</p>
+              <p className="text-3xl font-black text-slate-800 mt-1 gradient-text">{periodSlaCompliancePct}</p>
+              <p className="text-sm text-slate-500 mt-0.5 font-medium">Rasio penyelesaian tepat waktu dari {periodCompletedOrWaiting.length} tiket selesai/menunggu konfirmasi pada periode ini.</p>
             </div>
 
             <div className="p-4 bg-white/40 border border-white/50 rounded-2xl shadow-sm">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Rating Kepuasan OPD</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <p className="text-3xl font-black text-slate-800 gradient-text">{calculatedRating}</p>
+                <p className="text-3xl font-black text-slate-800 gradient-text">{periodCalculatedRating}</p>
                 <span className="text-sm text-slate-400 font-bold">/ 5.00</span>
               </div>
-              <p className="text-sm text-slate-500 mt-0.5 font-medium">Dihitung dari {ratedTickets.length} ulasan survei dinas.</p>
+              <p className="text-sm text-slate-500 mt-0.5 font-medium">Dihitung dari {periodRatedTickets.length} ulasan pada periode ini.</p>
             </div>
-            
+
             <div className="p-3 bg-blue-50/50 border border-blue-100 text-blue-800 rounded-xl text-xs leading-relaxed font-semibold">
               Seluruh data di atas dikalkulasi secara otomatis secara real-time dari log transaksi tiket pengajuan dan survei ulasan OPD.
             </div>
@@ -379,11 +1040,10 @@ export const Overview = () => {
                     <td className="px-6 py-4 truncate max-w-xs">{t.pemohon || t.department || 'Masyarakat'}</td>
                     <td className="px-6 py-4 truncate max-w-xs">{t.service_name || t.service || 'Layanan SPBE'}</td>
                     <td className="px-6 py-4 font-semibold text-slate-600">
-                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider border ${
-                        t.status === 'Selesai' || t.status_name === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 
+                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider border ${t.status === 'Selesai' || t.status_name === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                         t.status === 'Verifikasi' || t.status_name === 'PENDING' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                        'bg-sky-50 text-sky-700 border-sky-200'
-                      }`}>
+                          'bg-sky-50 text-sky-700 border-sky-200'
+                        }`}>
                         {t.status || t.status_name || '-'}
                       </span>
                     </td>
@@ -395,7 +1055,7 @@ export const Overview = () => {
           </table>
         </div>
       </div>
-      
+
     </div>
   );
 
@@ -403,7 +1063,7 @@ export const Overview = () => {
     <div className="space-y-8 text-left">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1.5">
-          <h2 className="text-3xl font-black text-slate-900 tracking-tight">Dasbor Helpdesk Hub</h2>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tight">Dashboard Helpdesk Hub</h2>
           <p className="text-slate-600 text-base leading-relaxed font-semibold">Pantau permohonan masuk, verifikasi syarat berkas, dan delegasikan pengerjaan ke tim.</p>
         </div>
         <Link
@@ -511,12 +1171,12 @@ export const Overview = () => {
 
   const renderPegawaiDashboard = () => {
     const pegawaiTickets = (tickets || []);
-    
+
     // Auto-detect team names if user.teams is empty or placeholder
     const detectedTicketTeams = Array.from(new Set(
       pegawaiTickets.map(tk => tk.team || tk.team_name || getTicketTeam(tk)).filter(Boolean)
     ));
-    
+
     const configuredUserTeams = Array.isArray(user?.teams)
       ? Array.from(new Map(user.teams
         .filter(name => typeof name === 'string' && name.trim() && name.trim().toLowerCase() !== 'belum ada tim kerja')
@@ -524,18 +1184,18 @@ export const Overview = () => {
       : [];
     const userTeamsList = configuredUserTeams.length > 0
       ? configuredUserTeams
-      : (detectedTicketTeams.length > 0 
-          ? detectedTicketTeams 
-          : (user?.team_name ? [user.team_name] : ['Tim Pelaksana Teknis']));
+      : (detectedTicketTeams.length > 0
+        ? detectedTicketTeams
+        : (user?.team_name ? [user.team_name] : ['Tim Pelaksana Teknis']));
 
     const activeTasks = pegawaiTickets.filter(t => {
       const s = (t.status || '').toLowerCase();
       const sn = (t.status_name || '').toUpperCase();
       return (
-        s === 'diproses' || 
-        s === 'sedang dikerjakan' || 
-        s === 'ditugaskan' || 
-        sn === 'IN_PROGRESS' || 
+        s === 'diproses' ||
+        s === 'sedang dikerjakan' ||
+        s === 'ditugaskan' ||
+        sn === 'IN_PROGRESS' ||
         sn === 'ASSIGNED' ||
         s === 'menunggu validasi' ||
         sn === 'VERIFIED'
@@ -559,7 +1219,7 @@ export const Overview = () => {
     return (
       <div className="space-y-8 text-left">
         <div className="space-y-1.5">
-          <h2 className="text-3xl font-black text-slate-900 tracking-tight">Dasbor Tim Kerja Teknis</h2>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tight">Dashboard Tim Kerja Teknis</h2>
           <p className="text-slate-500 text-base leading-relaxed font-semibold">
             {subtitleText}
           </p>
@@ -576,7 +1236,7 @@ export const Overview = () => {
                   Penugasan Tim Kerja Pelaksana
                 </h3>
                 <p className="text-sm text-slate-600 font-semibold mt-0.5">
-                  {myTeams.length > 0 
+                  {myTeams.length > 0
                     ? `Anda terdaftar aktif pada ${myTeams.length} tim kerja teknis di bawah Diskominfo Kota Bogor.`
                     : 'Anda belum terdaftar pada tim kerja pelaksana mana pun.'}
                 </p>
@@ -594,8 +1254,8 @@ export const Overview = () => {
                 const teamActiveTasks = allTeamCounts[idx];
 
                 return (
-                  <div 
-                    key={t.id} 
+                  <div
+                    key={t.id}
                     className="p-6 rounded-3xl bg-white/40 border border-white/60 space-y-3 hover:border-indigo-300 hover:bg-white/70 transition-all flex flex-col justify-between shadow-sm cursor-default"
                   >
                     <div className="space-y-1.5">
@@ -706,8 +1366,8 @@ export const Overview = () => {
   const renderUserDashboard = () => (
     <div className="space-y-8 text-left animate-in fade-in duration-200">
       <div className="space-y-1.5">
-        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Dasbor Layanan {user?.role?.toUpperCase() === 'MASYARAKAT' ? 'Masyarakat' : 'OPD'}</h2>
-        <p className="text-slate-505 text-base leading-relaxed">Ajukan permohonan fasilitas TIK, integrasi SPBE, data sektoral, serta pantau pengerjaan secara berkala.</p>
+        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Dashboard Layanan {user?.role?.toUpperCase() === 'MASYARAKAT' ? 'Masyarakat' : 'OPD'}</h2>
+        <p className="text-slate-600 text-base leading-relaxed font-semibold">Ajukan permohonan fasilitas TIK, integrasi SPBE, data sektoral, serta pantau pengerjaan secara berkala.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
@@ -760,34 +1420,32 @@ export const Overview = () => {
           </div>
           <div className="space-y-6 text-left">
             <>
-                  <div className="flex items-start gap-4 hover:bg-slate-50/50 p-2.5 rounded-xl transition-all">
-                    <div className={`w-3.5 h-3.5 rounded-full mt-1.5 border-2 border-white ring-2 ${
-                      userInProgressTicket.status === 'Pending' ? 'bg-amber-500 ring-amber-100' : 'bg-sky-500 ring-sky-100'
-                    }`}></div>
-                    <div className="space-y-1">
-                      <p className={`text-sm font-bold uppercase tracking-wider ${
-                        userInProgressTicket.status === 'Pending' 
-                          ? 'text-amber-600' 
-                          : userInProgressTicket.status === 'Verifikasi' || userInProgressTicket.status === 'Menunggu Validasi'
-                            ? 'text-amber-600'
-                            : 'text-sky-600'
-                      }`}>
-                        {userInProgressTicket.status === 'Pending' 
-                          ? 'Ditangguhkan (Pending)' 
-                          : userInProgressTicket.status === 'Verifikasi' || userInProgressTicket.status === 'Menunggu Validasi'
-                            ? 'Menunggu Verifikasi Helpdesk'
-                            : 'Sedang Diproses Tim Teknis'}
-                      </p>
-                      <h4 className="font-bold text-slate-850 text-base">{userInProgressTicket.title}</h4>
-                      <p className="text-base text-slate-500 leading-relaxed">
-                        Status: {userInProgressTicket.status === 'Pending' 
-                          ? 'Berkas permohonan kurang lengkap / ditangguhkan untuk perbaikan berkas.' 
-                          : userInProgressTicket.status === 'Verifikasi' || userInProgressTicket.status === 'Menunggu Validasi'
-                            ? `Menunggu verifikasi berkas oleh Helpdesk | SLA Standar: ${userInProgressTicket.slaDuration} (SLA Belum Berjalan)`
-                            : `Pekerjaan teknis sedang berjalan | SLA Standar: ${userInProgressTicket.slaDuration} (Sisa ${userInProgressTicket.remainingDays !== undefined ? userInProgressTicket.remainingDays : 7} Hari)`}
-                      </p>
-                    </div>
-                  </div>
+              <div className="flex items-start gap-4 hover:bg-slate-50/50 p-2.5 rounded-xl transition-all">
+                <div className={`w-3.5 h-3.5 rounded-full mt-1.5 border-2 border-white ring-2 ${userInProgressTicket.status === 'Pending' ? 'bg-amber-500 ring-amber-100' : 'bg-sky-500 ring-sky-100'
+                  }`}></div>
+                <div className="space-y-1">
+                  <p className={`text-sm font-bold uppercase tracking-wider ${userInProgressTicket.status === 'Pending'
+                    ? 'text-amber-600'
+                    : userInProgressTicket.status === 'Verifikasi' || userInProgressTicket.status === 'Menunggu Validasi'
+                      ? 'text-amber-600'
+                      : 'text-sky-600'
+                    }`}>
+                    {userInProgressTicket.status === 'Pending'
+                      ? 'Ditangguhkan (Pending)'
+                      : userInProgressTicket.status === 'Verifikasi' || userInProgressTicket.status === 'Menunggu Validasi'
+                        ? 'Menunggu Verifikasi Helpdesk'
+                        : 'Sedang Diproses Tim Teknis'}
+                  </p>
+                  <h4 className="font-bold text-slate-850 text-base">{userInProgressTicket.title}</h4>
+                  <p className="text-base text-slate-500 leading-relaxed">
+                    Status: {userInProgressTicket.status === 'Pending'
+                      ? 'Berkas permohonan kurang lengkap / ditangguhkan untuk perbaikan berkas.'
+                      : userInProgressTicket.status === 'Verifikasi' || userInProgressTicket.status === 'Menunggu Validasi'
+                        ? `Menunggu verifikasi berkas oleh Helpdesk | SLA Standar: ${userInProgressTicket.slaDuration} (SLA Belum Berjalan)`
+                        : `Pekerjaan teknis sedang berjalan | SLA Standar: ${userInProgressTicket.slaDuration} (Sisa ${userInProgressTicket.remainingDays !== undefined ? userInProgressTicket.remainingDays : 7} Hari)`}
+                  </p>
+                </div>
+              </div>
             </>
           </div>
         </div>}

@@ -8,11 +8,7 @@ export default defineConfig({
     tailwindcss(),
   ],
   server: {
-    allowedHosts: [
-      'gem-spry-oxygen.ngrok-free.dev',
-      'schematic-appear-energize.ngrok-free.dev',
-      '.ngrok-free.dev',
-    ],
+    allowedHosts: true,
     proxy: {
       '/api': {
         target: 'http://localhost:5000',

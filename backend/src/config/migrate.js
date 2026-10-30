@@ -54,8 +54,12 @@ const runMigration = async () => {
         team_id INT REFERENCES teams(id),
         is_active BOOLEAN DEFAULT true,
         is_two_factor_enabled BOOLEAN DEFAULT false,
+        two_factor_choice_completed BOOLEAN NOT NULL DEFAULT false,
         two_factor_secret TEXT,
+        two_factor_reset_at TIMESTAMP,
         backup_codes JSONB DEFAULT '[]'::jsonb,
+        password_changed_at TIMESTAMP,
+        password_auth_source VARCHAR(10) NOT NULL DEFAULT 'LOCAL',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );

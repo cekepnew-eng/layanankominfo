@@ -9,7 +9,7 @@ import { Monitor, ArrowLeft, Lock, Mail, ChevronRight, Check, ShieldCheck, QrCod
 export const Login = () => {
   const { login, login2FA, setUser } = useAuth();
   const navigate = useNavigate();
-  
+
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -17,6 +17,7 @@ export const Login = () => {
 
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [showOtpModal, setShowOtpModal] = useState(false);
+  const [show2FAChoiceModal, setShow2FAChoiceModal] = useState(false);
   const [otpStep, setOtpStep] = useState(1);
   const [otpCode, setOtpCode] = useState('');
   const [otpError, setOtpError] = useState('');
@@ -29,7 +30,7 @@ export const Login = () => {
   const [loginLockoutUntil, setLoginLockoutUntil] = useState(0);
   const [loginLockoutIdentifier, setLoginLockoutIdentifier] = useState('');
   const [loginLockoutSeconds, setLoginLockoutSeconds] = useState(0);
-  
+
   const [modalConfig, setModalConfig] = useState({
     isOpen: false,
     type: 'warning',
@@ -44,7 +45,7 @@ export const Login = () => {
   const loadCaptcha = async () => {
     try {
       const data = await api.getCaptcha();
-      
+
       if (data.success) {
         setCaptchaData({ text: data.text, token: data.token });
         setCaptchaAnswer('');
@@ -87,6 +88,37 @@ export const Login = () => {
   const lockoutSecondsRemainder = loginLockoutSeconds % 60;
   const lockoutCountdown = `${String(lockoutMinutes).padStart(2, '0')}:${String(lockoutSecondsRemainder).padStart(2, '0')}`;
 
+  const start2FASetup = async (token) => {
+    try {
+      const qrRes = await api.generate2FA(token);
+      if (qrRes.success) {
+        setQrData({ qrUrl: qrRes.qrCodeUrl, secretFormatted: qrRes.secret });
+        setOtpStep(1);
+        setOtpCode('');
+        setOtpError('');
+        setShowOtpModal(true);
+        setShow2FAChoiceModal(false);
+      } else {
+        setModalConfig({ isOpen: true, type: 'danger', title: 'Gagal', message: 'Gagal generate QR Code 2FA.' });
+      }
+    } catch (err) {
+      setModalConfig({ isOpen: true, type: 'danger', title: 'Error', message: 'Error generate 2FA QR: ' + err.message });
+    }
+  };
+
+  const handleSkip2FASetup = async () => {
+    try {
+      const result = await api.skip2FASetup(tempToken);
+      sessionStorage.setItem('spbe_token', result.token);
+      setUser(result.user);
+      sessionStorage.setItem('spbe_user', JSON.stringify(result.user));
+      setShow2FAChoiceModal(false);
+      navigate('/dashboard');
+    } catch (err) {
+      setModalConfig({ isOpen: true, type: 'danger', title: 'Gagal', message: err.message || 'Pilihan 2FA tidak dapat disimpan.' });
+    }
+  };
+
   const identifyRoleFromTnd = (username) => {
     const userLower = (username || '').toLowerCase().trim();
     if (userLower.includes('admin') || userLower.includes('199001') || userLower.includes('ahmad') || userLower.includes('faisal')) {
@@ -106,24 +138,15 @@ export const Login = () => {
     const loginResult = await login(email, pass, cToken, cAnswer);
     if (loginResult && loginResult.requires2FA) {
       setTempToken(loginResult.tempToken);
+      setQrData({ qrUrl: '', secretFormatted: '' });
       setOtpStep(2);
       setShowOtpModal(true);
+    } else if (loginResult && loginResult.requires2FAChoice) {
+      setTempToken(loginResult.tempToken);
+      setShow2FAChoiceModal(true);
     } else if (loginResult && loginResult.requires2FASetup) {
       setTempToken(loginResult.tempToken);
-      try {
-        const qrRes = await api.generate2FA(loginResult.tempToken);
-        if (qrRes.success) {
-          setQrData({ qrUrl: qrRes.qrCodeUrl, secretFormatted: qrRes.secret });
-          setOtpStep(1);
-          setOtpCode('');
-          setOtpError('');
-          setShowOtpModal(true);
-        } else {
-          setModalConfig({ isOpen: true, type: 'danger', title: 'Gagal', message: 'Gagal generate QR Code 2FA.' });
-        }
-      } catch (err) {
-        setModalConfig({ isOpen: true, type: 'danger', title: 'Error', message: 'Error generate 2FA QR: ' + err.message });
-      }
+      await start2FASetup(loginResult.tempToken);
     } else if (loginResult && loginResult.success) {
       navigate('/dashboard');
     } else {
@@ -214,7 +237,7 @@ export const Login = () => {
       setOtpError('Masukkan 6 digit kode OTP');
       return;
     }
-    
+
     // Check if we are doing setup or login
     if (qrData.qrUrl) {
       // Doing Setup
@@ -269,7 +292,7 @@ export const Login = () => {
           isOpen: true,
           type: 'warning',
           title: isExpired ? 'Sesi Kedaluwarsa' : 'Kode Autentikasi Salah',
-          message: isExpired 
+          message: isExpired
             ? 'Sesi login Anda sudah kedaluwarsa karena terlalu lama. Silakan login kembali.'
             : (result?.message || 'Kode 2FA (OTP) yang Anda masukkan tidak valid atau sudah kedaluwarsa. Silakan periksa kode terbaru di aplikasi Authenticator Anda.'),
           confirmText: isExpired ? 'Tutup & Login Ulang' : 'Coba Lagi',
@@ -283,9 +306,9 @@ export const Login = () => {
     <div className="min-h-screen bg-white flex flex-col md:flex-row font-sans overflow-hidden">
       <div className="hidden md:flex md:w-1/2 relative bg-slate-950 overflow-hidden">
         <div className="absolute inset-0 z-0">
-          <img 
-            src="/tugu.jpg" 
-            alt="Tugu Kujang Bogor" 
+          <img
+            src="/tugu.jpg"
+            alt="Tugu Kujang Bogor"
             className="w-full h-full object-cover opacity-25 scale-105"
           />
         </div>
@@ -346,7 +369,7 @@ export const Login = () => {
           <div className="space-y-4">
             <div className="space-y-1.5">
               <label htmlFor="identifier" className="block text-xs font-bold text-slate-550 uppercase tracking-wider">
-                NIP / Email / NIK
+                NIP / Email
               </label>
               <div className="relative rounded-xl border border-slate-200 bg-slate-50/50 focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500/20 transition-all">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-450">
@@ -375,6 +398,7 @@ export const Login = () => {
                   className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline transition-colors cursor-pointer"
                 >
                   Lupa kata sandi?
+
                 </button>
               </div>
               <div className={`relative rounded-xl border ${passwordError ? 'border-rose-500 bg-rose-50/20 ring-1 ring-rose-500/20' : 'border-slate-200 bg-slate-50/50 focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500/20'} transition-all`}>
@@ -440,17 +464,16 @@ export const Login = () => {
                 type="button"
                 onClick={handleStandardLogin}
                 disabled={isLoginLocked}
-                className={`group relative w-full py-4 rounded-xl text-base font-black text-white shadow-lg transition-all duration-300 flex items-center justify-center gap-2 overflow-hidden ${
-                  isLoginLocked
-                    ? 'bg-slate-400 shadow-slate-500/20 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-blue-600 to-sky-500 hover:from-blue-500 hover:to-sky-400 shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 transform hover:-translate-y-0.5 cursor-pointer'
-                }`}
+                className={`group relative w-full py-4 rounded-xl text-base font-black text-white shadow-lg transition-all duration-300 flex items-center justify-center gap-2 overflow-hidden ${isLoginLocked
+                  ? 'bg-slate-400 shadow-slate-500/20 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-blue-600 to-sky-500 hover:from-blue-500 hover:to-sky-400 shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 transform hover:-translate-y-0.5 cursor-pointer'
+                  }`}
               >
                 {!isLoginLocked && (
                   <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out"></div>
                 )}
                 <span className="relative z-10 tracking-[0.1em]">
-                  {isLoginLocked ? `TUNGGU ${lockoutCountdown}` : 'MASUK'}
+                  {isLoginLocked ? `TUNGGU ${lockoutCountdown}` : 'M A S U K '}
                 </span>
                 {isLoginLocked
                   ? <Lock className="relative z-10 w-4 h-4" />
@@ -488,11 +511,11 @@ export const Login = () => {
 
                 <div className="flex flex-col items-center gap-2.5 pt-1">
                   <div className="p-3 bg-white border border-slate-200 rounded-2xl shadow-xs">
-                    <img 
-                      src={qrData.qrUrl || '/google_authenticator_qr.png'} 
+                    <img
+                      src={qrData.qrUrl || '/google_authenticator_qr.png'}
                       onError={(e) => { e.target.src = '/google_authenticator_qr.png'; }}
-                      alt="QR Google Authenticator" 
-                      className="w-48 h-48 sm:w-52 sm:h-52 object-contain" 
+                      alt="QR Google Authenticator"
+                      className="w-48 h-48 sm:w-52 sm:h-52 object-contain"
                     />
                   </div>
                   <p className="text-xs sm:text-sm text-slate-500 font-medium text-center">Tidak bisa scan? Masukkan kode manual:</p>
@@ -563,9 +586,9 @@ export const Login = () => {
 
                   {!qrData.qrUrl && (
                     <div className="flex items-center gap-2 pt-1">
-                      <input 
-                        type="checkbox" 
-                        id="trustDevice" 
+                      <input
+                        type="checkbox"
+                        id="trustDevice"
                         checked={trustDevice}
                         onChange={(e) => setTrustDevice(e.target.checked)}
                         className="w-4 h-4 text-sky-600 rounded border-slate-300 focus:ring-sky-500"
@@ -597,6 +620,38 @@ export const Login = () => {
               </>
             )}
 
+          </div>
+        </div>
+      )}
+
+      {show2FAChoiceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/65 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md space-y-5 rounded-3xl border border-slate-100 bg-white p-6 text-left shadow-2xl">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-indigo-100 bg-indigo-50">
+              <ShieldCheck className="h-6 w-6 text-indigo-600" />
+            </div>
+            <div>
+              <h3 className="text-xl font-black text-slate-900">Aktifkan Verifikasi 2 Langkah?</h3>
+              <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                Tambahkan perlindungan dengan kode Google Authenticator saat masuk berikutnya. Anda dapat mengatur pilihan ini lagi di Profil.
+              </p>
+            </div>
+            <div className="flex flex-col-reverse gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={handleSkip2FASetup}
+                className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50"
+              >
+                Tidak, lanjutkan tanpa 2FA
+              </button>
+              <button
+                type="button"
+                onClick={() => start2FASetup(tempToken)}
+                className="flex-1 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white hover:bg-indigo-700"
+              >
+                Ya, aktifkan 2FA
+              </button>
+            </div>
           </div>
         </div>
       )}

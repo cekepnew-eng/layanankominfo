@@ -129,30 +129,40 @@ export const TrackTicket = () => {
                             const roleUpper = (log.user_role || '').toUpperCase();
                             let roleTitle = 'Pegawai';
 
-                            // 1. Pemohon actions (SKM, ulasan, rating, sanggahan, revisi pemohon)
-                            if (
+                            // 1. Masyarakat role check
+                            if (roleUpper === 'MASYARAKAT') {
+                              roleTitle = 'Masyarakat';
+                            }
+                            // 2. OPD / User role check
+                            else if (roleUpper === 'USER' || roleUpper === 'OPD') {
+                              roleTitle = 'Pemohon';
+                            }
+                            // 3. Pemohon actions (pengajuan awal, SKM, ulasan, rating, sanggahan, revisi pemohon)
+                            else if (
+                              desc.startsWith('tiket berhasil diajukan') ||
+                              (desc.includes('diajukan') && !desc.includes('diajukan oleh helpdesk')) ||
                               desc.includes('skm') ||
                               desc.includes('bintang') ||
                               desc.includes('ulasan') ||
                               desc.includes('rating') ||
                               desc.includes('disanggah') || 
                               desc.includes('sanggahan') || 
-                              desc.includes('formulir diperbarui') ||
-                              (desc.includes('diajukan') && !desc.includes('helpdesk'))
+                              desc.includes('formulir diperbarui')
                             ) {
-                              roleTitle = 'Pemohon';
+                              roleTitle = roleUpper === 'MASYARAKAT' ? 'Masyarakat' : 'Pemohon';
                             } 
-                            // 2. Helpdesk actions (pengajuan oleh Helpdesk, verifikasi, penugasan ke tim)
+                            // 4. Helpdesk actions (pengajuan oleh Helpdesk, verifikasi, penugasan ke tim)
                             else if (
-                              desc.includes('helpdesk') || 
+                              desc.includes('diajukan oleh helpdesk') ||
                               desc.includes('diverifikasi') || 
                               desc.includes('ditugaskan ke tim') || 
                               desc.includes('penugasan tim') ||
-                              desc.includes('alasan pending:')
+                              desc.includes('alasan pending:') ||
+                              roleUpper === 'HELPDESK'
                             ) {
                               roleTitle = 'Helpdesk';
                             } 
-                            // 3. Pegawai actions (mulai pengerjaan teknis, progress, selesai dikerjakan, BAST)
+                            // 5. Pegawai actions (mulai pengerjaan teknis, progress, selesai dikerjakan, BAST)
                             else if (
                               desc.includes('mulai') || 
                               desc.includes('pengerjaan') || 
@@ -160,14 +170,17 @@ export const TrackTicket = () => {
                               desc.includes('selesai dikerjakan') ||
                               desc.includes('progress') ||
                               desc.includes('bast') ||
-                              desc.includes('subtask')
+                              desc.includes('subtask') ||
+                              roleUpper === 'PEGAWAI'
                             ) {
                               roleTitle = 'Pegawai';
                             }
-                            // 4. Role-based fallback
+                            // 6. Role-based fallback
                             else if (roleUpper === 'HELPDESK') {
                               roleTitle = 'Helpdesk';
-                            } else if (['USER', 'MASYARAKAT', 'OPD'].includes(roleUpper)) {
+                            } else if (roleUpper === 'MASYARAKAT') {
+                              roleTitle = 'Masyarakat';
+                            } else if (['USER', 'OPD'].includes(roleUpper)) {
                               roleTitle = 'Pemohon';
                             } else if (['PEGAWAI', 'KETUA TIM', 'TEKNISI', 'ADMIN'].includes(roleUpper)) {
                               roleTitle = 'Pegawai';

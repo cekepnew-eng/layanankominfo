@@ -3,6 +3,7 @@ import { Edit2, Trash2, X, Users, Building, Mail, Search, Lock, KeyRound, Eye, E
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
 import { ActionModal } from '../../components/ActionModal';
+import { getPasswordStrength } from '../../utils/passwordStrength';
 
 export const ManageUsers = () => {
   const { teams, setTeams, fetchTeams, user, setUser } = useAuth();
@@ -17,12 +18,19 @@ export const ManageUsers = () => {
     try {
       const response = await api.getUsers();
       const userList = response?.data || response?.users || [];
-      const normalizedUsers = userList.map((u) => ({
-        ...u,
-        roles: Array.isArray(u.roles) ? u.roles.map(r => String(r).toUpperCase()) : [String(u.role || 'USER').toUpperCase()],
-        role: String(u.role || u.roles?.[0] || 'USER').toUpperCase(),
-        department: u.department || u.team || 'Dinas Komunikasi dan Informatika'
-      }));
+      const normalizedUsers = userList.map((u) => {
+        const roles = Array.isArray(u.roles) && u.roles.length
+          ? u.roles.map(role => String(role).toUpperCase())
+          : [String(u.role || 'USER').toUpperCase()];
+        const role = ['ADMIN', 'HELPDESK', 'PEGAWAI', 'USER', 'MASYARAKAT']
+          .find(candidate => roles.includes(candidate)) || roles[0];
+        return {
+          ...u,
+          roles,
+          role,
+          department: u.department || u.team || 'Dinas Komunikasi dan Informatika'
+        };
+      });
       setUsers(normalizedUsers);
     } catch (err) {
       console.error('Error fetching users:', err);
@@ -41,7 +49,13 @@ export const ManageUsers = () => {
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [newMasyarakatData, setNewMasyarakatData] = useState({
-    fullName: '', email: '', password: '', confirmPassword: ''
+    fullName: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+    roleName: 'MASYARAKAT',
+    department: '',
+    teamId: ''
   });
   const [masyarakatFormError, setMasyarakatFormError] = useState('');
   const [showMasyarakatPassword, setShowMasyarakatPassword] = useState(false);
@@ -57,8 +71,13 @@ export const ManageUsers = () => {
     onConfirm: null
   });
 
-  const masyarakatPasswordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
-  const masyarakatPasswordIsValid = masyarakatPasswordPattern.test(newMasyarakatData.password);
+  const {
+    requirements: manualPasswordRequirements,
+    level: manualPasswordLevel,
+    color: manualPasswordColor,
+    textColor: manualPasswordTextColor,
+    isStrong: masyarakatPasswordIsValid
+  } = getPasswordStrength(newMasyarakatData.password);
   const masyarakatPasswordConfirmationMismatch = Boolean(
     newMasyarakatData.confirmPassword &&
     newMasyarakatData.password !== newMasyarakatData.confirmPassword
@@ -81,7 +100,7 @@ export const ManageUsers = () => {
   const handleStartEdit = (u) => {
     setEditingUser(u);
     setEditRoleVal((u.role || 'user').toLowerCase());
-    
+
     const isMasyarakat = Boolean(
       u.department === 'Masyarakat Umum' ||
       u.department === 'Masyarakat' ||
@@ -102,7 +121,7 @@ export const ManageUsers = () => {
 
     const initialAssignments = {};
     if (u.team_id) {
-       initialAssignments[u.team_id] = true;
+      initialAssignments[u.team_id] = true;
     }
     setEditTeamAssignments(initialAssignments);
   };
@@ -131,8 +150,8 @@ export const ManageUsers = () => {
     }
 
     setEditRolesVal(prev => {
-      let newRoles = prev.includes(roleKey) 
-        ? prev.filter(r => r !== roleKey) 
+      let newRoles = prev.includes(roleKey)
+        ? prev.filter(r => r !== roleKey)
         : [...prev, roleKey];
 
       newRoles = newRoles.filter(r => r !== 'masyarakat');
@@ -158,17 +177,25 @@ export const ManageUsers = () => {
   const handleAddUserManual = async (e) => {
     e.preventDefault();
     if (!masyarakatPasswordIsValid) {
-      setMasyarakatFormError('Password minimal 8 karakter serta harus memiliki huruf besar, huruf kecil, dan angka.');
+      setMasyarakatFormError('Password harus memenuhi semua kriteria hingga level Kuat.');
       return;
     }
     if (masyarakatPasswordConfirmationMismatch || !newMasyarakatData.confirmPassword) {
       setMasyarakatFormError('Konfirmasi password tidak cocok.');
       return;
     }
+    if (newMasyarakatData.roleName === 'PEGAWAI' && !newMasyarakatData.teamId) {
+      setMasyarakatFormError('Pilih tim kerja untuk akun Pegawai.');
+      return;
+    }
+    if (newMasyarakatData.roleName !== 'MASYARAKAT' && !newMasyarakatData.department.trim()) {
+      setMasyarakatFormError('Nama instansi/perangkat daerah wajib diisi.');
+      return;
+    }
     try {
-      await api.createMasyarakatUserManual(newMasyarakatData);
+      await api.createManualUser(newMasyarakatData);
       setShowAddModal(false);
-      setNewMasyarakatData({ fullName: '', email: '', password: '', confirmPassword: '' });
+      setNewMasyarakatData({ fullName: '', email: '', password: '', confirmPassword: '', roleName: 'MASYARAKAT', department: '', teamId: '' });
       setMasyarakatFormError('');
       setShowMasyarakatPassword(false);
       setShowMasyarakatPasswordConfirmation(false);
@@ -183,13 +210,13 @@ export const ManageUsers = () => {
         onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
       });
     } catch (err) {
-      alert('Gagal menambahkan pengguna: ' + err.message);
+      setMasyarakatFormError(err.message || 'Gagal menambahkan pengguna. Silakan coba kembali.');
     }
   };
 
   const closeAddUserModal = () => {
     setShowAddModal(false);
-    setNewMasyarakatData({ fullName: '', email: '', password: '', confirmPassword: '' });
+    setNewMasyarakatData({ fullName: '', email: '', password: '', confirmPassword: '', roleName: 'MASYARAKAT', department: '', teamId: '' });
     setMasyarakatFormError('');
     setShowMasyarakatPassword(false);
     setShowMasyarakatPasswordConfirmation(false);
@@ -239,7 +266,7 @@ export const ManageUsers = () => {
           isOpen: true,
           type: 'warning',
           title: 'Sesi Diperbarui',
-          message: 'Anda baru saja mengubah hak akses akun Anda sendiri. Demi keamanan dan sinkronisasi dasbor, sistem akan mengarahkan Anda untuk login ulang.',
+          message: 'Anda baru saja mengubah hak akses akun Anda sendiri. Demi keamanan dan sinkronisasi dashboard, sistem akan mengarahkan Anda untuk login ulang.',
           confirmText: 'Login Ulang',
           cancelText: '',
           onConfirm: () => {
@@ -285,13 +312,13 @@ export const ManageUsers = () => {
     if (!userToDelete) return;
     try {
       await api.deleteUser(id);
-      
+
       setTeams(prevTeams => prevTeams.map(t => ({
         ...t,
         members: t.members.filter(m => m !== userToDelete.name),
         leader: t.leader === userToDelete.name ? '' : t.leader
       })));
-      
+
       await fetchUsers();
       setModalConfig({
         isOpen: true,
@@ -345,8 +372,8 @@ export const ManageUsers = () => {
     { id: 'masyarakat', label: 'Masyarakat', count: users.filter(u => u.roles?.some(r => r.toLowerCase() === 'masyarakat')).length }
   ];
 
-  const filteredUsers = (activeTab === 'semua' 
-    ? users 
+  const filteredUsers = (activeTab === 'semua'
+    ? users
     : users.filter(u => u.roles?.some(r => r.toLowerCase() === activeTab))
   ).filter(u => {
     const query = searchQuery.toLowerCase().trim();
@@ -366,36 +393,12 @@ export const ManageUsers = () => {
           <h2 className="text-3xl font-black text-slate-900 tracking-tight">Manajemen Pengguna</h2>
           <p className="text-slate-500 text-base leading-relaxed">Kelola hak akses role pengguna secara dinamis dan kelola instansi dinas terkait.</p>
         </div>
-        <button 
+        <button
           onClick={() => setShowAddModal(true)}
           className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-sky-500/20 cursor-pointer flex items-center gap-2"
         >
-          <span>+ Tambah Akun Masyarakat</span>
+          <span>+ Tambah User Manual</span>
         </button>
-      </div>
-
-      <div className="flex gap-2 border-b border-slate-200 overflow-x-auto pb-px">
-        {tabs.map((tab) => {
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-5 py-3 border-b-2 font-bold text-sm transition-all whitespace-nowrap -mb-px ${
-                isActive 
-                  ? 'border-sky-600 text-sky-600 bg-sky-50/50 rounded-t-lg' 
-                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50/50'
-              }`}
-            >
-              <span>{tab.label}</span>
-              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-                isActive ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-500'
-              }`}>
-                {tab.count}
-              </span>
-            </button>
-          );
-        })}
       </div>
 
       <div className="relative max-w-md w-full">
@@ -417,6 +420,28 @@ export const ManageUsers = () => {
             <X className="w-4 h-4" />
           </button>
         )}
+      </div>
+
+      <div className="flex gap-2 border-b border-slate-200 overflow-x-auto pb-px">
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-5 py-3 border-b-2 font-bold text-sm transition-all whitespace-nowrap -mb-px ${isActive
+                  ? 'border-sky-600 text-sky-600 bg-sky-50/50 rounded-t-lg'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50/50'
+                }`}
+            >
+              <span>{tab.label}</span>
+              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${isActive ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-500'
+                }`}>
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       <div className="glass-card rounded-3xl border border-white/60 shadow-sm overflow-hidden">
@@ -462,15 +487,14 @@ export const ManageUsers = () => {
                         {u.roles?.map(r => {
                           const rLower = r.toLowerCase();
                           return (
-                          <span key={r} className={`px-2.5 py-1 rounded-xl text-xs font-black uppercase tracking-wider border ${
-                            rLower === 'admin' ? 'bg-rose-50 text-rose-700 border-rose-100' :
-                            rLower === 'helpdesk' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                            rLower === 'pegawai' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' :
-                            rLower === 'masyarakat' ? 'bg-slate-100 text-slate-700 border border-slate-200' :
-                            'bg-sky-50 text-sky-700 border border-sky-100'
-                          }`}>
-                            {rLower === 'user' ? 'OPD' : rLower === 'pegawai' ? 'Pegawai' : r}
-                          </span>
+                            <span key={r} className={`px-2.5 py-1 rounded-xl text-xs font-black uppercase tracking-wider border ${rLower === 'admin' ? 'bg-rose-50 text-rose-700 border-rose-100' :
+                                rLower === 'helpdesk' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                                  rLower === 'pegawai' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' :
+                                    rLower === 'masyarakat' ? 'bg-slate-100 text-slate-700 border border-slate-200' :
+                                      'bg-sky-50 text-sky-700 border border-sky-100'
+                              }`}>
+                              {rLower === 'user' ? 'OPD' : rLower === 'pegawai' ? 'Pegawai' : r}
+                            </span>
                           );
                         })}
                       </div>
@@ -480,14 +504,14 @@ export const ManageUsers = () => {
                     </td>
                     <td className="px-6 py-4 text-center">
                       <div className="flex items-center justify-center gap-2">
-                        <button 
+                        <button
                           onClick={() => handleStartEdit(u)}
                           className="p-1.5 text-slate-400 hover:text-sky-600 rounded-lg hover:bg-sky-50 transition-all"
                           title="Edit Pengguna"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
-                        <button 
+                        <button
                           onClick={() => handlePromptReset2FA(u)}
                           className="p-1.5 text-slate-400 hover:text-amber-600 rounded-lg hover:bg-amber-50 transition-all"
                           title="Reset 2FA"
@@ -520,7 +544,7 @@ export const ManageUsers = () => {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-3">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
@@ -587,7 +611,7 @@ export const ManageUsers = () => {
                       editingUser.role?.toUpperCase() === 'MASYARAKAT' ||
                       editingUser.roles?.some(r => String(r).toUpperCase() === 'MASYARAKAT')
                     );
-                    
+
                     let isDisabled = false;
                     if (isMasyarakatUser) {
                       // Akun Masyarakat Umum tidak dapat diubah ke OPD/staf manapun
@@ -610,15 +634,13 @@ export const ManageUsers = () => {
                           checked={isChecked}
                           disabled={isDisabled}
                           onChange={() => handleToggleRoleCheckbox(item.key)}
-                          className={`w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer ${
-                            isDisabled ? 'opacity-40 cursor-not-allowed' : ''
-                          }`}
+                          className={`w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer ${isDisabled ? 'opacity-40 cursor-not-allowed' : ''
+                            }`}
                         />
-                        <label 
-                          htmlFor={`edit-role-${item.key}`} 
-                          className={`text-xs font-bold select-none ${
-                            isDisabled ? 'text-slate-400 cursor-not-allowed' : 'text-slate-700 cursor-pointer'
-                          }`}
+                        <label
+                          htmlFor={`edit-role-${item.key}`}
+                          className={`text-xs font-bold select-none ${isDisabled ? 'text-slate-400 cursor-not-allowed' : 'text-slate-700 cursor-pointer'
+                            }`}
                         >
                           {item.label}
                           {isDisabled && !isChecked && (
@@ -686,15 +708,39 @@ export const ManageUsers = () => {
 
       {showAddModal && (
         <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 overflow-hidden">
-          <div className="bg-white max-w-lg w-full rounded-3xl p-6 sm:p-7 border border-slate-100 shadow-2xl space-y-5 text-left animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white max-h-[calc(100dvh-2rem)] max-w-lg w-full overflow-y-auto overscroll-contain rounded-3xl p-5 sm:p-7 border border-slate-100 shadow-2xl space-y-5 text-left animate-in fade-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-              <h3 className="font-black text-slate-900 text-xl tracking-tight">Tambah Akun Masyarakat</h3>
+              <h3 className="font-black text-slate-900 text-xl tracking-tight">Tambah User Manual</h3>
               <button onClick={closeAddUserModal} className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleAddUserManual} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Role Akun</label>
+                <select
+                  required
+                  value={newMasyarakatData.roleName}
+                  onChange={event => {
+                    const roleName = event.target.value;
+                    setNewMasyarakatData(current => ({
+                      ...current,
+                      roleName,
+                      department: roleName === 'MASYARAKAT' ? '' : current.department || 'Dinas Komunikasi dan Informatika',
+                      teamId: roleName === 'PEGAWAI' ? current.teamId : ''
+                    }));
+                    setMasyarakatFormError('');
+                  }}
+                  className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-semibold focus:ring-2 focus:ring-sky-500"
+                >
+                  <option value="ADMIN">Admin</option>
+                  <option value="HELPDESK">Helpdesk</option>
+                  <option value="PEGAWAI">Pegawai</option>
+                  <option value="USER">OPD</option>
+                  <option value="MASYARAKAT">Masyarakat</option>
+                </select>
+              </div>
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nama Lengkap</label>
                 <input
@@ -707,6 +753,33 @@ export const ManageUsers = () => {
                   className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-sky-500 text-sm font-semibold"
                 />
               </div>
+              {newMasyarakatData.roleName !== 'MASYARAKAT' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Instansi / Perangkat Daerah</label>
+                  <input
+                    required
+                    maxLength={255}
+                    type="text"
+                    value={newMasyarakatData.department}
+                    onChange={event => setNewMasyarakatData(current => ({ ...current, department: event.target.value }))}
+                    className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-sky-500 text-sm font-semibold"
+                  />
+                </div>
+              )}
+              {newMasyarakatData.roleName === 'PEGAWAI' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tim Kerja (Wajib)</label>
+                  <select
+                    required
+                    value={newMasyarakatData.teamId}
+                    onChange={event => setNewMasyarakatData(current => ({ ...current, teamId: event.target.value }))}
+                    className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-semibold focus:ring-2 focus:ring-sky-500"
+                  >
+                    <option value="">Pilih tim kerja</option>
+                    {teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email</label>
                 <input
@@ -725,7 +798,6 @@ export const ManageUsers = () => {
                   <input
                     required
                     minLength={8}
-                    pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}"
                     type={showMasyarakatPassword ? 'text' : 'password'}
                     value={newMasyarakatData.password}
                     onChange={event => {
@@ -735,11 +807,10 @@ export const ManageUsers = () => {
                     autoComplete="new-password"
                     aria-invalid={Boolean(newMasyarakatData.password && !masyarakatPasswordIsValid)}
                     aria-describedby="masyarakat-password-feedback"
-                    className={`w-full rounded-xl border p-3 pr-12 text-sm font-semibold focus:ring-2 focus:ring-sky-500 ${
-                      newMasyarakatData.password && !masyarakatPasswordIsValid
+                    className={`w-full rounded-xl border p-3 pr-12 text-sm font-semibold focus:ring-2 focus:ring-sky-500 ${newMasyarakatData.password && !masyarakatPasswordIsValid
                         ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-200'
                         : 'border-slate-200'
-                    }`}
+                      }`}
                   />
                   <button
                     type="button"
@@ -754,19 +825,49 @@ export const ManageUsers = () => {
                 </div>
                 <p
                   id="masyarakat-password-feedback"
-                  className={`mt-1.5 text-xs font-semibold ${
-                    newMasyarakatData.password && !masyarakatPasswordIsValid
+                  className={`mt-1.5 text-xs font-semibold ${newMasyarakatData.password && !masyarakatPasswordIsValid
                       ? 'text-rose-600'
                       : masyarakatPasswordIsValid ? 'text-emerald-600' : 'text-slate-500'
-                  }`}
+                    }`}
                   aria-live="polite"
                 >
                   {!newMasyarakatData.password
-                    ? 'Minimal 8 karakter, dengan huruf besar, huruf kecil, dan angka.'
+                    ? 'Gunakan minimal 8 karakter, huruf kapital di awal, angka, dan simbol.'
                     : masyarakatPasswordIsValid
-                      ? 'Password sudah memenuhi semua syarat.'
-                      : 'Password belum sesuai. Gunakan minimal 8 karakter yang terdiri dari huruf besar, huruf kecil, dan angka.'}
+                      ? 'Password sudah memenuhi kriteria level Kuat.'
+                      : 'Lengkapi semua kriteria agar password mencapai level Kuat.'}
                 </p>
+                {newMasyarakatData.password && (
+                  <div className="mt-2 space-y-2" aria-live="polite">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-slate-500">Kekuatan kata sandi</span>
+                      <span className={`text-[11px] font-bold ${manualPasswordTextColor}`}>{manualPasswordLevel}</span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-1" aria-hidden="true">
+                      {manualPasswordRequirements.map((requirement, index) => (
+                        <span
+                          key={index}
+                          className={`h-1.5 rounded-full ${requirement.met ? manualPasswordColor : 'bg-slate-200'}`}
+                        />
+                      ))}
+                    </div>
+                    <div className="space-y-1">
+                      {manualPasswordRequirements.map((requirement, index) => (
+                        <div key={index} className="flex items-center gap-1.5">
+                          <span className={`flex h-3.5 w-3.5 items-center justify-center rounded-full text-[9px] font-black ${requirement.met
+                              ? 'bg-emerald-100 text-emerald-600'
+                              : 'bg-slate-100 text-slate-400'
+                            }`}>
+                            {requirement.met ? '✓' : '○'}
+                          </span>
+                          <span className={`text-[11px] font-semibold ${requirement.met ? 'text-emerald-700' : 'text-slate-500'}`}>
+                            {requirement.label}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Konfirmasi Password</label>
@@ -783,11 +884,10 @@ export const ManageUsers = () => {
                     autoComplete="new-password"
                     aria-invalid={masyarakatPasswordConfirmationMismatch}
                     aria-describedby="masyarakat-password-confirmation-feedback"
-                    className={`w-full rounded-xl border p-3 pr-12 text-sm font-semibold focus:ring-2 focus:ring-sky-500 ${
-                      masyarakatPasswordConfirmationMismatch
+                    className={`w-full rounded-xl border p-3 pr-12 text-sm font-semibold focus:ring-2 focus:ring-sky-500 ${masyarakatPasswordConfirmationMismatch
                         ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-200'
                         : 'border-slate-200'
-                    }`}
+                      }`}
                   />
                   <button
                     type="button"
@@ -802,10 +902,9 @@ export const ManageUsers = () => {
                 </div>
                 <p
                   id="masyarakat-password-confirmation-feedback"
-                  className={`mt-1.5 text-xs font-semibold ${
-                    masyarakatPasswordConfirmationMismatch ? 'text-rose-600' :
+                  className={`mt-1.5 text-xs font-semibold ${masyarakatPasswordConfirmationMismatch ? 'text-rose-600' :
                       newMasyarakatData.confirmPassword ? 'text-emerald-600' : 'text-slate-500'
-                  }`}
+                    }`}
                   aria-live="polite"
                 >
                   {masyarakatPasswordConfirmationMismatch
@@ -821,12 +920,16 @@ export const ManageUsers = () => {
                 </p>
               )}
               <p className="rounded-xl border border-sky-100 bg-sky-50 p-3 text-sm font-medium text-sky-800">
-                Akun dibuat dengan role Masyarakat dan dapat langsung digunakan untuk login.
+                Akun dibuat dengan role {newMasyarakatData.roleName === 'USER' ? 'OPD' : newMasyarakatData.roleName === 'MASYARAKAT' ? 'Masyarakat' : newMasyarakatData.roleName}. Password berlaku selama satu tahun.
               </p>
               <div className="flex gap-3 pt-3 border-t border-slate-100">
                 <button type="button" onClick={closeAddUserModal} className="flex-1 py-3 px-5 border border-slate-200 hover:bg-slate-50 rounded-xl text-sm sm:text-base font-bold text-slate-700 transition-all cursor-pointer">Batal</button>
-                <button type="submit" className="flex-1 py-3 px-5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md shadow-sky-500/20 cursor-pointer">
-                  Buat Akun Masyarakat
+                <button
+                  type="submit"
+                  disabled={!masyarakatPasswordIsValid || !newMasyarakatData.confirmPassword || masyarakatPasswordConfirmationMismatch}
+                  className="flex-1 py-3 px-5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md shadow-sky-500/20 cursor-pointer disabled:bg-slate-300 disabled:shadow-none disabled:cursor-not-allowed"
+                >
+                  Buat Akun
                 </button>
               </div>
             </form>

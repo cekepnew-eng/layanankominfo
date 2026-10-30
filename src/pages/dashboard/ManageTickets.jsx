@@ -155,7 +155,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
         let rawTickets = res.data;
         if (role === 'USER' || role === 'MASYARAKAT' || !['ADMIN', 'HELPDESK', 'PEGAWAI'].includes(role)) {
           rawTickets = rawTickets.filter(t => {
-            const isHelpdeskTicket = 
+            const isHelpdeskTicket =
               t.form_data?.submitted_by_helpdesk === true ||
               t.form_data?.submitted_by_helpdesk === 'true' ||
               String(t.pemohon || '').toLowerCase().includes('helpdesk') ||
@@ -174,11 +174,11 @@ export const TicketHistory = ({ mode = 'active' }) => {
           const mappedStatus = statusName === 'PENDING' ? 'Verifikasi'
             : statusName === 'VERIFIED' ? 'Menunggu Validasi'
               : statusName === 'REJECTED' ? 'Pending'
-              : statusName === 'ASSIGNED' ? 'Diproses'
-                : statusName === 'IN_PROGRESS' ? 'Diproses'
-                  : statusName === 'WAITING_USER_CONFIRMATION' ? 'Selesai'
-                    : statusName === 'COMPLETED' ? 'Selesai & Dinilai'
-                      : (t.status || t.status_name || '');
+                : statusName === 'ASSIGNED' ? 'Diproses'
+                  : statusName === 'IN_PROGRESS' ? 'Diproses'
+                    : statusName === 'WAITING_USER_CONFIRMATION' ? 'Selesai'
+                      : statusName === 'COMPLETED' ? 'Selesai & Dinilai'
+                        : (t.status || t.status_name || '');
 
           return {
             ...t,
@@ -392,11 +392,11 @@ export const TicketHistory = ({ mode = 'active' }) => {
       await api.updateSubtaskStatus(selectedTicket.uuid || selectedTicket.id, subtaskId, { status, comment });
       const updatedSubtasks = selectedTicket.subtasks.map(s => s.id === subtaskId ? { ...s, status, comment } : s);
       setSelectedTicket({ ...selectedTicket, subtasks: updatedSubtasks });
-      
+
       if (status === 'REJECTED') {
-         setShowRejectSubtaskModal(false);
-         setRejectSubtaskReason('');
-         setRejectSubtaskId(null);
+        setShowRejectSubtaskModal(false);
+        setRejectSubtaskReason('');
+        setRejectSubtaskId(null);
       }
       loadTickets();
     } catch (err) {
@@ -408,15 +408,15 @@ export const TicketHistory = ({ mode = 'active' }) => {
     e.preventDefault();
     const tasks = Object.entries(subtaskAssignees).filter(([task, assignee]) => assignee && assignee.trim() !== '');
     if (tasks.length === 0) return;
-    
+
     try {
-      await Promise.all(tasks.map(([task, assignee]) => 
+      await Promise.all(tasks.map(([task, assignee]) =>
         api.createSubtask(selectedTicket.uuid || selectedTicket.id, {
           task_name: task,
           assigned_to_name: assignee
         })
       ));
-      
+
       setShowSubtaskModal(false);
       setSubtaskAssignees({});
       loadTickets();
@@ -443,12 +443,12 @@ export const TicketHistory = ({ mode = 'active' }) => {
         const bstr = atob(arr[1]);
         let n = bstr.length;
         const u8arr = new Uint8Array(n);
-        while(n--) {
-            u8arr[n] = bstr.charCodeAt(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
         }
-        const blob = new Blob([u8arr], {type: mime});
+        const blob = new Blob([u8arr], { type: mime });
         const objectUrl = URL.createObjectURL(blob);
-        
+
         const newWindow = window.open('', '_blank');
         if (newWindow) {
           newWindow.document.write(`
@@ -495,7 +495,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
 
   const getFileTasks = () => {
     if (!selectedTicket || !selectedTicket.form_data) return ['Evaluasi Dokumen Pemohon'];
-    
+
     const fileFields = [];
     Object.keys(selectedTicket.form_data).forEach(key => {
       // Jika ada key_name, maka field ini adalah upload file
@@ -512,9 +512,9 @@ export const TicketHistory = ({ mode = 'active' }) => {
     const srv = (services || []).find(s => s.name === subServiceName || s.service_name === subServiceName);
     let schema = srv?.form_schema || [];
     if (typeof schema === 'string') {
-      try { schema = JSON.parse(schema); } catch(e) { schema = []; }
+      try { schema = JSON.parse(schema); } catch (e) { schema = []; }
     }
-    
+
     let foundLabel = fieldName;
     const traverse = (fields) => {
       for (const f of fields) {
@@ -547,7 +547,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
         isOpen: true,
         type: 'success',
         title: 'Sanggahan Berhasil Dikirim',
-        message: 'Tiket berhasil disanggah dan telah dialihkan kembali ke status Diproses pada dasbor Tim Pelaksana / Pegawai.',
+        message: 'Tiket berhasil disanggah dan telah dialihkan kembali ke status Diproses pada dashboard Tim Pelaksana / Pegawai.',
         confirmText: 'Buka Tiket Proses',
         cancelText: '',
         onConfirm: () => {
@@ -636,45 +636,68 @@ export const TicketHistory = ({ mode = 'active' }) => {
           const roleUpper = (log.user_role || '').toUpperCase();
           let roleTitle = 'Pegawai';
 
-          // 1. Pemohon actions (SKM, ulasan, rating, sanggahan, revisi pemohon)
-          if (
+          const isMasyarakat =
+            roleUpper === 'MASYARAKAT' ||
+            (ticketWithLogs?.opd === 'Masyarakat Umum' && (
+              log.user_name === ticketWithLogs?.pemohon ||
+              lowerText.startsWith('tiket berhasil diajukan') ||
+              lowerText.includes('disanggah') ||
+              lowerText.includes('sanggahan') ||
+              lowerText.includes('ulasan')
+            ));
+
+          // 1. Masyarakat role check
+          if (isMasyarakat && !lowerText.includes('diajukan oleh helpdesk') && !lowerText.includes('diverifikasi') && !lowerText.includes('ditugaskan ke tim') && !lowerText.includes('pekerjaan teknis')) {
+            roleTitle = 'Masyarakat';
+          }
+          // 2. OPD / User role check
+          else if (roleUpper === 'USER' || roleUpper === 'OPD') {
+            roleTitle = 'Pemohon';
+          }
+          // 3. Pemohon actions (pengajuan awal, SKM, ulasan, rating, sanggahan, revisi pemohon)
+          else if (
+            lowerText.startsWith('tiket berhasil diajukan') ||
+            (lowerText.includes('diajukan') && !lowerText.includes('diajukan oleh helpdesk')) ||
             lowerText.includes('skm') ||
             lowerText.includes('bintang') ||
             lowerText.includes('ulasan') ||
             lowerText.includes('rating') ||
-            lowerText.includes('disanggah') || 
+            lowerText.includes('disanggah') ||
             lowerText.includes('sanggahan') ||
-            lowerText.includes('formulir diperbarui') ||
-            (lowerText.includes('diajukan') && !lowerText.includes('helpdesk'))
+            lowerText.includes('formulir diperbarui')
           ) {
-            roleTitle = 'Pemohon';
-          } 
-          // 2. Helpdesk actions (pengajuan oleh Helpdesk, verifikasi, penugasan ke tim)
+            roleTitle = (isMasyarakat || roleUpper === 'MASYARAKAT') ? 'Masyarakat' : 'Pemohon';
+          }
+          // 4. Helpdesk actions (pengajuan oleh Helpdesk, verifikasi, penugasan ke tim)
           else if (
-            lowerText.includes('helpdesk') || 
-            lowerText.includes('diverifikasi') || 
-            lowerText.includes('ditugaskan ke tim') || 
+            lowerText.includes('diajukan oleh helpdesk') ||
+            lowerText.includes('diverifikasi') ||
+            lowerText.includes('ditugaskan ke tim') ||
             lowerText.includes('penugasan tim') ||
-            lowerText.includes('alasan pending:')
+            lowerText.includes('alasan pending:') ||
+            roleUpper === 'HELPDESK'
           ) {
             roleTitle = 'Helpdesk';
-          } 
-          // 3. Pegawai actions (mulai pengerjaan teknis, progress, selesai dikerjakan, BAST)
+          }
+          // 5. Pegawai actions (mulai pengerjaan teknis, progress, selesai dikerjakan, BAST)
           else if (
-            lowerText.includes('mulai') || 
-            lowerText.includes('pengerjaan') || 
-            lowerText.includes('teknis') || 
+            lowerText.includes('mulai') ||
+            lowerText.includes('pengerjaan') ||
+            lowerText.includes('teknis') ||
             lowerText.includes('selesai dikerjakan') ||
             lowerText.includes('progress') ||
             lowerText.includes('bast') ||
-            lowerText.includes('subtask')
+            lowerText.includes('subtask') ||
+            roleUpper === 'PEGAWAI'
           ) {
             roleTitle = 'Pegawai';
           }
-          // 4. Role-based fallback
+          // 6. Role-based fallback
           else if (roleUpper === 'HELPDESK') {
             roleTitle = 'Helpdesk';
-          } else if (['USER', 'MASYARAKAT', 'OPD'].includes(roleUpper)) {
+          } else if (roleUpper === 'MASYARAKAT') {
+            roleTitle = 'Masyarakat';
+          } else if (['USER', 'OPD'].includes(roleUpper)) {
             roleTitle = 'Pemohon';
           } else if (['PEGAWAI', 'KETUA TIM', 'TEKNISI', 'ADMIN'].includes(roleUpper)) {
             roleTitle = 'Pegawai';
@@ -701,15 +724,15 @@ export const TicketHistory = ({ mode = 'active' }) => {
     }
 
     const hasBast = Boolean(fileName && bastFileBase64 && bastFileBase64.trim() !== '');
-    const finalNoteText = progressNote.trim() 
-      ? progressNote.trim() 
-      : (pegawaiAction === 'done' 
-          ? (hasBast ? 'Pekerjaan teknis telah selesai 100% dan dokumen BAST siap.' : 'Pekerjaan teknis telah selesai dikerjakan 100%.')
-          : (pegawaiAction === 'reject' ? 'Tiket dikembalikan ke pemohon untuk diperbaiki.' : ''));
+    const finalNoteText = progressNote.trim()
+      ? progressNote.trim()
+      : (pegawaiAction === 'done'
+        ? (hasBast ? 'Pekerjaan teknis telah selesai 100% dan dokumen BAST siap.' : 'Pekerjaan teknis telah selesai dikerjakan 100%.')
+        : (pegawaiAction === 'reject' ? 'Tiket dikembalikan ke pemohon untuk diperbaiki.' : ''));
 
     try {
-      await api.updateProgress(ticketId, { 
-        progress: pegawaiAction === 'done' ? 100 : tempProgress, 
+      await api.updateProgress(ticketId, {
+        progress: pegawaiAction === 'done' ? 100 : tempProgress,
         note: finalNoteText,
         statusAction: pegawaiAction === 'reject' ? 'REJECT' : null,
         ...(pegawaiAction === 'done' && hasBast ? { bastFileName: fileName, bastFileBase64: bastFileBase64 } : {})
@@ -1016,29 +1039,29 @@ export const TicketHistory = ({ mode = 'active' }) => {
 
       <div className="flex items-center gap-3 border-b border-slate-200 pb-px">
         <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto hide-scrollbar">
-        {tabs.map((tab) => {
-          const isActive = activeTab === tab.id;
-          const count = getTabCount(tab.id);
-          return (
-            <button
-              key={tab.id}
-              onClick={() => {
-                setActiveTab(tab.id);
-                handleClearSelectedTicket();
-              }}
-              className={`px-5 py-3 border-b-2 font-bold text-sm transition-all whitespace-nowrap -mb-px flex items-center gap-2 ${isActive
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.id;
+            const count = getTabCount(tab.id);
+            return (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  handleClearSelectedTicket();
+                }}
+                className={`px-5 py-3 border-b-2 font-bold text-sm transition-all whitespace-nowrap -mb-px flex items-center gap-2 ${isActive
                   ? 'border-sky-600 text-sky-600 bg-sky-50/50 rounded-t-lg'
                   : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50/50'
-                }`}
-            >
-              <span>{tab.label}</span>
-              <span className={`px-2 py-0.5 rounded-full text-xs font-black transition-all ${isActive ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-500'
-                }`}>
-                {count}
-              </span>
-            </button>
-          );
-        })}
+                  }`}
+              >
+                <span>{tab.label}</span>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-black transition-all ${isActive ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-500'
+                  }`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
         </div>
         <div className="flex shrink-0 items-center gap-2 pb-1">
           <input
@@ -1078,8 +1101,8 @@ export const TicketHistory = ({ mode = 'active' }) => {
                     key={t.id}
                     onClick={() => handleSelectTicket(t)}
                     className={`p-6 rounded-3xl border transition-all flex flex-col md:flex-row justify-between items-start md:items-center gap-4 cursor-pointer relative shadow-sm ${isSelected
-                        ? 'border-sky-400 bg-sky-50/70 ring-2 ring-sky-300/30'
-                        : 'border-white/60 glass-card hover:bg-white/80 hover:border-white'
+                      ? 'border-sky-400 bg-sky-50/70 ring-2 ring-sky-300/30'
+                      : 'border-white/60 glass-card hover:bg-white/80 hover:border-white'
                       }`}
                   >
                     <div className="space-y-2 flex-1">
@@ -1115,13 +1138,13 @@ export const TicketHistory = ({ mode = 'active' }) => {
                     </div>
                     <div className="flex md:flex-col items-center md:items-end gap-3 self-stretch md:self-auto justify-between shrink-0">
                       <span className={`px-2.5 py-1 rounded text-xs font-extrabold uppercase tracking-wider ${t.status.includes('Selesai') ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                          t.status === 'Pending' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
-                            t.status === 'Diproses' ? 'bg-sky-50 text-sky-700 border border-sky-100' :
-                              'bg-slate-100 text-slate-600 border border-slate-200'
+                        t.status === 'Pending' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
+                          t.status === 'Diproses' ? 'bg-sky-50 text-sky-700 border border-sky-100' :
+                            'bg-slate-100 text-slate-600 border border-slate-200'
                         }`}>
                         {t.status}
                       </span>
-                      <button 
+                      <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1141,7 +1164,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
           )}
         </div>
 
-        <div 
+        <div
           className={`lg:col-span-5 ${selectedTicket ? 'fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-3 sm:p-4 overflow-y-auto lg:overflow-visible lg:relative lg:inset-auto lg:bg-transparent lg:backdrop-blur-none lg:p-0 lg:z-auto lg:block custom-scrollbar' : 'hidden lg:block'}`}
           onClick={() => {
             if (typeof window !== 'undefined' && window.innerWidth < 1024) {
@@ -1150,11 +1173,11 @@ export const TicketHistory = ({ mode = 'active' }) => {
           }}
         >
           {selectedTicket ? (
-            <div 
+            <div
               className="w-full max-w-lg lg:max-w-none bg-white rounded-2xl sm:rounded-3xl border border-slate-200 p-4 sm:p-6 space-y-5 sm:space-y-6 shadow-sm relative text-left"
               onClick={(e) => e.stopPropagation()}
             >
-              <button 
+              <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); handleClearSelectedTicket(); }}
                 className="absolute right-3.5 top-3.5 w-9 h-9 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 lg:hidden cursor-pointer shadow-xs transition-colors"
@@ -1171,9 +1194,9 @@ export const TicketHistory = ({ mode = 'active' }) => {
                     )}
                   </div>
                   <span className={`px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${selectedTicket.status.includes('Selesai') ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                      selectedTicket.status === 'Pending' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
-                        selectedTicket.status === 'Diproses' ? 'bg-sky-50 text-sky-700 border border-sky-100' :
-                          'bg-slate-100 text-slate-600'
+                    selectedTicket.status === 'Pending' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
+                      selectedTicket.status === 'Diproses' ? 'bg-sky-50 text-sky-700 border border-sky-100' :
+                        'bg-slate-100 text-slate-600'
                     }`}>
                     {selectedTicket.status}
                   </span>
@@ -1234,12 +1257,12 @@ export const TicketHistory = ({ mode = 'active' }) => {
                     {selectedTicket.status.includes('Selesai')
                       ? 'Selesai'
                       : selectedTicket.status === 'Verifikasi'
-                      ? 'Belum Berjalan (Menunggu Verifikasi)'
-                      : selectedTicket.status === 'Pending'
-                        ? 'Tertangguh (Menunggu Revisi)'
-                        : (selectedTicket.slaRemainingDays !== undefined ? selectedTicket.slaRemainingDays : selectedTicket.remainingDays) < 0
-                          ? `Terlewat ${Math.abs(selectedTicket.slaRemainingDays !== undefined ? selectedTicket.slaRemainingDays : selectedTicket.remainingDays)} Hari`
-                          : `${selectedTicket.slaRemainingDays !== undefined ? selectedTicket.slaRemainingDays : selectedTicket.remainingDays} Hari Tersisa`}
+                        ? 'Belum Berjalan (Menunggu Verifikasi)'
+                        : selectedTicket.status === 'Pending'
+                          ? 'Tertangguh (Menunggu Revisi)'
+                          : (selectedTicket.slaRemainingDays !== undefined ? selectedTicket.slaRemainingDays : selectedTicket.remainingDays) < 0
+                            ? `Terlewat ${Math.abs(selectedTicket.slaRemainingDays !== undefined ? selectedTicket.slaRemainingDays : selectedTicket.remainingDays)} Hari`
+                            : `${selectedTicket.slaRemainingDays !== undefined ? selectedTicket.slaRemainingDays : selectedTicket.remainingDays} Hari Tersisa`}
                   </p>
                 </div>
               </div>
@@ -1291,101 +1314,101 @@ export const TicketHistory = ({ mode = 'active' }) => {
 
 
               {(user?.role === 'HELPDESK' && (selectedTicket.status === 'Verifikasi' || selectedTicket.status === 'Pending' || selectedTicket.status === 'Menunggu Validasi' || selectedTicket.status_name === 'PENDING' || selectedTicket.status_name === 'VERIFIED' || selectedTicket.status_name === 'REJECTED')) && (
-                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4 text-left">
-                    <div className="flex justify-between items-center">
-                      <h4 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider">
-                        {selectedTicket.status === 'Pending' ? 'Tindakan Validasi Tiket Pending' : 'Tindakan Validasi Helpdesk'}
-                      </h4>
-                      {selectedTicket.status === 'Pending' && (
-                        <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-black uppercase tracking-wider">
-                          Status: Pending
-                        </span>
-                      )}
-                    </div>
-
-                    {selectedTicket.status === 'Pending' && selectedTicket.logs && selectedTicket.logs.length > 0 && (
-                      <div className="p-3 bg-amber-50/80 border border-amber-200/80 rounded-xl text-xs space-y-1">
-                        <span className="font-bold text-amber-900 block uppercase tracking-wider">Catatan Riwayat Terakhir:</span>
-                        <p className="text-slate-700 italic">
-                          "{selectedTicket.logs[0]?.text}"
-                        </p>
-                      </div>
-                    )}
-
-                    {selectedTicket.revisionNote && (
-                      <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-1">
-                        <span className="font-extrabold text-amber-900 block uppercase tracking-wider">Catatan Perbaikan dari Pemohon:</span>
-                        <p className="text-slate-800 font-medium italic">
-                          "{selectedTicket.revisionNote}"
-                        </p>
-                      </div>
-                    )}
-
-                    {!showRejectForm ? (
-                      <div className="space-y-4">
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Tugaskan ke Tim Pelaksana</label>
-                          <select
-                            value={selectedTeam}
-                            onChange={(e) => setSelectedTeam(e.target.value)}
-                            className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/25"
-                          >
-                            {teams && teams.map(t => (
-                              <option key={t.id} value={t.name}>{t.name}</option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="flex gap-3">
-                          <button
-                            onClick={() => handleApprove(selectedTicket.uuid)}
-                            className="flex-1 px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm font-bold transition-all cursor-pointer"
-                          >
-                            {selectedTicket.status === 'Pending' ? 'Setujui & Lanjutkan Tiket' : 'Process'}
-                          </button>
-                          {user?.role === 'HELPDESK' && (
-                            <button
-                              onClick={() => setShowRejectForm(true)}
-                              className="px-4 py-2.5 border border-amber-200 hover:bg-amber-50 hover:border-amber-300 text-amber-600 rounded-xl text-sm font-bold transition-all cursor-pointer"
-                            >
-                              {selectedTicket.status === 'Pending' ? 'Perbarui Alasan Pending' : 'Pending'}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Alasan Penangguhan / Pending</label>
-                          <textarea
-                            value={rejectReason}
-                            onChange={(e) => setRejectReason(e.target.value)}
-                            placeholder="Tuliskan alasan penangguhan..."
-                            className="w-full h-24 px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-550/20 focus:border-amber-500 resize-none"
-                          />
-                        </div>
-
-                        <div className="flex gap-3">
-                          <button
-                            onClick={() => handleReject(selectedTicket.uuid)}
-                            className="flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-bold transition-all"
-                          >
-                            Tangguhkan Tiket
-                          </button>
-                          <button
-                            onClick={() => {
-                              setShowRejectForm(false);
-                              setRejectReason('');
-                            }}
-                            className="px-4 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-650 rounded-xl text-sm font-bold transition-all"
-                          >
-                            Batal
-                          </button>
-                        </div>
-                      </div>
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4 text-left">
+                  <div className="flex justify-between items-center">
+                    <h4 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider">
+                      {selectedTicket.status === 'Pending' ? 'Tindakan Validasi Tiket Pending' : 'Tindakan Validasi Helpdesk'}
+                    </h4>
+                    {selectedTicket.status === 'Pending' && (
+                      <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-black uppercase tracking-wider">
+                        Status: Pending
+                      </span>
                     )}
                   </div>
-                )}
+
+                  {selectedTicket.status === 'Pending' && selectedTicket.logs && selectedTicket.logs.length > 0 && (
+                    <div className="p-3 bg-amber-50/80 border border-amber-200/80 rounded-xl text-xs space-y-1">
+                      <span className="font-bold text-amber-900 block uppercase tracking-wider">Catatan Riwayat Terakhir:</span>
+                      <p className="text-slate-700 italic">
+                        "{selectedTicket.logs[0]?.text}"
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedTicket.revisionNote && (
+                    <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-1">
+                      <span className="font-extrabold text-amber-900 block uppercase tracking-wider">Catatan Perbaikan dari Pemohon:</span>
+                      <p className="text-slate-800 font-medium italic">
+                        "{selectedTicket.revisionNote}"
+                      </p>
+                    </div>
+                  )}
+
+                  {!showRejectForm ? (
+                    <div className="space-y-4">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Tugaskan ke Tim Pelaksana</label>
+                        <select
+                          value={selectedTeam}
+                          onChange={(e) => setSelectedTeam(e.target.value)}
+                          className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/25"
+                        >
+                          {teams && teams.map(t => (
+                            <option key={t.id} value={t.name}>{t.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => handleApprove(selectedTicket.uuid)}
+                          className="flex-1 px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm font-bold transition-all cursor-pointer"
+                        >
+                          {selectedTicket.status === 'Pending' ? 'Setujui & Lanjutkan Tiket' : 'Process'}
+                        </button>
+                        {user?.role === 'HELPDESK' && (
+                          <button
+                            onClick={() => setShowRejectForm(true)}
+                            className="px-4 py-2.5 border border-amber-200 hover:bg-amber-50 hover:border-amber-300 text-amber-600 rounded-xl text-sm font-bold transition-all cursor-pointer"
+                          >
+                            {selectedTicket.status === 'Pending' ? 'Perbarui Alasan Pending' : 'Pending'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Alasan Penangguhan / Pending</label>
+                        <textarea
+                          value={rejectReason}
+                          onChange={(e) => setRejectReason(e.target.value)}
+                          placeholder="Tuliskan alasan penangguhan..."
+                          className="w-full h-24 px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-550/20 focus:border-amber-500 resize-none"
+                        />
+                      </div>
+
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => handleReject(selectedTicket.uuid)}
+                          className="flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-bold transition-all"
+                        >
+                          Tangguhkan Tiket
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowRejectForm(false);
+                            setRejectReason('');
+                          }}
+                          className="px-4 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-650 rounded-xl text-sm font-bold transition-all"
+                        >
+                          Batal
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {user?.role === 'PEGAWAI' && (selectedTicket.status === 'Pending' || selectedTicket.status_name === 'REJECTED' || selectedTicket.status_name === 'ASSIGNED') && selectedTicket.status !== 'Diproses' && (
                 <div className="bg-rose-50/50 border border-rose-200 rounded-2xl p-5 space-y-4 text-left animate-in fade-in duration-200">
@@ -1460,71 +1483,71 @@ export const TicketHistory = ({ mode = 'active' }) => {
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
                     {(!selectedTicket.subtasks || selectedTicket.subtasks.length === 0) ? (
-                       <div className="col-span-full text-center py-4 text-slate-400 font-medium italic text-xs bg-white border border-slate-200 border-dashed rounded-xl">
-                         Belum ada pembagian tugas asesmen.
-                       </div>
+                      <div className="col-span-full text-center py-4 text-slate-400 font-medium italic text-xs bg-white border border-slate-200 border-dashed rounded-xl">
+                        Belum ada pembagian tugas asesmen.
+                      </div>
                     ) : (
-                       selectedTicket.subtasks.map((sub, idx) => (
-                         <div key={idx} className="p-3 bg-white border border-slate-200 rounded-xl flex flex-col justify-between gap-3 shadow-sm hover:border-indigo-200 transition-colors">
-                           <div>
-                             <p className="text-xs font-bold text-slate-800">{formatTaskName(sub.task_name) || 'Evaluasi Dokumen'}</p>
-                             <p className="text-[10px] text-slate-500 mt-1 flex items-center gap-1 mb-2">
-                                <User className="w-3 h-3 text-slate-400" />
-                                Ditugaskan ke: <span className="font-bold text-indigo-700">{sub.assigned_to_name}</span>
-                             </p>
+                      selectedTicket.subtasks.map((sub, idx) => (
+                        <div key={idx} className="p-3 bg-white border border-slate-200 rounded-xl flex flex-col justify-between gap-3 shadow-sm hover:border-indigo-200 transition-colors">
+                          <div>
+                            <p className="text-xs font-bold text-slate-800">{formatTaskName(sub.task_name) || 'Evaluasi Dokumen'}</p>
+                            <p className="text-[10px] text-slate-500 mt-1 flex items-center gap-1 mb-2">
+                              <User className="w-3 h-3 text-slate-400" />
+                              Ditugaskan ke: <span className="font-bold text-indigo-700">{sub.assigned_to_name}</span>
+                            </p>
 
-                             {(() => {
-                                const tName = sub.task_name || '';
-                                if (tName.startsWith('Asesmen ') && selectedTicket?.form_data) {
-                                  const key = tName.substring(8);
-                                  const fUrl = selectedTicket.form_data[key];
-                                  const fName = selectedTicket.form_data[`${key}_name`];
-                                  if (fUrl && fName) {
-                                    return (
-                                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100 overflow-hidden">
-                                        <span className="text-[10px] font-bold text-slate-600 truncate min-w-0 flex-1 block" title={fName}>{fName}</span>
-                                        <button type="button" onClick={() => handleViewFile(fUrl)} className="flex items-center justify-center gap-1 px-2 py-1 bg-sky-100 text-sky-700 hover:bg-sky-200 rounded text-[10px] font-bold transition-all shrink-0 cursor-pointer w-full sm:w-auto text-center">
-                                          <Eye className="w-3 h-3" /> Lihat
-                                        </button>
-                                      </div>
-                                    );
-                                  }
+                            {(() => {
+                              const tName = sub.task_name || '';
+                              if (tName.startsWith('Asesmen ') && selectedTicket?.form_data) {
+                                const key = tName.substring(8);
+                                const fUrl = selectedTicket.form_data[key];
+                                const fName = selectedTicket.form_data[`${key}_name`];
+                                if (fUrl && fName) {
+                                  return (
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100 overflow-hidden">
+                                      <span className="text-[10px] font-bold text-slate-600 truncate min-w-0 flex-1 block" title={fName}>{fName}</span>
+                                      <button type="button" onClick={() => handleViewFile(fUrl)} className="flex items-center justify-center gap-1 px-2 py-1 bg-sky-100 text-sky-700 hover:bg-sky-200 rounded text-[10px] font-bold transition-all shrink-0 cursor-pointer w-full sm:w-auto text-center">
+                                        <Eye className="w-3 h-3" /> Lihat
+                                      </button>
+                                    </div>
+                                  );
                                 }
-                                return null;
-                             })()}
-                           </div>
-                           <div className="flex items-center justify-between border-t border-slate-100 pt-2">
-                             {sub.status === 'APPROVED' ? (
-                               <span className="px-2 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-black rounded-md uppercase tracking-wider flex items-center gap-1">
-                                 <CheckCircle2 className="w-3 h-3" /> Approved
-                               </span>
-                             ) : sub.status === 'REJECTED' ? (
-                               <span className="px-2 py-1 bg-rose-100 text-rose-800 text-[10px] font-black rounded-md uppercase tracking-wider flex items-center gap-1">
-                                 <X className="w-3 h-3" /> Rejected
-                               </span>
-                             ) : (
-                               <div className="flex gap-2">
-                                 {sub.assigned_to_name === (user?.full_name || user?.name) ? (
-                                   <>
-                                     <button onClick={() => handleUpdateSubtaskStatus(sub.id, 'APPROVED')} className="px-2.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[10px] font-black rounded-md uppercase tracking-wider transition-all cursor-pointer">✅ Sesuai</button>
-                                     <button onClick={() => {
-                                        setRejectSubtaskId(sub.id);
-                                        setShowRejectSubtaskModal(true);
-                                     }} className="px-2.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-800 text-[10px] font-black rounded-md uppercase tracking-wider transition-all cursor-pointer">❌ Tidak Sesuai</button>
-                                   </>
-                                 ) : (
-                                   <span className="px-2 py-1 bg-slate-100 text-slate-600 text-[10px] font-black rounded-md uppercase tracking-wider">
-                                     Pending
-                                   </span>
-                                 )}
-                               </div>
-                             )}
-                           </div>
-                         </div>
-                       ))
+                              }
+                              return null;
+                            })()}
+                          </div>
+                          <div className="flex items-center justify-between border-t border-slate-100 pt-2">
+                            {sub.status === 'APPROVED' ? (
+                              <span className="px-2 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-black rounded-md uppercase tracking-wider flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3" /> Approved
+                              </span>
+                            ) : sub.status === 'REJECTED' ? (
+                              <span className="px-2 py-1 bg-rose-100 text-rose-800 text-[10px] font-black rounded-md uppercase tracking-wider flex items-center gap-1">
+                                <X className="w-3 h-3" /> Rejected
+                              </span>
+                            ) : (
+                              <div className="flex gap-2">
+                                {sub.assigned_to_name === (user?.full_name || user?.name) ? (
+                                  <>
+                                    <button onClick={() => handleUpdateSubtaskStatus(sub.id, 'APPROVED')} className="px-2.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[10px] font-black rounded-md uppercase tracking-wider transition-all cursor-pointer">✅ Sesuai</button>
+                                    <button onClick={() => {
+                                      setRejectSubtaskId(sub.id);
+                                      setShowRejectSubtaskModal(true);
+                                    }} className="px-2.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-800 text-[10px] font-black rounded-md uppercase tracking-wider transition-all cursor-pointer">❌ Tidak Sesuai</button>
+                                  </>
+                                ) : (
+                                  <span className="px-2 py-1 bg-slate-100 text-slate-600 text-[10px] font-black rounded-md uppercase tracking-wider">
+                                    Pending
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))
                     )}
                   </div>
-                  
+
                   {/* ACC FINAL KETUA TIM */}
                   {selectedTicket.subtasks && selectedTicket.subtasks.length > 0 && selectedTicket.subtasks.every(s => s.status === 'APPROVED') && (user?.role === 'KETUA TIM' || user?.role === 'ADMIN' || teams?.some(t => t.leader === (user?.full_name || user?.name))) && (selectedTicket.status === 'Diproses' || selectedTicket.status_name === 'IN_PROGRESS') && (
                     <div className="mt-4 pt-4 border-t border-indigo-100">
@@ -1808,8 +1831,8 @@ export const TicketHistory = ({ mode = 'active' }) => {
                     return (
                       <div key={idx} className="relative text-left">
                         <div className={`absolute -left-[25px] top-1.5 w-2.5 h-2.5 rounded-full border-2 border-white ${isNewest && !selectedTicket.status.includes('Selesai')
-                            ? 'bg-emerald-500 ring-4 ring-emerald-100 animate-pulse'
-                            : 'bg-slate-300'
+                          ? 'bg-emerald-500 ring-4 ring-emerald-100 animate-pulse'
+                          : 'bg-slate-300'
                           }`}></div>
                         <span className="text-xs text-slate-400 font-bold block">{formatLogDateDisplay(log.date)} - {log.author || 'Sistem'}</span>
                         <TruncatedText text={log.text} className={`text-base mt-0.5 leading-relaxed ${isNewest ? 'font-bold text-slate-800' : 'text-slate-500'}`} />
@@ -1844,30 +1867,30 @@ export const TicketHistory = ({ mode = 'active' }) => {
             <div className="p-6">
               <h3 className="text-lg font-black text-slate-800">Bagi Tugas Asesmen</h3>
               <p className="text-sm text-slate-500 mt-1">Pilih anggota tim untuk mengerjakan evaluasi spesifik.</p>
-              
+
               <form onSubmit={handleCreateSubtask} className="space-y-4 mt-6">
                 <div className="space-y-3 max-h-64 overflow-y-auto px-1">
                   {getFileTasks().map((taskName, idx) => (
                     <div key={idx}>
                       <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">{formatTaskName(taskName)}</label>
-                      <select 
-                        value={subtaskAssignees[taskName] || ''} 
-                        onChange={e => setSubtaskAssignees({...subtaskAssignees, [taskName]: e.target.value})} 
+                      <select
+                        value={subtaskAssignees[taskName] || ''}
+                        onChange={e => setSubtaskAssignees({ ...subtaskAssignees, [taskName]: e.target.value })}
                         className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                       >
                         <option value="">-- Pilih Anggota --</option>
                         {Array.from(new Set((teams || [])
-                           .filter(t => t.leader === (user?.full_name || user?.name) || user?.role === 'ADMIN')
-                           .flatMap(t => t.members || [])))
-                           .filter(m => m !== (user?.full_name || user?.name))
-                           .map(m => (
-                             <option key={m} value={m}>{m}</option>
-                        ))}
+                          .filter(t => t.leader === (user?.full_name || user?.name) || user?.role === 'ADMIN')
+                          .flatMap(t => t.members || [])))
+                          .filter(m => m !== (user?.full_name || user?.name))
+                          .map(m => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
                       </select>
                     </div>
                   ))}
                 </div>
-                
+
                 <div className="flex gap-3 pt-4 border-t border-slate-100">
                   <button type="button" onClick={() => setShowSubtaskModal(false)} className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-bold transition-all">Batal</button>
                   <button type="submit" className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-all shadow-md">Bagikan Tugas</button>
@@ -1923,19 +1946,19 @@ export const TicketHistory = ({ mode = 'active' }) => {
             <div className="p-6">
               <h3 className="text-lg font-black text-rose-700">Tugas Tidak Sesuai (Revisi)</h3>
               <p className="text-sm text-slate-500 mt-1">Silakan berikan alasan mengapa dokumen/tugas ini butuh revisi.</p>
-              
+
               <div className="space-y-4 mt-6">
                 <div>
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Catatan Penolakan</label>
-                  <textarea 
-                    required 
-                    value={rejectSubtaskReason} 
-                    onChange={e => setRejectSubtaskReason(e.target.value)} 
-                    placeholder="Tuliskan kekurangan dokumen atau alasan penolakan..." 
-                    className="w-full h-24 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 resize-none" 
+                  <textarea
+                    required
+                    value={rejectSubtaskReason}
+                    onChange={e => setRejectSubtaskReason(e.target.value)}
+                    placeholder="Tuliskan kekurangan dokumen atau alasan penolakan..."
+                    className="w-full h-24 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 resize-none"
                   />
                 </div>
-                
+
                 <div className="flex gap-3 pt-4 border-t border-slate-100">
                   <button type="button" onClick={() => {
                     setShowRejectSubtaskModal(false);
@@ -1943,7 +1966,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
                     setRejectSubtaskId(null);
                   }} className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-bold transition-all cursor-pointer">Batal</button>
                   <button onClick={() => {
-                    if(!rejectSubtaskReason.trim()) return alert("Catatan wajib diisi!");
+                    if (!rejectSubtaskReason.trim()) return alert("Catatan wajib diisi!");
                     handleUpdateSubtaskStatus(rejectSubtaskId, 'REJECTED', rejectSubtaskReason);
                   }} className="flex-1 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-sm font-bold transition-all shadow-md cursor-pointer">Kirim Revisi</button>
                 </div>

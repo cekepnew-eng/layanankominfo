@@ -5,6 +5,8 @@ const { generateSecret, generateURI, verifySync } = require('otplib');
 const qrcode = require('qrcode');
 const crypto = require('crypto');
 const { sendResetOtpEmail, sendRegistrationOtpEmail } = require('../services/emailService');
+const { getTndProfileImage } = require('../utils/tndProfileImage');
+const { getPasswordPolicyFailures } = require('../utils/passwordPolicy');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret-key-kominfo-2026';
 
@@ -32,48 +34,6 @@ function decrypt(text) {
 
 function hashBackupCode(code) {
   return crypto.createHash('sha256').update(code).digest('hex');
-}
-
-function getTndProfileImage(tndUser, tndData, ssoUrl) {
-  const profile = tndUser.profile || tndData?.data?.profile || {};
-  const candidate = [
-    tndUser.foto_profil,
-    tndUser.foto_profile,
-    tndUser.fotoProfil,
-    tndUser.pas_foto,
-    tndUser.foto_pegawai,
-    tndUser.foto_url,
-    tndUser.url_foto,
-    tndUser.avatar_url,
-    tndUser.image_url,
-    tndUser.profile_picture,
-    tndUser.profile_photo_url,
-    tndUser.profile_image,
-    tndUser.photo_url,
-    tndUser.photo,
-    tndUser.avatar,
-    tndUser.picture,
-    tndUser.foto,
-    profile.foto_profil,
-    profile.foto,
-    profile.url_foto,
-    profile.avatar,
-    profile.photo,
-    profile.image,
-    tndData?.data?.foto_profil,
-    tndData?.data?.foto_url,
-    tndData?.data?.avatar
-  ].find(value => typeof value === 'string' && value.trim());
-
-  if (!candidate || candidate.length > 4096) return null;
-  const image = candidate.trim();
-  if (/^https?:\/\//i.test(image)) return image;
-  try {
-    return new URL(image, new URL(ssoUrl).origin).toString();
-  } catch (error) {
-    console.error('Invalid TND profile image URL:', error.message);
-    return null;
-  }
 }
 
 async function resolveUserRoles(userId) {
@@ -128,13 +88,21 @@ function getPrimaryRole(roles = []) {
 }
 
 function requiresAnnualPasswordChange(user) {
-  const roles = (user.roles || []).map(role => String(role).toUpperCase());
-  if (!roles.includes('MASYARAKAT')) return false;
+  if (String(user.password_auth_source || '').toUpperCase() === 'TND' || user.nip) return false;
   const changedAt = user.password_changed_at || user.created_at;
   if (!changedAt) return true;
   const anniversary = new Date(changedAt);
   anniversary.setFullYear(anniversary.getFullYear() + 1);
   return Date.now() >= anniversary.getTime();
+}
+
+function getPasswordExpiresAt(user) {
+  if (String(user.password_auth_source || '').toUpperCase() === 'TND' || user.nip) return null;
+  const changedAt = user.password_changed_at || user.created_at;
+  if (!changedAt) return 0;
+  const expiryDate = new Date(changedAt);
+  expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+  return expiryDate.getTime();
 }
 
 function getLoginIdentifierHash(identifier) {
@@ -194,6 +162,9 @@ async function ensurePasswordCols() {
   try {
     await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS previous_password_hash VARCHAR(255);');
     await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMP;');
+    await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_auth_source VARCHAR(10) NOT NULL DEFAULT 'LOCAL';");
+    await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_reset_at TIMESTAMP;');
+    await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_choice_completed BOOLEAN NOT NULL DEFAULT false;');
     await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS nip VARCHAR(50);');
     await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image TEXT;');
     await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_source VARCHAR(20);");
@@ -360,7 +331,14 @@ exports.login = async (req, res) => {
     const isMasyarakat = user && user.roles && user.roles.some(r => String(r).toUpperCase() === 'MASYARAKAT');
 
     // Cek apakah akun butuh sinkronisasi data (jika nama masih sama dengan email/NIP, department 'TND User', atau kolom nip belum terisi)
-    const needsSync = !isMasyarakat && user && (user.full_name === user.email || user.department === 'TND User' || !user.nip);
+    const needsSync = !isMasyarakat && user && (
+      user.full_name === user.email ||
+      user.department === 'TND User' ||
+      !user.nip ||
+      ((!user.profile_image && String(user.profile_image_source || '').toUpperCase() !== 'NONE' ||
+        (user.profile_image_source === 'TND' && !/^https?:\/\//i.test(user.profile_image))) &&
+        user.roles.some(role => ['USER', 'PEGAWAI'].includes(String(role).toUpperCase())))
+    );
 
     // Hybrid SSO: Jika gagal login lokal, ATAU butuh sinkronisasi profil, coba validasi lewat API TND (hanya untuk non-masyarakat)
     if (!isMasyarakat && (!isMatch || needsSync)) {
@@ -465,8 +443,9 @@ exports.login = async (req, res) => {
 
             // Perbarui akun utama dengan NIP, email, password hash, dan profil terbaru
             await db.query(
-              `UPDATE users 
+              `UPDATE users
                SET password_hash = $1, email = $2, nip = $3, full_name = $4, department = $5, phone_number = $6,
+                   password_auth_source = 'TND',
                    profile_image = COALESCE($7, profile_image),
                    profile_image_source = CASE WHEN $7::text IS NOT NULL THEN 'TND' ELSE profile_image_source END
                WHERE id = $8`,
@@ -490,8 +469,8 @@ exports.login = async (req, res) => {
             }
             const roleId = roleRes.rows[0].id;
 
-            const finalEmail = (tndEmail && tndEmail.includes('@')) 
-              ? tndEmail 
+            const finalEmail = (tndEmail && tndEmail.includes('@'))
+              ? tndEmail
               : (loginIdentifier.includes('@') ? loginIdentifier : `${tndNip || loginIdentifier}@kotabogor.go.id`);
 
             const finalNip = tndNip || (loginIdentifier.match(/^\d{10,}$/) ? loginIdentifier : null);
@@ -501,9 +480,11 @@ exports.login = async (req, res) => {
               await client.query('BEGIN');
               const insertRes = await client.query(
                 `INSERT INTO users (
-                   email, nip, password_hash, full_name, phone_number, department, profile_image, profile_image_source
+                   email, nip, password_hash, full_name, phone_number, department, profile_image, profile_image_source,
+                   password_changed_at, password_auth_source
                  )
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $7::text IS NOT NULL THEN 'TND' ELSE NULL END)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $7::text IS NOT NULL THEN 'TND' ELSE NULL END,
+                         CURRENT_TIMESTAMP, 'TND')
                  RETURNING *`,
                 [finalEmail, finalNip, hash, fullName, phone, department, tndProfileImage]
               );
@@ -557,6 +538,16 @@ exports.login = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Email, NIP, atau password salah.' });
     }
 
+    if (user.profile_image_source === 'TND' && user.profile_image) {
+      const ssoUrl = process.env.SSO_API_URL || 'https://dev-tnd.kotabogor.go.id/api-baru/api/v1/login';
+      const normalizedImage = getTndProfileImage({ profile_image: user.profile_image }, {}, ssoUrl);
+      if (normalizedImage !== user.profile_image) {
+        await db.query('UPDATE users SET profile_image = $1 WHERE id = $2', [normalizedImage, user.id]);
+        user.profile_image = normalizedImage;
+      }
+    }
+
+    user.roles = user.roles?.length ? user.roles : [getPrimaryRole(user.roles)];
     await db.query('DELETE FROM login_password_attempts WHERE identifier_hash = $1', [getLoginIdentifierHash(loginIdentifier)]);
 
     if (user.is_two_factor_enabled) {
@@ -578,7 +569,11 @@ exports.login = async (req, res) => {
         const primaryRole = getPrimaryRole(user.roles);
         const passwordChangeRequired = requiresAnnualPasswordChange(user);
         const token = jwt.sign(
-          { id: user.id, email: user.email, nip: user.nip, role: primaryRole, roles: user.roles, name: user.full_name, department: user.department, passwordChangeRequired },
+          {
+            id: user.id, email: user.email, nip: user.nip, role: primaryRole, roles: user.roles,
+            name: user.full_name, department: user.department, passwordChangeRequired,
+            passwordExpiresAt: getPasswordExpiresAt(user)
+          },
           JWT_SECRET,
           { expiresIn: '24h' }
         );
@@ -588,9 +583,13 @@ exports.login = async (req, res) => {
           passwordChangeRequired,
           user: {
             id: user.id, email: user.email, nip: user.nip, name: user.full_name, role: primaryRole,
-            roles: user.roles, department: user.department, profileImage: user.profile_image,
+            roles: user.roles, department: user.department, profile_image: user.profile_image,
+            profile_image_source: user.profile_image_source, profileImage: user.profile_image,
             profileImageSource: user.profile_image_source, teams: await getUserTeams(user.id),
-            passwordChangeRequired: requiresAnnualPasswordChange(user)
+            passwordChangeRequired,
+            passwordExpiresAt: getPasswordExpiresAt(user),
+            twoFactorEnabled: true,
+            twoFactorChoiceCompleted: Boolean(user.two_factor_choice_completed)
           }
         });
       }
@@ -606,17 +605,54 @@ exports.login = async (req, res) => {
         tempToken,
         message: 'Please provide 2FA OTP.'
       });
-    } else {
+    } else if (!user.two_factor_choice_completed) {
       const tempToken = jwt.sign(
-        { id: user.id, email: user.email, purpose: '2fa_setup' },
+        { id: user.id, email: user.email, purpose: '2fa_choice' },
         JWT_SECRET,
         { expiresIn: '15m' }
       );
       return res.json({
         success: true,
-        requires2FASetup: true,
+        requires2FAChoice: true,
         tempToken,
-        message: '2FA setup required.'
+        message: 'Pilih apakah ingin mengaktifkan autentikasi dua faktor.'
+      });
+    } else {
+      const primaryRole = getPrimaryRole(user.roles);
+      const passwordChangeRequired = requiresAnnualPasswordChange(user);
+      const token = jwt.sign({
+        id: user.id,
+        email: user.email,
+        nip: user.nip,
+        role: primaryRole,
+        roles: user.roles,
+        name: user.full_name,
+        department: user.department,
+        passwordChangeRequired,
+        passwordExpiresAt: getPasswordExpiresAt(user)
+      }, JWT_SECRET, { expiresIn: '24h' });
+      return res.json({
+        success: true,
+        token,
+        passwordChangeRequired,
+        user: {
+          id: user.id,
+          email: user.email,
+          nip: user.nip,
+          name: user.full_name,
+          role: primaryRole,
+          roles: user.roles,
+          department: user.department,
+          profile_image: user.profile_image,
+          profile_image_source: user.profile_image_source,
+          profileImage: user.profile_image,
+          profileImageSource: user.profile_image_source,
+          teams: await getUserTeams(user.id),
+          passwordChangeRequired,
+          passwordExpiresAt: getPasswordExpiresAt(user),
+          twoFactorEnabled: false,
+          twoFactorChoiceCompleted: true
+        }
       });
     }
   } catch (err) {
@@ -778,17 +814,17 @@ exports.register = async (req, res) => {
   const { password, fullName, phone } = req.body || {};
   const otp = typeof req.body?.otp === 'string' ? req.body.otp.trim() : '';
 
-  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
   if (!isValidRegistrationEmail(email)) {
     return res.status(400).json({ success: false, message: 'Masukkan alamat email yang valid.' });
   }
   if (typeof fullName !== 'string' || !fullName.trim() || fullName.trim().length > 255) {
     return res.status(400).json({ success: false, message: 'Nama lengkap wajib diisi.' });
   }
-  if (typeof password !== 'string' || !passwordRegex.test(password)) {
+  const passwordFailures = getPasswordPolicyFailures(password);
+  if (passwordFailures.length > 0) {
     return res.status(400).json({
       success: false,
-      message: 'Password harus minimal 8 karakter, mengandung huruf besar, huruf kecil, dan angka.'
+      message: `Password belum memenuhi kriteria keamanan: ${passwordFailures.join(', ')}.`
     });
   }
   if (!/^\d{6}$/.test(otp)) {
@@ -851,8 +887,8 @@ exports.register = async (req, res) => {
     }
 
     const insertResult = await client.query(
-      `INSERT INTO users (email, password_hash, full_name, phone_number, department)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id, email, full_name`,
+      `INSERT INTO users (email, password_hash, full_name, phone_number, department, password_changed_at, password_auth_source)
+       VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, 'LOCAL') RETURNING id, email, full_name`,
       [email, hash, fullName.trim(), phone || '00000', 'Masyarakat Umum']
     );
     await client.query(
@@ -895,10 +931,27 @@ exports.getMe = async (req, res) => {
 
     const user = userRes.rows[0];
     user.roles = await resolveUserRoles(user.id);
+    user.roles = user.roles.length ? user.roles : [getPrimaryRole(user.roles)];
     user.role = getPrimaryRole(user.roles);
     user.teams = await getUserTeams(user.id);
+    user.passwordChangeRequired = requiresAnnualPasswordChange(user);
+    user.passwordExpiresAt = getPasswordExpiresAt(user);
+    user.twoFactorEnabled = Boolean(user.is_two_factor_enabled);
+    user.twoFactorChoiceCompleted = Boolean(user.two_factor_choice_completed);
+    const safeUser = { ...user };
+    delete safeUser.password_hash;
+    delete safeUser.previous_password_hash;
+    delete safeUser.two_factor_secret;
+    delete safeUser.backup_codes;
 
-    res.json({ success: true, user });
+    res.json({
+      success: true,
+      user: {
+        ...safeUser,
+        profileImage: user.profile_image,
+        profileImageSource: user.profile_image_source
+      }
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Server error fetching profile' });
@@ -931,35 +984,38 @@ exports.updateProfile = async (req, res) => {
     const profileImage = req.body.profileImage;
     let profileImageBytes = 0;
     if (hasProfileImage) {
-      const userRoles = (req.user.roles || [req.user.role]).map(role => String(role).toUpperCase());
-      if (!userRoles.some(role => role === 'USER' || role === 'MASYARAKAT')) {
-        return res.status(403).json({ success: false, message: 'Unggah foto profil hanya tersedia untuk akun OPD dan masyarakat.' });
+      const userRoles = [
+        ...(Array.isArray(req.user.roles) ? req.user.roles : []),
+        req.user.role
+      ].filter(Boolean).map(role => String(role).toUpperCase());
+      if (!userRoles.some(role => role === 'ADMIN' || role === 'MASYARAKAT')) {
+        return res.status(403).json({ success: false, message: 'Unggah foto profil hanya tersedia untuk akun Admin dan Masyarakat.' });
       }
-      if (currentUser.profile_image_source === 'TND') {
+      if (currentUser.profile_image_source === 'TND' && !userRoles.includes('ADMIN')) {
         return res.status(403).json({ success: false, message: 'Foto profil akun ini dikelola oleh TND.' });
       }
-      const match = typeof profileImage === 'string'
-        ? profileImage.match(/^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/)
-        : null;
-      if (!match) {
-        return res.status(400).json({ success: false, message: 'Foto harus berupa JPG, PNG, atau WEBP.' });
-      }
-      if (profileImage.length > 2 * 1024 * 1024 * 4 / 3 + 64) {
-        return res.status(400).json({ success: false, message: 'Ukuran foto maksimal 2 MB.' });
-      }
-      profileImageBytes = Buffer.from(match[2], 'base64').length;
-      if (profileImageBytes === 0 || profileImageBytes > 2 * 1024 * 1024) {
-        return res.status(400).json({ success: false, message: 'Ukuran foto maksimal 2 MB.' });
+      if (profileImage !== null) {
+        const match = typeof profileImage === 'string'
+          ? profileImage.match(/^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/)
+          : null;
+        if (!match) {
+          return res.status(400).json({ success: false, message: 'Foto harus berupa JPG, PNG, atau WEBP.' });
+        }
+        if (profileImage.length > 2 * 1024 * 1024 * 4 / 3 + 64) {
+          return res.status(400).json({ success: false, message: 'Ukuran foto maksimal 2 MB.' });
+        }
+        profileImageBytes = Buffer.from(match[2], 'base64').length;
+        if (profileImageBytes === 0 || profileImageBytes > 2 * 1024 * 1024) {
+          return res.status(400).json({ success: false, message: 'Ukuran foto maksimal 2 MB.' });
+        }
       }
     }
 
-    const currentRoles = await resolveUserRoles(userId);
-    const isMasyarakat = currentRoles.some(role => String(role).toUpperCase() === 'MASYARAKAT');
-    if (req.user.passwordChangeRequired && isMasyarakat && !newPassword) {
+    if (req.user.passwordChangeRequired && !newPassword) {
       return res.status(400).json({
         success: false,
         requiresPasswordChange: true,
-        message: 'Akun masyarakat wajib mengganti kata sandi untuk melanjutkan.'
+        message: 'Anda wajib mengganti kata sandi untuk melanjutkan.'
       });
     }
 
@@ -973,11 +1029,11 @@ exports.updateProfile = async (req, res) => {
         return res.status(400).json({ success: false, message: 'Kata sandi lama yang Anda masukkan salah.' });
       }
 
-      const minPasswordLength = isMasyarakat ? 8 : 6;
-      if (typeof newPassword !== 'string' || newPassword.length < minPasswordLength) {
+      const passwordFailures = getPasswordPolicyFailures(newPassword);
+      if (passwordFailures.length > 0) {
         return res.status(400).json({
           success: false,
-          message: `Kata sandi baru minimal ${minPasswordLength} karakter`
+          message: `Kata sandi baru belum memenuhi kriteria keamanan: ${passwordFailures.join(', ')}.`
         });
       }
 
@@ -991,7 +1047,7 @@ exports.updateProfile = async (req, res) => {
              password_hash = $3, 
              password_changed_at = CURRENT_TIMESTAMP,
              profile_image = CASE WHEN $4 THEN $5 ELSE profile_image END,
-             profile_image_source = CASE WHEN $4 THEN 'MANUAL' ELSE profile_image_source END
+             profile_image_source = CASE WHEN $4 THEN CASE WHEN $5::text IS NULL THEN 'NONE' ELSE 'MANUAL' END ELSE profile_image_source END
          WHERE id = $6`,
         [trimmedName, currentUser.password_hash, newHash, hasProfileImage, hasProfileImage ? profileImage : null, userId]
       );
@@ -1000,7 +1056,7 @@ exports.updateProfile = async (req, res) => {
         `UPDATE users
          SET full_name = $1,
              profile_image = CASE WHEN $2 THEN $3 ELSE profile_image END,
-             profile_image_source = CASE WHEN $2 THEN 'MANUAL' ELSE profile_image_source END
+             profile_image_source = CASE WHEN $2 THEN CASE WHEN $3::text IS NULL THEN 'NONE' ELSE 'MANUAL' END ELSE profile_image_source END
          WHERE id = $4`,
         [trimmedName, hasProfileImage, hasProfileImage ? profileImage : null, userId]
       );
@@ -1015,7 +1071,8 @@ exports.updateProfile = async (req, res) => {
       ? jwt.sign(
         {
           id: updatedUser.id, email: updatedUser.email, role: primaryRole, roles: updatedUser.roles,
-          name: updatedUser.full_name, department: updatedUser.department, passwordChangeRequired
+          name: updatedUser.full_name, department: updatedUser.department, passwordChangeRequired,
+          passwordExpiresAt: getPasswordExpiresAt(updatedUser)
         },
         JWT_SECRET,
         { expiresIn: '24h' }
@@ -1035,8 +1092,13 @@ exports.updateProfile = async (req, res) => {
         department: updatedUser.department,
         profileImage: updatedUser.profile_image,
         profileImageSource: updatedUser.profile_image_source,
+        profile_image: updatedUser.profile_image,
+        profile_image_source: updatedUser.profile_image_source,
         teams: await getUserTeams(updatedUser.id),
-        passwordChangeRequired
+        passwordChangeRequired,
+        passwordExpiresAt: getPasswordExpiresAt(updatedUser),
+        twoFactorEnabled: Boolean(updatedUser.is_two_factor_enabled),
+        twoFactorChoiceCompleted: Boolean(updatedUser.two_factor_choice_completed)
       }
     });
   } catch (err) {
@@ -1053,6 +1115,9 @@ exports.logout = async (req, res) => {
 
 exports.generate2FA = async (req, res) => {
   try {
+    if (req.user.purpose && !['2fa_setup', '2fa_choice'].includes(req.user.purpose)) {
+      return res.status(403).json({ success: false, message: 'Token tidak dapat digunakan untuk menyiapkan 2FA.' });
+    }
     const userRes = await db.query('SELECT email, is_two_factor_enabled FROM users WHERE id = $1', [req.user.id]);
     if (userRes.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
 
@@ -1070,12 +1135,77 @@ exports.generate2FA = async (req, res) => {
     const qrCodeUrl = await qrcode.toDataURL(otpauth);
 
     const encryptedSecret = encrypt(secret);
-    await db.query('UPDATE users SET two_factor_secret = $1 WHERE id = $2', [encryptedSecret, req.user.id]);
+    await db.query(
+      'UPDATE users SET two_factor_secret = $1, two_factor_reset_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [encryptedSecret, req.user.id]
+    );
 
     res.json({ success: true, qrCodeUrl, secret });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Server error generating 2FA', error: err.message });
+  }
+};
+
+exports.skip2FASetup = async (req, res) => {
+  if (req.user.purpose !== '2fa_choice') {
+    return res.status(403).json({ success: false, message: 'Token pilihan 2FA tidak valid.' });
+  }
+
+  try {
+    const userRes = await db.query('SELECT * FROM users WHERE id = $1 AND is_active = true', [req.user.id]);
+    const user = userRes.rows[0];
+    if (!user) return res.status(404).json({ success: false, message: 'Pengguna tidak ditemukan.' });
+
+    user.roles = await resolveUserRoles(user.id);
+    if (user.is_two_factor_enabled) {
+      return res.status(403).json({ success: false, message: 'Pilihan ini tidak berlaku untuk akun tersebut.' });
+    }
+    await db.query(
+      'UPDATE users SET two_factor_choice_completed = true, two_factor_secret = NULL WHERE id = $1',
+      [user.id]
+    );
+
+    const primaryRole = getPrimaryRole(user.roles);
+    const passwordChangeRequired = requiresAnnualPasswordChange(user);
+    const token = jwt.sign({
+      id: user.id,
+      email: user.email,
+      nip: user.nip,
+      role: primaryRole,
+      roles: user.roles,
+      name: user.full_name,
+      department: user.department,
+      passwordChangeRequired,
+      passwordExpiresAt: getPasswordExpiresAt(user)
+    }, JWT_SECRET, { expiresIn: '24h' });
+
+    return res.json({
+      success: true,
+      token,
+      passwordChangeRequired,
+      user: {
+        id: user.id,
+        email: user.email,
+        nip: user.nip,
+        name: user.full_name,
+        role: primaryRole,
+        roles: user.roles,
+        department: user.department,
+        profile_image: user.profile_image,
+        profile_image_source: user.profile_image_source,
+        profileImage: user.profile_image,
+        profileImageSource: user.profile_image_source,
+        teams: await getUserTeams(user.id),
+        passwordChangeRequired,
+        passwordExpiresAt: getPasswordExpiresAt(user),
+        twoFactorEnabled: false,
+        twoFactorChoiceCompleted: true
+      }
+    });
+  } catch (error) {
+    console.error('skip2FASetup error:', error.message);
+    return res.status(500).json({ success: false, message: 'Gagal menyimpan pilihan 2FA.' });
   }
 };
 
@@ -1085,6 +1215,9 @@ exports.verifySetup2FA = async (req, res) => {
     return res.status(400).json({ success: false, message: 'OTP is required and must be a string' });
   }
   try {
+    if (req.user.purpose && !['2fa_setup', '2fa_choice'].includes(req.user.purpose)) {
+      return res.status(403).json({ success: false, message: 'Token tidak dapat digunakan untuk verifikasi 2FA.' });
+    }
     const userRes = await db.query('SELECT two_factor_secret, is_two_factor_enabled FROM users WHERE id = $1', [req.user.id]);
     if (userRes.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
 
@@ -1107,20 +1240,24 @@ exports.verifySetup2FA = async (req, res) => {
     const backupCodesHashed = backupCodesRaw.map(hashBackupCode);
 
     await db.query(
-      'UPDATE users SET is_two_factor_enabled = true, backup_codes = $1 WHERE id = $2',
+      `UPDATE users
+       SET is_two_factor_enabled = true, two_factor_choice_completed = true, backup_codes = $1
+       WHERE id = $2`,
       [JSON.stringify(backupCodesHashed), req.user.id]
     );
 
     const updatedUserRes = await db.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
     const updatedUser = updatedUserRes.rows[0];
     updatedUser.roles = await resolveUserRoles(updatedUser.id);
+    updatedUser.roles = updatedUser.roles.length ? updatedUser.roles : [getPrimaryRole(updatedUser.roles)];
     const primaryRole = getPrimaryRole(updatedUser.roles);
 
     const token = jwt.sign(
       {
         id: updatedUser.id, email: updatedUser.email, role: primaryRole, roles: updatedUser.roles,
         name: updatedUser.full_name, department: updatedUser.department,
-        passwordChangeRequired: requiresAnnualPasswordChange(updatedUser)
+        passwordChangeRequired: requiresAnnualPasswordChange(updatedUser),
+        passwordExpiresAt: getPasswordExpiresAt(updatedUser)
       },
       JWT_SECRET,
       { expiresIn: '24h' }
@@ -1142,13 +1279,48 @@ exports.verifySetup2FA = async (req, res) => {
         department: updatedUser.department,
         profileImage: updatedUser.profile_image,
         profileImageSource: updatedUser.profile_image_source,
+        profile_image: updatedUser.profile_image,
+        profile_image_source: updatedUser.profile_image_source,
         teams: await getUserTeams(updatedUser.id),
-        passwordChangeRequired: requiresAnnualPasswordChange(updatedUser)
+        passwordChangeRequired: requiresAnnualPasswordChange(updatedUser),
+        passwordExpiresAt: getPasswordExpiresAt(updatedUser),
+        twoFactorEnabled: true,
+        twoFactorChoiceCompleted: true
       }
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Server error verifying 2FA setup' });
+  }
+};
+
+exports.disableProfile2FA = async (req, res) => {
+  try {
+    const userRes = await db.query(
+      'SELECT is_two_factor_enabled FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const user = userRes.rows[0];
+    if (!user?.is_two_factor_enabled) {
+      return res.status(400).json({ success: false, message: '2FA belum aktif pada akun ini.' });
+    }
+
+    await db.query(
+      `UPDATE users
+       SET is_two_factor_enabled = false, two_factor_secret = NULL, backup_codes = '[]'::jsonb,
+           two_factor_reset_at = CURRENT_TIMESTAMP, two_factor_choice_completed = true
+       WHERE id = $1`,
+      [req.user.id]
+    );
+    return res.json({
+      success: true,
+      twoFactorEnabled: false,
+      twoFactorChoiceCompleted: true,
+      message: '2FA berhasil dinonaktifkan.'
+    });
+  } catch (error) {
+    console.error('disableProfile2FA error:', error.message);
+    return res.status(500).json({ success: false, message: 'Gagal menonaktifkan 2FA.' });
   }
 };
 
@@ -1172,6 +1344,7 @@ exports.login2FA = async (req, res) => {
     if (userRes.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
     const user = userRes.rows[0];
     user.roles = await resolveUserRoles(user.id);
+    user.roles = user.roles.length ? user.roles : [getPrimaryRole(user.roles)];
 
     if (!user.is_two_factor_enabled || !user.two_factor_secret) {
       return res.status(400).json({ success: false, message: '2FA is not enabled for this user' });
@@ -1225,7 +1398,8 @@ exports.login2FA = async (req, res) => {
     const token = jwt.sign(
       {
         id: user.id, email: user.email, role: primaryRole, roles: user.roles,
-        name: user.full_name, department: user.department, passwordChangeRequired
+        name: user.full_name, department: user.department, passwordChangeRequired,
+        passwordExpiresAt: getPasswordExpiresAt(user)
       },
       JWT_SECRET,
       { expiresIn: '24h' }
@@ -1254,8 +1428,13 @@ exports.login2FA = async (req, res) => {
         department: user.department,
         profileImage: user.profile_image,
         profileImageSource: user.profile_image_source,
+        profile_image: user.profile_image,
+        profile_image_source: user.profile_image_source,
         teams: await getUserTeams(user.id),
-        passwordChangeRequired
+        passwordChangeRequired,
+        passwordExpiresAt: getPasswordExpiresAt(user),
+        twoFactorEnabled: true,
+        twoFactorChoiceCompleted: true
       }
     });
   } catch (err) {
@@ -1576,10 +1755,11 @@ exports.verifyResetOtp = async (req, res) => {
     }
   }
 
-  if (newPassword.length < 8) {
+  const passwordFailures = getPasswordPolicyFailures(newPassword);
+  if (passwordFailures.length > 0) {
     return res.status(400).json({
       success: false,
-      message: 'Kata sandi baru minimal harus 8 karakter.'
+      message: `Kata sandi baru belum memenuhi kriteria keamanan: ${passwordFailures.join(', ')}.`
     });
   }
 

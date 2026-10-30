@@ -15,6 +15,11 @@ body {
   background-color: #f8fafc;
 }
 
+.password-visibility-input::-ms-reveal,
+.password-visibility-input::-ms-clear {
+  display: none;
+}
+
 /* Premium Dashboard Theme */
 .theme-premium-bg {
   background: 
@@ -124,4 +129,13 @@ body {
 .hide-scrollbar {
   -ms-overflow-style: none !important;
   scrollbar-width: none !important;
+}
+
+@keyframes toastProgress {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+.animate-toast-progress {
+  animation: toastProgress 5.5s linear forwards;
 }

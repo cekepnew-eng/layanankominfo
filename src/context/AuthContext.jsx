@@ -53,7 +53,7 @@ export const AuthProvider = ({ children }) => {
       const trustedDeviceToken = localStorage.getItem('spbe_trusted_device');
       const response = await api.login(email, password, captchaToken, captchaAnswer, trustedDeviceToken);
 
-      if (response.success && (response.requires2FA || response.requires2FASetup)) {
+      if (response.success && (response.requires2FA || response.requires2FASetup || response.requires2FAChoice)) {
         return response;
       }
       if (response.success) {
@@ -93,7 +93,10 @@ export const AuthProvider = ({ children }) => {
         }
         const userData = response.user;
         if (userData && userData.role) {
-          userData.role = userData.role;
+          userData.role = String(userData.role).toUpperCase();
+        }
+        if (userData && userData.roles) {
+          userData.roles = userData.roles.map(role => String(role).toUpperCase());
         }
         setUser(userData);
         return { success: true };

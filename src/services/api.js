@@ -15,7 +15,9 @@ const getHeaders = () => {
 const handleResponse = async (res) => {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    if ((res.status === 401 || res.status === 403) && !data.requiresPasswordChange) {
+    const invalidSession = res.status === 401
+      || (res.status === 403 && data.message === 'Invalid or Expired Token');
+    if (invalidSession && !data.requiresPasswordChange) {
       if (!window.location.pathname.startsWith('/auth/login')) {
         localStorage.removeItem('spbe_token');
         localStorage.removeItem('spbe_user');
@@ -92,8 +94,8 @@ export const api = {
     });
     return handleResponse(res);
   },
-  createMasyarakatUserManual: async (payload) => {
-    const res = await fetch(`${BASE_URL}/admin/users/manual/masyarakat`, {
+  createManualUser: async (payload) => {
+    const res = await fetch(`${BASE_URL}/admin/users/manual/local`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(payload)
@@ -163,8 +165,8 @@ export const api = {
     const res = await fetch(`${BASE_URL}/auth/2fa/generate`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${tempToken}`
+        ...getHeaders(),
+        ...(tempToken ? { 'Authorization': `Bearer ${tempToken}` } : {})
       }
     });
     return handleResponse(res);
@@ -173,10 +175,25 @@ export const api = {
     const res = await fetch(`${BASE_URL}/auth/2fa/verify-setup`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${tempToken}`
+        ...getHeaders(),
+        ...(tempToken ? { 'Authorization': `Bearer ${tempToken}` } : {})
       },
       body: JSON.stringify({ otp })
+    });
+    return handleResponse(res);
+  },
+  skip2FASetup: async (tempToken) => {
+    const res = await fetch(`${BASE_URL}/auth/2fa/skip-setup`, {
+      method: 'POST',
+      headers: { ...getHeaders(), 'Authorization': `Bearer ${tempToken}` }
+    });
+    return handleResponse(res);
+  },
+  disableProfile2FA: async () => {
+    const res = await fetch(`${BASE_URL}/auth/2fa/profile/disable`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({})
     });
     return handleResponse(res);
   },

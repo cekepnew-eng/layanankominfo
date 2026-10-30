@@ -1,17 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
-import { 
-  KeyRound, 
-  Mail, 
-  Lock, 
-  Eye, 
-  EyeOff, 
-  ShieldCheck, 
-  CheckCircle2, 
-  ArrowLeft, 
-  X, 
-  Loader2, 
-  Clock, 
+import { getPasswordStrength } from '../utils/passwordStrength';
+import {
+  KeyRound,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+  CheckCircle2,
+  ArrowLeft,
+  X,
+  Loader2,
+  Clock,
   RefreshCw,
   AlertCircle,
   AlertTriangle
@@ -29,7 +30,7 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
   const [maskedEmail, setMaskedEmail] = useState('');
   const [resetToken, setResetToken] = useState('');
   const [method, setMethod] = useState('email');
-  
+
   // OTP input state
   const [otp, setOtp] = useState('');
   const otpInputRef = useRef(null);
@@ -44,12 +45,21 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
+  const {
+    requirements: passwordRequirements,
+    level,
+    color,
+    textColor,
+    isStrong: isPasswordStrong
+  } = getPasswordStrength(newPassword);
+  const passwordStrengthObj = { label: level, color, text: textColor };
+
   // Feedback & Loading
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-  
+
   // Cooldown countdown for resending OTP (60s)
   const [cooldown, setCooldown] = useState(0);
 
@@ -214,8 +224,8 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
     e.preventDefault();
     setError('');
 
-    if (!newPassword || newPassword.length < 8) {
-      setError('Kata sandi baru minimal harus 8 karakter.');
+    if (!isPasswordStrong) {
+      setError('Kata sandi belum memenuhi standar. Lengkapi semua kriteria hingga level Kuat.');
       return;
     }
 
@@ -255,11 +265,11 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
   return (
     <>
       {/* MAIN FORGOT PASSWORD MODAL */}
-      <div 
+      <div
         className="fixed inset-0 bg-slate-900/65 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200 font-sans"
-        onClick={(e) => { if (e.target === e.currentTarget && !loading) onClose(); }}
+      // onClick={(e) => { if (e.target === e.currentTarget && !loading) onClose(); }}
       >
-        <div 
+        <div
           className="relative bg-white max-w-md sm:max-w-lg w-full rounded-3xl p-6 sm:p-8 border border-slate-100 shadow-2xl space-y-5 text-left animate-in zoom-in-95 duration-200"
           role="dialog"
           aria-modal="true"
@@ -337,11 +347,10 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
                       type="button"
                       aria-pressed={method === 'email'}
                       onClick={() => setMethod('email')}
-                      className={`flex items-start gap-3 rounded-xl border p-3 text-left transition-all ${
-                        method === 'email'
-                          ? 'border-sky-500 bg-sky-50 ring-2 ring-sky-500/10'
-                          : 'border-slate-200 bg-white hover:border-sky-300'
-                      }`}
+                      className={`flex items-start gap-3 rounded-xl border p-3 text-left transition-all ${method === 'email'
+                        ? 'border-sky-500 bg-sky-50 ring-2 ring-sky-500/10'
+                        : 'border-slate-200 bg-white hover:border-sky-300'
+                        }`}
                     >
                       <Mail className={`mt-0.5 h-5 w-5 shrink-0 ${method === 'email' ? 'text-sky-600' : 'text-slate-400'}`} />
                       <span>
@@ -353,11 +362,10 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
                       type="button"
                       aria-pressed={method === '2fa'}
                       onClick={() => setMethod('2fa')}
-                      className={`flex items-start gap-3 rounded-xl border p-3 text-left transition-all ${
-                        method === '2fa'
-                          ? 'border-sky-500 bg-sky-50 ring-2 ring-sky-500/10'
-                          : 'border-slate-200 bg-white hover:border-sky-300'
-                      }`}
+                      className={`flex items-start gap-3 rounded-xl border p-3 text-left transition-all ${method === '2fa'
+                        ? 'border-sky-500 bg-sky-50 ring-2 ring-sky-500/10'
+                        : 'border-slate-200 bg-white hover:border-sky-300'
+                        }`}
                     >
                       <ShieldCheck className={`mt-0.5 h-5 w-5 shrink-0 ${method === '2fa' ? 'text-sky-600' : 'text-slate-400'}`} />
                       <span>
@@ -582,7 +590,7 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
                         if (error) setError('');
                       }}
                       placeholder="Minimal 8 karakter"
-                      className="block w-full pl-11 pr-12 py-3 bg-transparent text-slate-800 text-base placeholder-slate-400 focus:outline-none"
+                      className="password-visibility-input block w-full pl-11 pr-12 py-3 bg-transparent text-slate-800 text-base placeholder-slate-400 focus:outline-none"
                     />
                     <button
                       type="button"
@@ -613,7 +621,7 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
                         if (error) setError('');
                       }}
                       placeholder="Ulangi kata sandi baru"
-                      className="block w-full pl-11 pr-12 py-3 bg-transparent text-slate-800 text-base placeholder-slate-400 focus:outline-none"
+                      className="password-visibility-input block w-full pl-11 pr-12 py-3 bg-transparent text-slate-800 text-base placeholder-slate-400 focus:outline-none"
                     />
                     <button
                       type="button"
@@ -625,23 +633,61 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
                   </div>
                 </div>
 
-                {/* Validation hint */}
-                <div className="text-xs space-y-1 pt-1 text-slate-500">
-                  <div className="flex items-center gap-1.5">
-                    <span className={`w-2 h-2 rounded-full ${newPassword.length >= 8 ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                    <span className={newPassword.length >= 8 ? 'text-emerald-600 font-medium' : 'text-slate-500'}>
-                      {newPassword.length >= 8 ? 'Minimal 8 karakter terpenuhi' : `Masih kurang ${8 - newPassword.length} karakter dari minimal 8.`}
-                    </span>
-                  </div>
-                  {confirmPassword && (
-                    <div className="flex items-center gap-1.5">
-                      <span className={`w-2 h-2 rounded-full ${newPassword === confirmPassword ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                      <span className={newPassword === confirmPassword ? 'text-emerald-600 font-medium' : 'text-rose-600 font-medium'}>
-                        {newPassword === confirmPassword ? 'Kata sandi cocok' : 'Konfirmasi kata sandi belum sama'}
+                {/* Validation hint & Strength Checklist */}
+                {newPassword && (
+                  <div className="space-y-2 pt-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-slate-500">Kekuatan kata sandi</span>
+                      <span className={`text-[11px] font-bold ${passwordStrengthObj.text}`}>
+                        {passwordStrengthObj.label}
                       </span>
                     </div>
-                  )}
-                </div>
+                    <div className="grid grid-cols-4 gap-1" aria-hidden="true">
+                      {passwordRequirements.map((req, index) => (
+                        <span
+                          key={index}
+                          className={`h-1.5 rounded-full ${req.met ? passwordStrengthObj.color : 'bg-slate-200'
+                            }`}
+                        />
+                      ))}
+                    </div>
+                    <div className="space-y-1 pt-0.5">
+                      {passwordRequirements.map((req, index) => (
+                        <div key={index} className="flex items-center gap-1.5">
+                          <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] font-black ${req.met
+                            ? 'bg-emerald-100 text-emerald-600'
+                            : 'bg-slate-100 text-slate-400'
+                            }`}>
+                            {req.met ? '\u2713' : '\u25CB'}
+                          </span>
+                          <span className={`text-[11px] font-semibold ${req.met ? 'text-emerald-700' : 'text-slate-500'
+                            }`}>
+                            {req.label}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    {confirmPassword && (
+                      <div className="flex items-center gap-1.5">
+                        <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] font-black ${newPassword === confirmPassword
+                          ? 'bg-emerald-100 text-emerald-600'
+                          : 'bg-rose-100 text-rose-600'
+                          }`}>
+                          {newPassword === confirmPassword ? '\u2713' : '\u2717'}
+                        </span>
+                        <span className={`text-[11px] font-semibold ${newPassword === confirmPassword ? 'text-emerald-700' : 'text-rose-600'
+                          }`}>
+                          {newPassword === confirmPassword ? 'Kata sandi cocok' : 'Konfirmasi kata sandi belum sama'}
+                        </span>
+                      </div>
+                    )}
+                    {!isPasswordStrong && (
+                      <p className="text-[11px] text-rose-600 font-semibold mt-1">
+                        Kata sandi harus <span className="font-black">Kuat</span> untuk dapat disimpan.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {error && (
                   <div className="flex items-start gap-2.5 p-3.5 bg-rose-50 border border-rose-100 rounded-xl text-xs sm:text-sm font-semibold text-rose-600 animate-in fade-in duration-200">
@@ -666,8 +712,11 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onSuccess }) => {
                   </button>
                   <button
                     type="submit"
-                    disabled={loading || !newPassword || !confirmPassword || newPassword !== confirmPassword || newPassword.length < 8}
-                    className="flex-1 py-3 px-5 bg-gradient-to-r from-blue-600 to-sky-500 hover:from-blue-500 hover:to-sky-400 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md shadow-blue-500/20 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+                    disabled={loading || !newPassword || !confirmPassword || newPassword !== confirmPassword || !isPasswordStrong}
+                    className={`flex-1 py-3 px-5 text-white rounded-xl text-sm sm:text-base font-bold transition-all shadow-md flex items-center justify-center gap-2 ${!isPasswordStrong
+                      ? 'bg-slate-300 cursor-not-allowed opacity-60'
+                      : 'bg-gradient-to-r from-blue-600 to-sky-500 hover:from-blue-500 hover:to-sky-400 shadow-blue-500/20 cursor-pointer disabled:opacity-50'
+                      }`}
                   >
                     {loading ? (
                       <>

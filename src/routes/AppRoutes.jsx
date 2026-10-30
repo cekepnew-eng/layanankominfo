@@ -9,6 +9,7 @@ import { ManageUsers } from '../pages/dashboard/ManageUsers';
 import { ManageServices } from '../pages/dashboard/ManageServices';
 import { ManageTeams } from '../pages/dashboard/ManageTeams';
 import { ManageRatings } from '../pages/dashboard/ManageRatings';
+import { TicketRecap } from '../pages/dashboard/TicketRecap';
 import { TaskList } from '../pages/dashboard/TaskList';
 import { CreateTicket } from '../pages/dashboard/CreateTicket';
 import { MyTickets } from '../pages/dashboard/MyTickets';
@@ -68,6 +69,14 @@ export const AppRoutes = () => {
               <ManageRatings />
             </ProtectedRoute>
           } 
+        />
+        <Route
+          path="admin/ticket-recap"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <TicketRecap />
+            </ProtectedRoute>
+          }
         />
 
         <Route 

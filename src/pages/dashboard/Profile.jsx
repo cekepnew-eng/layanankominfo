@@ -1,14 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { User, Mail, ShieldCheck, Building, Tag, Info, Activity, Lock, Eye, EyeOff, Check, Briefcase, Camera } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { User, Mail, ShieldCheck, Building, Tag, Info, Activity, Lock, Eye, EyeOff, Check, Briefcase, Camera, Trash2, QrCode, Copy } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
 import { ActionModal } from '../../components/ActionModal';
+import { getPasswordStrength } from '../../utils/passwordStrength';
 
 export const Profile = () => {
   const { user, setUser, users, setUsers, teams } = useAuth();
 
   const isMasyarakat = user?.role?.toLowerCase() === 'masyarakat' || user?.roles?.some(r => r.toLowerCase() === 'masyarakat');
   const isPegawai = user?.role?.toLowerCase() === 'pegawai' || user?.roles?.some(r => r.toLowerCase() === 'pegawai');
+  const passwordExpiresAt = user?.passwordExpiresAt ? new Date(user.passwordExpiresAt).getTime() : null;
+  const passwordChangeRequired = Boolean(
+    user?.passwordChangeRequired ||
+    (passwordExpiresAt !== null && !Number.isNaN(passwordExpiresAt) && Date.now() >= passwordExpiresAt)
+  );
   const myTeams = (teams || []).filter(t => (t.members && t.members.includes(user?.name)) || t.leader === user?.name);
 
   const [nameVal, setNameVal] = useState(user?.name || '');
@@ -21,6 +27,14 @@ export const Profile = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingProfileImage, setIsUploadingProfileImage] = useState(false);
   const [imageLoadError, setImageLoadError] = useState(false);
+  const [showProfileImageOptions, setShowProfileImageOptions] = useState(false);
+  const profileImageInputRef = useRef(null);
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(Boolean(user?.twoFactorEnabled ?? user?.is_two_factor_enabled));
+  const [twoFactorSetup, setTwoFactorSetup] = useState(null);
+  const [twoFactorOtp, setTwoFactorOtp] = useState('');
+  const [twoFactorBackupCodes, setTwoFactorBackupCodes] = useState([]);
+  const [twoFactorError, setTwoFactorError] = useState('');
+  const [isUpdatingTwoFactor, setIsUpdatingTwoFactor] = useState(false);
 
   const [modalConfig, setModalConfig] = useState({
     isOpen: false,
@@ -38,27 +52,57 @@ export const Profile = () => {
     }
   }, [user?.name]);
 
+  useEffect(() => {
+    if (user?.twoFactorEnabled !== undefined || user?.is_two_factor_enabled !== undefined) {
+      setTwoFactorEnabled(Boolean(user.twoFactorEnabled ?? user.is_two_factor_enabled));
+    }
+  }, [user?.twoFactorEnabled, user?.is_two_factor_enabled]);
+
+  useEffect(() => {
+    if (!user?.id || passwordChangeRequired) return undefined;
+    let active = true;
+    api.getMe()
+      .then(response => {
+        if (!active || !response.user) return;
+        const enabled = Boolean(response.user.twoFactorEnabled ?? response.user.is_two_factor_enabled);
+        setTwoFactorEnabled(enabled);
+        setUser(current => ({ ...current, ...response.user, twoFactorEnabled: enabled }));
+      })
+      .catch(error => {
+        if (active) setTwoFactorError(error.message || 'Status 2FA tidak dapat dimuat.');
+      });
+    return () => { active = false; };
+  }, [user?.id, passwordChangeRequired, setUser]);
+
   const userRoles = (user?.roles && user.roles.length > 0)
     ? user.roles
     : (user?.role ? [user.role] : ['user']);
-  const passwordStrengthChecks = [
-    newPassword.length >= (isMasyarakat ? 8 : 6),
-    newPassword.length >= 8,
-    /[a-z]/.test(newPassword),
-    /[A-Z]/.test(newPassword),
-    /\d/.test(newPassword),
-    /[^A-Za-z0-9]/.test(newPassword)
-  ];
-  const passwordStrengthScore = passwordStrengthChecks.filter(Boolean).length;
-  const passwordStrength = passwordStrengthScore >= 5
-    ? { label: 'Kuat', color: 'bg-emerald-500', text: 'text-emerald-700' }
-    : passwordStrengthScore >= 3
-      ? { label: 'Sedang', color: 'bg-amber-400', text: 'text-amber-700' }
-      : { label: 'Lemah', color: 'bg-rose-500', text: 'text-rose-700' };
-  const profileImage = user?.profileImage || user?.profile_image;
-  const isTndProfileImage = String(user?.profileImageSource || user?.profile_image_source || '').toUpperCase() === 'TND';
-  const canUploadProfileImage = isMasyarakat || userRoles.some(role => String(role).toUpperCase() === 'USER');
-  const passwordMinLength = isMasyarakat ? 8 : 6;
+  const {
+    requirements: passwordRequirements,
+    level: passwordStrengthLabel,
+    color: passwordStrengthColor,
+    textColor: passwordStrengthText,
+    isStrong: isPasswordStrong
+  } = getPasswordStrength(newPassword);
+  const passwordStrength = {
+    label: passwordStrengthLabel,
+    color: passwordStrengthColor,
+    text: passwordStrengthText
+  };
+  // Menangkap berbagai kemungkinan nama properti foto dari state user database
+  const profileImage = user?.profile_image || user?.profileImage || user?.tndPhoto || user?.avatar || user?.foto;
+  const profileInitials = String(user?.name || 'Pengguna SPBE')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(namePart => namePart[0])
+    .join('')
+    .toUpperCase() || 'U';
+  const isTndProfileImage = String(user?.profile_image_source || user?.profileImageSource || '').toUpperCase() === 'TND';
+  const isAdmin = userRoles.some(role => String(role).toUpperCase() === 'ADMIN');
+  const canUploadProfileImage = isAdmin || userRoles.some(role => String(role).toUpperCase() === 'MASYARAKAT');
+  const passwordMinLength = 8;
 
   useEffect(() => {
     setImageLoadError(false);
@@ -107,10 +151,13 @@ export const Profile = () => {
       const updatedUser = {
         ...user,
         profileImage: response.user?.profileImage || imageData,
+        profile_image: response.user?.profile_image || response.user?.profileImage || imageData,
         profileImageSource: response.user?.profileImageSource || 'MANUAL'
       };
+      updatedUser.profile_image_source = updatedUser.profileImageSource;
       setUser(updatedUser);
       sessionStorage.setItem('spbe_user', JSON.stringify(updatedUser));
+      setShowProfileImageOptions(false);
       setSuccessMessage('Foto profil berhasil diperbarui.');
       setTimeout(() => setSuccessMessage(''), 4000);
     } catch (error) {
@@ -128,8 +175,122 @@ export const Profile = () => {
     }
   };
 
+  const handleRemoveProfileImage = async () => {
+    setIsUploadingProfileImage(true);
+    try {
+      const response = await api.updateProfile({ profileImage: null });
+      const updatedUser = {
+        ...user,
+        profileImage: null,
+        profileImageSource: null,
+        profile_image: null,
+        profile_image_source: null,
+        avatar: null,
+        foto: null,
+        tndPhoto: null,
+        ...(response.user || {})
+      };
+      setUser(updatedUser);
+      sessionStorage.setItem('spbe_user', JSON.stringify(updatedUser));
+      setShowProfileImageOptions(false);
+      setSuccessMessage('Foto profil berhasil dihapus.');
+      setTimeout(() => setSuccessMessage(''), 4000);
+    } catch (error) {
+      setModalConfig({
+        isOpen: true,
+        type: 'danger',
+        title: 'Gagal Menghapus Foto',
+        message: error.message || 'Terjadi kesalahan saat menghapus foto profil.',
+        confirmText: 'Tutup',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
+    } finally {
+      setIsUploadingProfileImage(false);
+    }
+  };
+
+  const confirmRemoveProfileImage = () => {
+    setModalConfig({
+      isOpen: true,
+      type: 'warning',
+      title: 'Hapus Foto Profil?',
+      message: 'Foto profil akan dihapus dan kembali ke inisial bawaan aplikasi.',
+      confirmText: 'Hapus Foto',
+      cancelText: 'Batal',
+      onConfirm: handleRemoveProfileImage
+    });
+  };
+
+  const startProfile2FASetup = async () => {
+    setIsUpdatingTwoFactor(true);
+    setTwoFactorError('');
+    try {
+      const response = await api.generate2FA();
+      setTwoFactorSetup({ qrUrl: response.qrCodeUrl, secret: response.secret });
+      setTwoFactorOtp('');
+    } catch (error) {
+      setTwoFactorError(error.message || 'QR code 2FA tidak dapat dibuat.');
+    } finally {
+      setIsUpdatingTwoFactor(false);
+    }
+  };
+
+  const verifyProfile2FASetup = async (event) => {
+    event.preventDefault();
+    if (!/^\d{6}$/.test(twoFactorOtp)) {
+      setTwoFactorError('Masukkan kode autentikator 6 digit.');
+      return;
+    }
+    setIsUpdatingTwoFactor(true);
+    setTwoFactorError('');
+    try {
+      const response = await api.verifySetup2FA(null, twoFactorOtp);
+      if (response.token) sessionStorage.setItem('spbe_token', response.token);
+      const updatedUser = { ...user, ...(response.user || {}), twoFactorEnabled: true, is_two_factor_enabled: true };
+      updatedUser.twoFactorChoiceCompleted = true;
+      setUser(updatedUser);
+      sessionStorage.setItem('spbe_user', JSON.stringify(updatedUser));
+      setTwoFactorEnabled(true);
+      setTwoFactorBackupCodes(response.backupCodes || []);
+      setTwoFactorSetup(null);
+      setTwoFactorOtp('');
+      setSuccessMessage('Verifikasi dua langkah berhasil diaktifkan.');
+      setTimeout(() => setSuccessMessage(''), 4000);
+    } catch (error) {
+      setTwoFactorError(error.message || 'Kode autentikator tidak valid.');
+    } finally {
+      setIsUpdatingTwoFactor(false);
+    }
+  };
+
+  const disableProfile2FA = async () => {
+    setIsUpdatingTwoFactor(true);
+    setTwoFactorError('');
+    try {
+      const response = await api.disableProfile2FA();
+      const updatedUser = {
+        ...user,
+        twoFactorEnabled: false,
+        is_two_factor_enabled: false,
+        twoFactorChoiceCompleted: Boolean(response.twoFactorChoiceCompleted)
+      };
+      setUser(updatedUser);
+      sessionStorage.setItem('spbe_user', JSON.stringify(updatedUser));
+      setTwoFactorEnabled(false);
+      setTwoFactorOtp('');
+      setTwoFactorBackupCodes([]);
+      setSuccessMessage('Verifikasi dua langkah berhasil dinonaktifkan.');
+      setTimeout(() => setSuccessMessage(''), 4000);
+    } catch (error) {
+      setTwoFactorError(error.message || '2FA tidak dapat dinonaktifkan.');
+    } finally {
+      setIsUpdatingTwoFactor(false);
+    }
+  };
+
   const getBadgeClass = (r) => {
-    switch (r) {
+    switch (String(r || '').trim().toLowerCase()) {
       case 'admin':
         return 'bg-rose-50 text-rose-700 border-rose-100';
       case 'helpdesk':
@@ -145,9 +306,11 @@ export const Profile = () => {
   };
 
   const getBadgeLabel = (r) => {
-    if (r === 'user') return 'OPD';
-    if (r === 'pegawai') return 'Pegawai';
-    return r.toUpperCase();
+    if (!r) return '';
+    const roleStr = String(r).trim().toLowerCase();
+    if (roleStr === 'user' || roleStr === 'opd') return 'OPD';
+    if (roleStr === 'pegawai') return 'Pegawai';
+    return String(r).toUpperCase();
   };
 
   const handleUpdateProfile = async (e) => {
@@ -164,12 +327,12 @@ export const Profile = () => {
       });
       return;
     }
-    if (isMasyarakat && user?.passwordChangeRequired && !newPassword) {
+    if (passwordChangeRequired && !newPassword) {
       setModalConfig({
         isOpen: true,
         type: 'warning',
         title: 'Kata Sandi Wajib Diperbarui',
-        message: 'Demi keamanan, akun masyarakat wajib mengganti kata sandi setidaknya satu tahun sekali.',
+        message: 'Demi keamanan, masa berlaku kata sandi satu tahun telah berakhir dan wajib diperbarui.',
         confirmText: 'Ganti Kata Sandi',
         cancelText: 'Tutup',
         onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
@@ -201,12 +364,13 @@ export const Profile = () => {
         });
         return;
       }
-      if (newPassword.length < passwordMinLength) {
+      if (!isPasswordStrong) {
+        const unmet = passwordRequirements.filter(r => !r.met).map(r => `• ${r.label}`).join('\n');
         setModalConfig({
           isOpen: true,
           type: 'warning',
-          title: 'Kata Sandi Terlalu Pendek',
-          message: `Kata sandi baru minimal harus terdiri dari ${passwordMinLength} karakter.`,
+          title: 'Kata Sandi Belum Kuat',
+          message: `Kata sandi baru harus memenuhi semua kriteria berikut:\n${unmet}`,
           confirmText: 'Perbaiki Kata Sandi',
           cancelText: '',
           onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
@@ -242,14 +406,14 @@ export const Profile = () => {
       const updatedUser = {
         ...user,
         name: res.user?.name || res.user?.full_name || nameVal.trim(),
-        passwordChangeRequired: res.user?.passwordChangeRequired ?? (newPassword ? false : user?.passwordChangeRequired)
+        passwordChangeRequired: res.user?.passwordChangeRequired ?? (newPassword ? false : passwordChangeRequired)
       };
 
       setUser(updatedUser);
       sessionStorage.setItem('spbe_user', JSON.stringify(updatedUser));
 
       if (users && setUsers) {
-        setUsers(prev => prev.map(u => 
+        setUsers(prev => prev.map(u =>
           u.email.toLowerCase() === user.email.toLowerCase()
             ? { ...u, name: nameVal.trim() }
             : u
@@ -299,29 +463,71 @@ export const Profile = () => {
           <div className="w-24 h-24 rounded-2xl bg-sky-50 border-2 border-sky-200/80 text-sky-600 flex items-center justify-center shadow-xs shrink-0 overflow-hidden">
             {profileImage && !imageLoadError
               ? (
-                <img 
-                  src={profileImage} 
-                  alt="Foto profil" 
+                <img
+                  src={profileImage}
+                  alt="Foto profil"
                   onError={() => setImageLoadError(true)}
-                  className="h-full w-full object-cover" 
+                  className="h-full w-full object-cover"
                 />
               )
-              : <User className="w-12 h-12 stroke-[1.75]" />}
+              : (
+                <div className="w-full h-full bg-gradient-to-br from-sky-500 via-blue-600 to-indigo-700 text-white flex items-center justify-center text-2xl font-black tracking-wide">
+                  {profileInitials}
+                </div>
+              )}
           </div>
-          {canUploadProfileImage && !isTndProfileImage && (
-            <label className={`mt-3 inline-flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-bold text-sky-700 transition-colors ${isUploadingProfileImage ? 'cursor-wait opacity-60' : 'cursor-pointer hover:bg-sky-100'}`}>
-              <Camera className="h-4 w-4" />
-              {isUploadingProfileImage ? 'Mengunggah foto...' : profileImage ? 'Ganti Foto Profil' : 'Tambah Foto Profil'}
+          {canUploadProfileImage && (!isTndProfileImage || isAdmin) && (
+            <div className="relative mt-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (isUploadingProfileImage) return;
+                  if (profileImage) {
+                    setShowProfileImageOptions(previous => !previous);
+                  } else {
+                    profileImageInputRef.current?.click();
+                  }
+                }}
+                disabled={isUploadingProfileImage}
+                className={`inline-flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-bold text-sky-700 transition-colors ${isUploadingProfileImage ? 'cursor-wait opacity-60' : 'cursor-pointer hover:bg-sky-100'}`}
+              >
+                <Camera className="h-4 w-4" />
+                {isUploadingProfileImage ? 'Memproses foto...' : profileImage ? 'Kelola Foto Profil' : 'Tambah Foto Profil'}
+              </button>
               <input
+                ref={profileImageInputRef}
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
                 className="sr-only"
                 disabled={isUploadingProfileImage}
                 onChange={handleProfileImageChange}
               />
-            </label>
+              {showProfileImageOptions && profileImage && (
+                <div className="absolute left-1/2 top-full z-20 mt-2 w-52 -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-1.5 text-left shadow-lg">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowProfileImageOptions(false);
+                      profileImageInputRef.current?.click();
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-xs font-bold text-slate-700 transition-colors hover:bg-sky-50 hover:text-sky-700"
+                  >
+                    <Camera className="h-4 w-4" />
+                    Ganti Foto Profil
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmRemoveProfileImage}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-xs font-bold text-rose-600 transition-colors hover:bg-rose-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Hapus Foto Profil
+                  </button>
+                </div>
+              )}
+            </div>
           )}
-          {isTndProfileImage && (
+          {isTndProfileImage && !isAdmin && (
             <p className="mt-2 text-[11px] font-semibold text-slate-400">Foto profil tersinkronisasi dari TND</p>
           )}
 
@@ -341,14 +547,76 @@ export const Profile = () => {
 
           <div className="mt-3.5 flex flex-wrap items-center justify-center gap-1.5">
             {userRoles.map((r) => (
-              <span 
-                key={r} 
+              <span
+                key={r}
                 className={`px-2.5 py-1 rounded-xl text-xs font-black uppercase tracking-wider border ${getBadgeClass(r)}`}
               >
                 {getBadgeLabel(r)}
               </span>
             ))}
           </div>
+
+          <section className="mt-4 w-full rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 text-left">
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="flex items-center gap-2 text-xs font-black text-slate-800">
+                  <QrCode className="h-4 w-4 text-indigo-600" /> Autentikasi 2 Langkah
+                </h4>
+                <span className={`rounded-full px-2 py-1 text-[10px] font-black ${twoFactorEnabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                  {twoFactorEnabled ? 'AKTIF' : 'NONAKTIF'}
+                </span>
+              </div>
+
+              {twoFactorEnabled ? (
+                <button
+                  type="button"
+                  onClick={disableProfile2FA}
+                  disabled={isUpdatingTwoFactor}
+                  className="mt-3 w-full rounded-xl border border-rose-200 bg-white px-3 py-2.5 text-xs font-black text-rose-700 hover:bg-rose-50 disabled:cursor-wait disabled:opacity-50"
+                >
+                  {isUpdatingTwoFactor ? 'Menonaktifkan...' : 'Nonaktifkan 2FA'}
+                </button>
+              ) : twoFactorSetup ? (
+                <form onSubmit={verifyProfile2FASetup} className="mt-3 space-y-3">
+                  <p className="text-[11px] leading-relaxed text-slate-600">Pindai QR dengan Google Authenticator, lalu masukkan kode 6 digit untuk mengaktifkan.</p>
+                  <div className="mx-auto w-fit rounded-xl border border-slate-200 bg-white p-2">
+                    <img src={twoFactorSetup.qrUrl} alt="QR autentikasi dua langkah" className="h-36 w-36" />
+                  </div>
+                  <div className="flex items-center justify-center gap-2 rounded-lg bg-white px-3 py-2">
+                    <code className="text-xs font-black tracking-wider text-slate-700">{twoFactorSetup.secret}</code>
+                    <button type="button" onClick={() => navigator.clipboard?.writeText(twoFactorSetup.secret).catch(() => setTwoFactorError('Kode manual tidak dapat disalin.'))} aria-label="Salin kode manual 2FA" className="text-slate-400 hover:text-indigo-600">
+                      <Copy className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={twoFactorOtp}
+                      onChange={event => setTwoFactorOtp(event.target.value.replace(/\D/g, ''))}
+                      className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold tracking-widest"
+                      placeholder="Kode 6 digit"
+                    />
+                    <button type="submit" disabled={isUpdatingTwoFactor} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-50">
+                      Verifikasi
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <button type="button" onClick={startProfile2FASetup} disabled={isUpdatingTwoFactor} className="mt-3 w-full rounded-xl bg-indigo-600 px-3 py-2.5 text-xs font-black text-white hover:bg-indigo-700 disabled:opacity-50">
+                  {isUpdatingTwoFactor ? 'Menyiapkan...' : 'Aktifkan 2FA'}
+                </button>
+              )}
+
+              {twoFactorError && <p role="alert" className="mt-2 text-[11px] font-semibold text-rose-600">{twoFactorError}</p>}
+              {twoFactorBackupCodes.length > 0 && (
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-[11px] font-black text-amber-900">Simpan kode cadangan ini di tempat aman. Kode hanya ditampilkan sekarang.</p>
+                  <div className="mt-2 grid grid-cols-2 gap-1 font-mono text-[11px] font-bold text-amber-900">
+                    {twoFactorBackupCodes.map(code => <span key={code}>{code}</span>)}
+                  </div>
+                </div>
+              )}
+          </section>
 
           <div className="w-full h-px bg-slate-100 my-6" />
 
@@ -371,8 +639,8 @@ export const Profile = () => {
               </span>
               <div className="flex flex-wrap justify-end gap-1.5">
                 {userRoles.map((r) => (
-                  <span 
-                    key={r} 
+                  <span
+                    key={r}
                     className={`px-2 py-0.5 rounded-lg text-[11px] font-black uppercase tracking-wider border ${getBadgeClass(r)}`}
                   >
                     {getBadgeLabel(r)}
@@ -390,8 +658,8 @@ export const Profile = () => {
                 <div className="flex flex-col items-end gap-1 text-right">
                   {myTeams.length > 0 ? (
                     myTeams.map((t) => (
-                      <span 
-                        key={t.id || t.name} 
+                      <span
+                        key={t.id || t.name}
                         className="px-2 py-0.5 rounded-lg text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100"
                       >
                         {t.name}
@@ -413,7 +681,7 @@ export const Profile = () => {
                 Rincian Identitas Pengguna
               </h3>
               <p className="text-xs text-slate-500 font-semibold mt-0.5">
-                {isMasyarakat 
+                {isMasyarakat
                   ? 'Kelola data identitas profil dan kata sandi akun masyarakat umum.'
                   : 'Data resmi yang tersinkronisasi dalam basis data layanan SPBE Diskominfo Kota Bogor.'}
               </p>
@@ -426,9 +694,9 @@ export const Profile = () => {
               </div>
             )}
 
-            {isMasyarakat && user?.passwordChangeRequired && (
+            {passwordChangeRequired && (
               <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm font-semibold text-amber-900">
-                Demi keamanan, akun masyarakat wajib mengganti kata sandi setidaknya satu tahun sekali. Ganti kata sandi sekarang untuk melanjutkan menggunakan layanan.
+                Masa berlaku kata sandi satu tahun telah berakhir. Ganti kata sandi sekarang untuk melanjutkan menggunakan layanan.
               </div>
             )}
 
@@ -478,8 +746,8 @@ export const Profile = () => {
                       </span>
                       <div className="flex flex-wrap gap-1.5 mt-1.5">
                         {userRoles.map((r) => (
-                          <span 
-                            key={r} 
+                          <span
+                            key={r}
                             className={`px-2.5 py-1 rounded-xl text-xs font-black uppercase tracking-wider border ${getBadgeClass(r)}`}
                           >
                             {getBadgeLabel(r)}
@@ -526,7 +794,7 @@ export const Profile = () => {
                           value={oldPassword}
                           onChange={(e) => setOldPassword(e.target.value)}
                           placeholder="Masukkan sandi lama"
-                          className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 pr-10"
+                          className="password-visibility-input w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 pr-10"
                         />
                         <button
                           type="button"
@@ -548,7 +816,7 @@ export const Profile = () => {
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
                           placeholder={`Minimal ${passwordMinLength} karakter`}
-                          className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 pr-10"
+                          className="password-visibility-input w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 pr-10"
                         />
                         <button
                           type="button"
@@ -559,28 +827,43 @@ export const Profile = () => {
                         </button>
                       </div>
                       {newPassword && (
-                        <div className="mt-2 space-y-1.5" aria-live="polite">
+                        <div className="mt-2 space-y-2" aria-live="polite">
                           <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-semibold text-slate-500">Kekuatan password</span>
+                            <span className="text-[11px] font-semibold text-slate-500">Kekuatan kata sandi</span>
                             <span className={`text-[11px] font-bold ${passwordStrength.text}`}>
                               {passwordStrength.label}
                             </span>
                           </div>
-                          <div className="grid grid-cols-6 gap-1" aria-hidden="true">
-                            {passwordStrengthChecks.map((meetsRequirement, index) => (
+                          <div className="grid grid-cols-4 gap-1" aria-hidden="true">
+                            {passwordRequirements.map((req, index) => (
                               <span
                                 key={index}
-                                className={`h-1.5 rounded-full ${
-                                  meetsRequirement ? passwordStrength.color : 'bg-slate-200'
-                                }`}
+                                className={`h-1.5 rounded-full ${req.met ? passwordStrength.color : 'bg-slate-200'
+                                  }`}
                               />
                             ))}
                           </div>
-                          <p className={`text-[11px] ${newPassword.length >= passwordMinLength ? 'text-emerald-700' : 'text-rose-600'}`}>
-                            {newPassword.length >= passwordMinLength
-                              ? `Minimal ${passwordMinLength} karakter terpenuhi.`
-                              : `Masih kurang ${passwordMinLength - newPassword.length} karakter dari minimal ${passwordMinLength}.`}
-                          </p>
+                          <div className="space-y-1 pt-1">
+                            {passwordRequirements.map((req, index) => (
+                              <div key={index} className="flex items-center gap-1.5">
+                                <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] font-black ${req.met
+                                  ? 'bg-emerald-100 text-emerald-600'
+                                  : 'bg-slate-100 text-slate-400'
+                                  }`}>
+                                  {req.met ? '✓' : '○'}
+                                </span>
+                                <span className={`text-[11px] font-semibold ${req.met ? 'text-emerald-700' : 'text-slate-500'
+                                  }`}>
+                                  {req.label}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          {!isPasswordStrong && (
+                            <p className="text-[11px] text-rose-600 font-semibold mt-1">
+                              Kata sandi harus <span className="font-black">Kuat</span> untuk dapat disimpan.
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>
@@ -594,7 +877,7 @@ export const Profile = () => {
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         placeholder="Ulangi kata sandi baru"
-                        className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                        className="password-visibility-input w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500"
                       />
                     </div>
                   </div>
@@ -603,8 +886,11 @@ export const Profile = () => {
                 <div className="flex justify-end pt-2">
                   <button
                     type="submit"
-                    disabled={isSubmitting}
-                    className="px-6 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-60 text-white rounded-xl text-sm font-extrabold shadow-sm hover:shadow transition-all flex items-center gap-2 cursor-pointer"
+                    disabled={isSubmitting || (newPassword && !isPasswordStrong)}
+                    className={`px-6 py-2.5 text-white rounded-xl text-sm font-extrabold shadow-sm transition-all flex items-center gap-2 ${(newPassword && !isPasswordStrong)
+                      ? 'bg-slate-300 cursor-not-allowed opacity-60'
+                      : 'bg-sky-600 hover:bg-sky-700 hover:shadow cursor-pointer disabled:opacity-60'
+                      }`}
                   >
                     <Check className="w-4 h-4" />
                     <span>{isSubmitting ? 'Menyimpan...' : 'Simpan Perubahan'}</span>
@@ -652,8 +938,8 @@ export const Profile = () => {
                       </span>
                       <div className="flex flex-wrap gap-1.5 mt-1.5">
                         {userRoles.map((r) => (
-                          <span 
-                            key={r} 
+                          <span
+                            key={r}
                             className={`px-2.5 py-1 rounded-xl text-xs font-black uppercase tracking-wider border ${getBadgeClass(r)}`}
                           >
                             {getBadgeLabel(r)}
@@ -741,6 +1027,33 @@ export const Profile = () => {
                       )}
                     </div>
                   </div>
+                )}
+
+                {passwordChangeRequired && (
+                  <form onSubmit={handleUpdateProfile} className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50/60 p-5">
+                    <div>
+                      <h4 className="text-sm font-black text-slate-900">Kata Sandi Wajib Diperbarui</h4>
+                      <p className="mt-1 text-xs font-medium text-slate-600">Masa berlaku kata sandi sudah mencapai satu tahun. Perbarui untuk melanjutkan.</p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <label className="text-xs font-bold text-slate-600">
+                        Kata sandi lama
+                        <input required type={showOldPassword ? 'text' : 'password'} value={oldPassword} onChange={event => setOldPassword(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" autoComplete="current-password" />
+                      </label>
+                      <label className="text-xs font-bold text-slate-600">
+                        Kata sandi baru
+                        <input required type={showNewPassword ? 'text' : 'password'} value={newPassword} onChange={event => setNewPassword(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" autoComplete="new-password" />
+                        {newPassword && <span className={`mt-1 block ${passwordStrength.text}`}>Kekuatan: {passwordStrength.label}</span>}
+                      </label>
+                      <label className="text-xs font-bold text-slate-600">
+                        Konfirmasi kata sandi baru
+                        <input required type={showNewPassword ? 'text' : 'password'} value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" autoComplete="new-password" />
+                      </label>
+                    </div>
+                    <button type="submit" disabled={isSubmitting || !isPasswordStrong || newPassword !== confirmPassword} className="rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50">
+                      {isSubmitting ? 'Menyimpan...' : 'Ubah Kata Sandi'}
+                    </button>
+                  </form>
                 )}
 
                 <div className="p-4 bg-sky-50/70 border border-sky-200/90 rounded-xl flex items-start gap-3 text-xs text-sky-900 leading-relaxed">

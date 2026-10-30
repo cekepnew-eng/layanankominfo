@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
 import { ActionModal } from '../../components/ActionModal';
 import { ArrowLeft, Lock, Mail, User, ShieldCheck, Eye, EyeOff } from 'lucide-react';
+import { getPasswordStrength } from '../../utils/passwordStrength';
 
 export const Register = () => {
   const { register } = useAuth();
@@ -36,21 +37,8 @@ export const Register = () => {
   const closeModal = () => setModalConfig(prev => ({ ...prev, isOpen: false }));
   const normalizedEmail = email.trim().toLowerCase();
 
-  const getPasswordStrength = (pass) => {
-    if (!pass) return null;
-    let score = 0;
-    if (pass.length > 5) score += 1;
-    if (pass.length >= 8) score += 1;
-    if (/[A-Z]/.test(pass)) score += 1;
-    if (/[0-9]/.test(pass)) score += 1;
-    if (/[^A-Za-z0-9]/.test(pass)) score += 1;
-
-    if (score < 2) return { text: 'Lemah', color: 'text-rose-600 bg-rose-50 border-rose-200' };
-    if (score === 2 || score === 3) return { text: 'Sedang', color: 'text-amber-600 bg-amber-50 border-amber-200' };
-    return { text: 'Kuat', color: 'text-emerald-600 bg-emerald-50 border-emerald-200' };
-  };
-
-  const strength = getPasswordStrength(password);
+  const { requirements: passwordRequirements, level, badgeColor, color, isStrong: isPasswordStrong } = getPasswordStrength(password);
+  const strength = password ? { text: level, color: badgeColor } : null;
 
   useEffect(() => {
     if (confirmPassword && password !== confirmPassword) {
@@ -67,9 +55,9 @@ export const Register = () => {
       return;
     }
 
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
-    if (!passwordRegex.test(password)) {
-      setModalConfig({ isOpen: true, type: 'warning', title: 'Perhatian', message: 'Password harus minimal 8 karakter, mengandung huruf besar, huruf kecil, dan angka.', confirmText: 'Mengerti' });
+    if (!isPasswordStrong) {
+      const unmet = passwordRequirements.filter(r => !r.met).map(r => `\u2022 ${r.label}`).join('\n');
+      setModalConfig({ isOpen: true, type: 'warning', title: 'Kata Sandi Belum Memenuhi Standar', message: `Kata sandi harus memenuhi semua kriteria berikut:\n${unmet}\n\nPastikan kata sandi diawali huruf kapital, minimal 8 karakter, mengandung angka, dan simbol.`, confirmText: 'Perbaiki Kata Sandi' });
       return;
     }
 
@@ -77,9 +65,9 @@ export const Register = () => {
       setPasswordError('Konfirmasi kata sandi tidak cocok! Pastikan kata sandi dan konfirmasi kata sandi sama.');
       return;
     }
-    
+
     setPasswordError('');
-    
+
     setIsRegistering(true);
     try {
       const regResult = await register({
@@ -317,16 +305,39 @@ export const Register = () => {
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
-              {strength && (
-                <div className="flex items-center gap-2 mt-1">
-                  <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border ${strength.color}`}>
-                    {strength.text}
-                  </span>
-                  <div className="flex-1 flex gap-1 h-1.5">
-                    <div className={`flex-1 rounded-full ${strength.text === 'Lemah' ? 'bg-rose-500' : strength.text === 'Sedang' ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
-                    <div className={`flex-1 rounded-full ${strength.text === 'Lemah' ? 'bg-slate-200' : strength.text === 'Sedang' ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
-                    <div className={`flex-1 rounded-full ${strength.text === 'Kuat' ? 'bg-emerald-500' : 'bg-slate-200'}`}></div>
+              {password && (
+                <div className="mt-2 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border ${strength.color}`}>
+                      {strength.text}
+                    </span>
+                    <div className="flex-1 flex gap-1 h-1.5">
+                      {passwordRequirements.map((req, index) => (
+                        <div key={index} className={`flex-1 rounded-full ${req.met ? color : 'bg-slate-200'}`}></div>
+                      ))}
+                    </div>
                   </div>
+                  <div className="space-y-1 pt-0.5">
+                    {passwordRequirements.map((req, index) => (
+                      <div key={index} className="flex items-center gap-1.5">
+                        <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] font-black ${req.met
+                          ? 'bg-emerald-100 text-emerald-600'
+                          : 'bg-slate-100 text-slate-400'
+                          }`}>
+                          {req.met ? '\u2713' : '\u25CB'}
+                        </span>
+                        <span className={`text-[11px] font-semibold ${req.met ? 'text-emerald-700' : 'text-slate-500'
+                          }`}>
+                          {req.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  {!isPasswordStrong && (
+                    <p className="text-[11px] text-rose-600 font-semibold">
+                      Kata sandi harus <span className="font-black">Kuat</span> untuk dapat mendaftar.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -361,8 +372,11 @@ export const Register = () => {
 
             <button
               type="submit"
-              disabled={isRegistering}
-              className="w-full py-3.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 text-base font-extrabold text-white shadow-md shadow-sky-500/10 hover:shadow-lg hover:shadow-sky-500/15 transition-all flex items-center justify-center disabled:cursor-wait disabled:opacity-70"
+              disabled={isRegistering || !isPasswordStrong}
+              className={`w-full py-3.5 px-4 rounded-xl text-base font-extrabold text-white shadow-md transition-all flex items-center justify-center ${!isPasswordStrong
+                ? 'bg-slate-300 cursor-not-allowed opacity-60'
+                : 'bg-sky-600 hover:bg-sky-700 shadow-sky-500/10 hover:shadow-lg hover:shadow-sky-500/15 cursor-pointer'
+                }`}
             >
               {isRegistering ? 'Membuat Akun...' : 'Buat Akun'}
             </button>

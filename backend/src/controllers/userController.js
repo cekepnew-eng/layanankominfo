@@ -1,5 +1,7 @@
 const db = require('../config/database');
 const bcrypt = require('bcryptjs');
+const { getTndProfileImage } = require('../utils/tndProfileImage');
+const { getPasswordPolicyFailures } = require('../utils/passwordPolicy');
 
 async function authenticateTndUser(identifier, password) {
   const normalizedIdentifier = String(identifier || '').trim();
@@ -37,7 +39,8 @@ async function authenticateTndUser(identifier, password) {
           nama_pd: 'Sekretariat Daerah Kota Bogor',
           username: '199902032025211037',
           email: 'renditriyawan@kotabogor.go.id',
-          no_hp: '081234567890'
+          no_hp: '081234567890',
+          foto: '20220419082701.jpg'
         }
       }
     };
@@ -54,6 +57,9 @@ async function authenticateTndUser(identifier, password) {
   const fullName = user.nama || payload?.data?.nama_lengkap || user.name || '';
   const department = user.nama_pd || user.unit_kerja || payload?.data?.opd_name || '';
 
+  // Normalize URLs and TND photo filenames to a browser-loadable URL.
+  const profileImage = getTndProfileImage(user, payload, ssoUrl);
+
   if (!fullName || !department) {
     const error = new Error('Data nama atau OPD tidak ditemukan pada akun TND.');
     error.status = 422;
@@ -65,7 +71,9 @@ async function authenticateTndUser(identifier, password) {
     nip,
     full_name: String(fullName).trim(),
     department: String(department).trim(),
-    phone_number: user.no_hp || user.no_telepon || '0000000000'
+    phone_number: user.no_hp || user.no_telepon || '0000000000',
+    profile_image: profileImage,
+    profile_image_source: 'TND'
   };
 }
 
@@ -85,8 +93,11 @@ exports.getAllUsers = async (req, res) => {
   try {
     const result = await db.pool.query(`
       SELECT u.id, u.email, u.nip, u.full_name as name, u.phone_number as phone, u.department,
-             COALESCE(tm.team_name, 'Dinas Komunikasi dan Informatika') as team
+             u.profile_image, u.profile_image_source,
+             COALESCE(tm.team_name, 'Dinas Komunikasi dan Informatika') as team,
+             legacy_role.name as legacy_role
       FROM users u
+      LEFT JOIN roles legacy_role ON legacy_role.id = u.role_id
       LEFT JOIN (
         SELECT tm.user_id, STRING_AGG(teams.team_name, ', ') as team_name
         FROM team_members tm
@@ -110,7 +121,9 @@ exports.getAllUsers = async (req, res) => {
         roles = [];
       }
 
-      if (roles.length === 0) roles.push('USER');
+      if (roles.length === 0) {
+        roles.push(String(row.legacy_role || 'USER').toUpperCase());
+      }
 
       const primaryRole = roles.includes('ADMIN') ? 'ADMIN' : roles.includes('HELPDESK') ? 'HELPDESK' : roles.includes('PEGAWAI') ? 'PEGAWAI' : roles.includes('USER') ? 'USER' : roles.includes('MASYARAKAT') ? 'MASYARAKAT' : roles[0];
       const departmentName = row.department || (roles.includes('MASYARAKAT') ? 'Masyarakat Umum' : 'Dinas Komunikasi dan Informatika');
@@ -140,7 +153,7 @@ exports.updateUserRole = async (req, res) => {
     if (team_id !== undefined) {
       await client.query('DELETE FROM team_members WHERE user_id = $1', [id]);
       if (team_id) {
-         await client.query('INSERT INTO team_members (user_id, team_id) VALUES ($1, $2)', [id, team_id]);
+        await client.query('INSERT INTO team_members (user_id, team_id) VALUES ($1, $2)', [id, team_id]);
       }
     }
 
@@ -217,39 +230,45 @@ exports.createUserManual = async (req, res) => {
     const profile = await authenticateTndUser(identifier, password);
     const client = await db.pool.connect();
     try {
-    await client.query('BEGIN');
-    const existingUser = await client.query(
-      `SELECT id FROM users
+      await client.query('BEGIN');
+      const existingUser = await client.query(
+        `SELECT id FROM users
        WHERE LOWER(email) = LOWER($1) OR ($2::text IS NOT NULL AND nip = $2)
        LIMIT 1`,
-      [profile.email, profile.nip]
-    );
-    if (existingUser.rows.length > 0) {
-      const error = new Error('Akun dengan email atau NIP/NIK tersebut sudah terdaftar.');
-      error.status = 409;
-      throw error;
-    }
+        [profile.email, profile.nip]
+      );
+      if (existingUser.rows.length > 0) {
+        const error = new Error('Akun dengan email atau NIP/NIK tersebut sudah terdaftar.');
+        error.status = 409;
+        throw error;
+      }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const userRes = await client.query(
-      `INSERT INTO users (
-         email, nip, password_hash, full_name, phone_number, department, is_active,
-         is_two_factor_enabled, two_factor_secret, backup_codes
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const userRes = await client.query(
+        `INSERT INTO users (
+         email, nip, password_hash, full_name, phone_number, department, profile_image, profile_image_source,
+         is_active, is_two_factor_enabled, two_factor_secret, backup_codes, password_changed_at, password_auth_source
        )
-       VALUES ($1, $2, $3, $4, $5, $6, true, false, NULL, '[]'::jsonb)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, false, NULL, '[]'::jsonb, CURRENT_TIMESTAMP, 'TND')
        RETURNING id`,
-      [profile.email, profile.nip, hashedPassword, profile.full_name, profile.phone_number, profile.department]
-    );
-    const userId = userRes.rows[0].id;
+        [profile.email, profile.nip, hashedPassword, profile.full_name, profile.phone_number, profile.department, profile.profile_image, profile.profile_image_source]
+      );
+      const userId = userRes.rows[0].id;
 
-    const roleRes = await client.query("SELECT id FROM roles WHERE name = 'USER'");
-    if (roleRes.rows.length === 0) {
-      throw new Error('Role USER belum tersedia.');
-    }
-    await client.query('INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)', [userId, roleRes.rows[0].id]);
+      const roleRes = await client.query("SELECT id FROM roles WHERE name = 'USER'");
+      if (roleRes.rows.length === 0) {
+        throw new Error('Role USER belum tersedia.');
+      }
+      await client.query('INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)', [userId, roleRes.rows[0].id]);
 
-    await client.query('COMMIT');
-    res.json({ success: true, message: 'Akun OPD berhasil dibuat.', userId });
+      await client.query('COMMIT');
+      res.json({
+        success: true,
+        message: 'Akun OPD berhasil dibuat.',
+        userId,
+        profile_image: profile.profile_image,
+        profile_image_source: profile.profile_image_source
+      });
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -261,12 +280,18 @@ exports.createUserManual = async (req, res) => {
   }
 };
 
-exports.createMasyarakatUserManual = async (req, res) => {
+exports.createManualUser = async (req, res) => {
   const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
   const fullName = typeof req.body?.fullName === 'string' ? req.body.fullName.trim() : '';
   const password = typeof req.body?.password === 'string' ? req.body.password : '';
   const confirmPassword = typeof req.body?.confirmPassword === 'string' ? req.body.confirmPassword : '';
   const phoneNumber = typeof req.body?.phoneNumber === 'string' ? req.body.phoneNumber.trim() : '';
+  const roleName = typeof req.body?.roleName === 'string' ? req.body.roleName.trim().toUpperCase() : 'MASYARAKAT';
+  const department = typeof req.body?.department === 'string' ? req.body.department.trim() : '';
+  const rawTeamId = req.body?.teamId;
+  const hasTeamId = rawTeamId !== undefined && rawTeamId !== null && rawTeamId !== '';
+  const teamId = hasTeamId ? Number(rawTeamId) : null;
+  const allowedRoles = new Set(['ADMIN', 'HELPDESK', 'PEGAWAI', 'USER', 'MASYARAKAT']);
 
   if (!fullName || fullName.length > 255) {
     return res.status(400).json({ success: false, message: 'Nama lengkap wajib diisi dan maksimal 255 karakter.' });
@@ -274,10 +299,23 @@ exports.createMasyarakatUserManual = async (req, res) => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 255) {
     return res.status(400).json({ success: false, message: 'Masukkan alamat email yang valid.' });
   }
-  if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(password)) {
+  if (!allowedRoles.has(roleName)) {
+    return res.status(400).json({ success: false, message: 'Role akun tidak valid.' });
+  }
+  if (roleName !== 'MASYARAKAT' && (!department || department.length > 255)) {
+    return res.status(400).json({ success: false, message: 'Instansi/perangkat daerah wajib diisi dan maksimal 255 karakter.' });
+  }
+  if (roleName === 'PEGAWAI' && (!Number.isInteger(teamId) || teamId <= 0)) {
+    return res.status(400).json({ success: false, message: 'Tim kerja wajib dipilih untuk role Pegawai.' });
+  }
+  if (roleName !== 'PEGAWAI' && hasTeamId) {
+    return res.status(400).json({ success: false, message: 'Tim kerja hanya dapat ditetapkan untuk role Pegawai.' });
+  }
+  const passwordFailures = getPasswordPolicyFailures(password);
+  if (passwordFailures.length > 0) {
     return res.status(400).json({
       success: false,
-      message: 'Password minimal 8 karakter serta harus memiliki huruf besar, huruf kecil, dan angka.'
+      message: `Password belum memenuhi kriteria keamanan: ${passwordFailures.join(', ')}.`
     });
   }
   if (password !== confirmPassword) {
@@ -296,45 +334,82 @@ exports.createMasyarakatUserManual = async (req, res) => {
       return res.status(409).json({ success: false, message: 'Email sudah terdaftar.' });
     }
 
-    const roleRes = await client.query("SELECT id FROM roles WHERE name = 'MASYARAKAT'");
+    await client.query(
+      'INSERT INTO roles (name) VALUES ($1) ON CONFLICT (name) DO NOTHING',
+      [roleName]
+    );
+    const roleRes = await client.query('SELECT id FROM roles WHERE name = $1', [roleName]);
     if (roleRes.rows.length === 0) {
-      throw new Error('Role MASYARAKAT belum tersedia.');
+      throw new Error(`Role ${roleName} belum tersedia.`);
+    }
+    if (teamId) {
+      const teamRes = await client.query('SELECT id FROM teams WHERE id = $1', [teamId]);
+      if (teamRes.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ success: false, message: 'Tim kerja yang dipilih tidak ditemukan.' });
+      }
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
     const userRes = await client.query(
       `INSERT INTO users (
-         email, password_hash, full_name, phone_number, department, is_active,
-         is_two_factor_enabled, two_factor_secret, backup_codes
+         email, password_hash, full_name, phone_number, role_id, department, is_active,
+         is_two_factor_enabled, two_factor_secret, backup_codes, password_changed_at, password_auth_source
        )
-       VALUES ($1, $2, $3, $4, 'Masyarakat Umum', true, false, NULL, '[]'::jsonb)
+       VALUES ($1, $2, $3, $4, $5, $6, true, false, NULL, '[]'::jsonb, CURRENT_TIMESTAMP, 'LOCAL')
        RETURNING id`,
-      [email, passwordHash, fullName, phoneNumber || null]
+      [
+        email,
+        passwordHash,
+        fullName,
+        phoneNumber || null,
+        roleRes.rows[0].id,
+        roleName === 'MASYARAKAT' ? 'Masyarakat Umum' : department
+      ]
     );
     await client.query(
       'INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)',
       [userRes.rows[0].id, roleRes.rows[0].id]
     );
+    if (teamId) {
+      await client.query('INSERT INTO team_members (user_id, team_id) VALUES ($1, $2)', [userRes.rows[0].id, teamId]);
+    }
 
     await client.query('COMMIT');
     res.status(201).json({
       success: true,
-      message: 'Akun masyarakat berhasil dibuat.',
-      userId: userRes.rows[0].id
+      message: `Akun ${roleName === 'USER' ? 'OPD' : roleName} berhasil dibuat.`,
+      userId: userRes.rows[0].id,
+      user: {
+        id: userRes.rows[0].id,
+        email,
+        name: fullName,
+        role: roleName,
+        roles: [roleName],
+        department: roleName === 'MASYARAKAT' ? 'Masyarakat Umum' : department,
+        team_id: teamId
+      }
     });
   } catch (error) {
     await client.query('ROLLBACK');
-    res.status(500).json({ success: false, message: error.message });
+    if (error.code === '23505') {
+      return res.status(409).json({ success: false, message: 'Email sudah terdaftar.' });
+    }
+    console.error('createManualUser error:', error);
+    res.status(500).json({ success: false, message: 'Gagal membuat akun manual.' });
   } finally {
     client.release();
   }
 };
+
+exports.createMasyarakatUserManual = exports.createManualUser;
 
 exports.getOpdUsers = async (req, res) => {
   try {
     const { search } = req.query;
     let query = `
       SELECT u.id, u.email, u.nip, u.full_name as name, u.phone_number as phone, u.department,
+             u.profile_image, u.profile_image_source,
              COALESCE(array_agg(r.name), ARRAY[]::varchar[]) as roles
       FROM users u
       LEFT JOIN user_roles ur ON ur.user_id = u.id
@@ -353,7 +428,8 @@ exports.getOpdUsers = async (req, res) => {
     }
 
     query += `
-      GROUP BY u.id, u.email, u.nip, u.full_name, u.phone_number, u.department
+      GROUP BY u.id, u.email, u.nip, u.full_name, u.phone_number, u.department,
+               u.profile_image, u.profile_image_source
       ORDER BY u.department ASC, u.full_name ASC
       LIMIT 100
     `;
