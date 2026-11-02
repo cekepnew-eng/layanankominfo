@@ -4,10 +4,10 @@ import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
 import { ActionModal } from '../../components/ActionModal';
 import { ForgotPasswordModal } from '../../components/ForgotPasswordModal';
-import { Monitor, ArrowLeft, Lock, Mail, ChevronRight, Check, ShieldCheck, QrCode, Copy, Eye, EyeOff } from 'lucide-react';
+import { Monitor, ArrowLeft, Lock, Mail, ChevronRight, Check, ShieldCheck, QrCode, Copy, Eye, EyeOff, X } from 'lucide-react';
 
 export const Login = () => {
-  const { login, login2FA, setUser } = useAuth();
+  const { login, login2FA, setUser, acceptUserAgreement } = useAuth();
   const navigate = useNavigate();
 
   const [identifier, setIdentifier] = useState('');
@@ -18,6 +18,10 @@ export const Login = () => {
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [show2FAChoiceModal, setShow2FAChoiceModal] = useState(false);
+  const [showUserAgreementModal, setShowUserAgreementModal] = useState(false);
+  const [userAgreementChecked, setUserAgreementChecked] = useState(false);
+  const [userAgreementError, setUserAgreementError] = useState('');
+  const [isSubmittingUserAgreement, setIsSubmittingUserAgreement] = useState(false);
   const [otpStep, setOtpStep] = useState(1);
   const [otpCode, setOtpCode] = useState('');
   const [otpError, setOtpError] = useState('');
@@ -58,8 +62,43 @@ export const Login = () => {
     }
   };
 
+  const handleUserAgreementAccept = async () => {
+    if (!userAgreementChecked || isSubmittingUserAgreement) return;
+    setIsSubmittingUserAgreement(true);
+    setUserAgreementError('');
+    const result = await acceptUserAgreement();
+    setIsSubmittingUserAgreement(false);
+    if (!result.success) {
+      setUserAgreementError(result.message || 'Persetujuan tidak dapat disimpan. Silakan coba lagi.');
+      return;
+    }
+    setShowUserAgreementModal(false);
+    navigate('/dashboard');
+  };
+
+  const handleUserAgreementDecline = () => {
+    sessionStorage.removeItem('spbe_token');
+    sessionStorage.removeItem('spbe_user');
+    sessionStorage.removeItem('spbe_user_agreement_pending');
+    setUser(null);
+    setShowUserAgreementModal(false);
+    setUserAgreementChecked(false);
+    setUserAgreementError('');
+    setShowOtpModal(false);
+    setShow2FAChoiceModal(false);
+  };
+
   useEffect(() => {
     loadCaptcha();
+  }, []);
+
+  useEffect(() => {
+    if (
+      sessionStorage.getItem('spbe_user_agreement_pending') === 'true' &&
+      sessionStorage.getItem('spbe_token')
+    ) {
+      setShowUserAgreementModal(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -110,10 +149,15 @@ export const Login = () => {
     try {
       const result = await api.skip2FASetup(tempToken);
       sessionStorage.setItem('spbe_token', result.token);
-      setUser(result.user);
-      sessionStorage.setItem('spbe_user', JSON.stringify(result.user));
       setShow2FAChoiceModal(false);
-      navigate('/dashboard');
+      if (result.requiresUserAgreement) {
+        sessionStorage.setItem('spbe_user_agreement_pending', 'true');
+        setShowUserAgreementModal(true);
+      } else {
+        setUser(result.user);
+        sessionStorage.setItem('spbe_user', JSON.stringify(result.user));
+        navigate('/dashboard');
+      }
     } catch (err) {
       setModalConfig({ isOpen: true, type: 'danger', title: 'Gagal', message: err.message || 'Pilihan 2FA tidak dapat disimpan.' });
     }
@@ -147,6 +191,8 @@ export const Login = () => {
     } else if (loginResult && loginResult.requires2FASetup) {
       setTempToken(loginResult.tempToken);
       await start2FASetup(loginResult.tempToken);
+    } else if (loginResult?.success && loginResult.requiresUserAgreement) {
+      setShowUserAgreementModal(true);
     } else if (loginResult && loginResult.success) {
       navigate('/dashboard');
     } else {
@@ -249,10 +295,15 @@ export const Login = () => {
           if (userData.roles) userData.roles = userData.roles.map((role) => String(role).toUpperCase());
 
           sessionStorage.setItem('spbe_token', result.token);
-          sessionStorage.setItem('spbe_user', JSON.stringify(userData));
-          setUser(userData);
           setShowOtpModal(false);
-          navigate('/dashboard');
+          if (result.requiresUserAgreement) {
+            sessionStorage.setItem('spbe_user_agreement_pending', 'true');
+            setShowUserAgreementModal(true);
+          } else {
+            sessionStorage.setItem('spbe_user', JSON.stringify(userData));
+            setUser(userData);
+            navigate('/dashboard');
+          }
         } else {
           setOtpError(result.message || 'Kode autentikasi salah!');
           setModalConfig({
@@ -280,7 +331,11 @@ export const Login = () => {
       const result = await login2FA(tempToken, otpCode, trustDevice);
       if (result && result.success) {
         setShowOtpModal(false);
-        navigate('/dashboard');
+        if (result.requiresUserAgreement) {
+          setShowUserAgreementModal(true);
+        } else {
+          navigate('/dashboard');
+        }
       } else {
         const isExpired = result?.message?.toLowerCase().includes('expired');
         if (isExpired) {
@@ -653,6 +708,112 @@ export const Login = () => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {showUserAgreementModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/70 p-3 backdrop-blur-xs sm:p-5">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="user-agreement-title"
+            className="flex max-h-[94vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-sky-100 bg-white shadow-2xl"
+          >
+            <header className="relative flex items-center justify-center gap-4 bg-sky-100 px-12 py-4 text-center text-slate-800 sm:px-14">
+              <div>
+                <h2 id="user-agreement-title" className="text-base font-black text-sky-900 sm:text-lg">Pernyataan &amp; Persetujuan Pengguna</h2>
+                <p className="mt-1 text-[11px] font-medium text-slate-600">Baca dan setujui sebelum melanjutkan ke sistem</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleUserAgreementDecline}
+                aria-label="Tutup dan batalkan login"
+                className="absolute right-5 top-1/2 -translate-y-1/2 rounded-lg p-1 text-slate-500 transition-colors hover:bg-sky-200 hover:text-sky-900 sm:right-6"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </header>
+
+            <div className="overflow-y-auto px-5 py-4 text-left sm:px-6">
+              <p className="mb-3 text-xs text-slate-500">Harap baca seluruh pernyataan berikut dengan saksama sebelum melanjutkan.</p>
+              <ol className="divide-y divide-slate-200">
+                <li className="flex gap-3 py-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-black text-sky-800">1</span>
+                  <div>
+                    <h3 className="text-xs font-black text-slate-800">Kebenaran Data Login</h3>
+                    <p className="mt-1 text-[11px] leading-relaxed text-slate-500">Saya menyatakan bahwa data username dan password yang saya masukkan adalah benar, milik saya sendiri, dan sesuai dengan identitas yang terdaftar dalam sistem.</p>
+                  </div>
+                </li>
+                <li className="flex gap-3 py-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-black text-sky-800">2</span>
+                  <div>
+                    <h3 className="text-xs font-black text-slate-800">Larangan Penyalahgunaan Data &amp; Informasi</h3>
+                    <p className="mt-1 text-[11px] leading-relaxed text-slate-500">Saya berkomitmen untuk tidak menyalahgunakan data dan informasi yang saya akses melalui sistem ini untuk kepentingan pribadi, komersial, atau tujuan lain di luar tugas dan kewenangan saya.</p>
+                  </div>
+                </li>
+                <li className="flex gap-3 py-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-black text-sky-800">3</span>
+                  <div>
+                    <h3 className="text-xs font-black text-slate-800">Persetujuan Penggunaan Data Pribadi</h3>
+                    <p className="mt-1 text-[11px] leading-relaxed text-slate-500">Saya memberikan persetujuan atas penggunaan data pribadi saya (nama, jabatan, dan akun pengguna) untuk keperluan pengelolaan dan pengoperasian aplikasi Helpdesk SPBE Diskominfo Kota Bogor sesuai fungsi dan tujuan sistem.</p>
+                  </div>
+                </li>
+                <li className="flex gap-3 py-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-black text-sky-800">4</span>
+                  <div>
+                    <h3 className="text-xs font-black text-slate-800">Kerahasiaan &amp; Keamanan Akses</h3>
+                    <p className="mt-1 text-[11px] leading-relaxed text-slate-500">Saya bertanggung jawab menjaga kerahasiaan kredensial akun saya dan tidak akan membagikan username atau password kepada pihak lain, serta segera melaporkan jika terjadi akses yang tidak sah.</p>
+                  </div>
+                </li>
+                <li className="flex gap-3 py-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-black text-sky-800">5</span>
+                  <div>
+                    <h3 className="text-xs font-black text-slate-800">Kepatuhan terhadap UU PDP No. 27 Tahun 2022</h3>
+                    <p className="mt-1 text-[11px] leading-relaxed text-slate-500">Saya memahami bahwa pengolahan data pribadi dalam sistem ini tunduk pada ketentuan perlindungan data pribadi yang berlaku dan saya bersedia mematuhi seluruh ketentuannya.</p>
+                    <a
+                      href="https://peraturan.bpk.go.id/Details/229798/uu-no-27-tahun-2022"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-2 inline-flex rounded-full bg-sky-50 px-2.5 py-1 text-[10px] font-bold text-sky-800 hover:bg-sky-100"
+                    >
+                      UU No. 27 Tahun 2022 tentang PDP
+                    </a>
+                  </div>
+                </li>
+                <li className="flex gap-3 py-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-black text-sky-800">6</span>
+                  <div>
+                    <h3 className="text-xs font-black text-slate-800">Tanggung Jawab Hukum</h3>
+                    <p className="mt-1 text-[11px] leading-relaxed text-slate-500">Saya menyadari bahwa setiap pelanggaran atas pernyataan ini dapat dikenai sanksi administratif maupun hukum sesuai peraturan perundang-undangan yang berlaku.</p>
+                  </div>
+                </li>
+              </ol>
+            </div>
+
+            <footer className="border-t border-sky-100 bg-sky-50/70 px-5 py-4 sm:px-6">
+              <label className="flex cursor-pointer items-start gap-2 text-xs leading-relaxed text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={userAgreementChecked}
+                  onChange={event => {
+                    setUserAgreementChecked(event.target.checked);
+                    setUserAgreementError('');
+                  }}
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-sky-700 focus:ring-sky-600"
+                />
+                <span>Saya telah membaca dan menyetujui seluruh pernyataan di atas.</span>
+              </label>
+              {userAgreementError && <p role="alert" className="mt-2 text-xs font-semibold text-rose-600">{userAgreementError}</p>}
+              <button
+                type="button"
+                onClick={handleUserAgreementAccept}
+                disabled={!userAgreementChecked || isSubmittingUserAgreement}
+                className="mt-3 w-full rounded-xl bg-sky-600 px-4 py-3 text-xs font-black text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                {isSubmittingUserAgreement ? 'Menyimpan persetujuan...' : 'Setuju & Lanjutkan'}
+              </button>
+            </footer>
+          </section>
         </div>
       )}
 

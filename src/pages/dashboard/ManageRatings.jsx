@@ -2,6 +2,13 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Star, ShieldAlert, CheckCircle2, AlertCircle, Download, FileSpreadsheet, FileText, ChevronDown } from 'lucide-react';
 import { api } from '../../services/api';
 
+const escapeHtml = (value) => String(value)
+  .replaceAll('&', '&amp;')
+  .replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;')
+  .replaceAll("'", '&#039;');
+
 export const ManageRatings = () => {
   const [ratings, setRatings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -117,73 +124,166 @@ export const ManageRatings = () => {
     setIsExportOpen(false);
     const periodNames = { all: 'Keseluruhan Periode', weekly: 'Mingguan (7 Hari Terakhir)', monthly: 'Bulanan (Bulan Ini)', yearly: 'Tahunan (Tahun Ini)' };
     const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      setLoadError('Jendela laporan diblokir browser. Izinkan pop-up lalu coba lagi.');
+      return;
+    }
 
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
+    const printedAt = new Date().toLocaleString('id-ID', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+    const logoUrl = `${window.location.origin}/bogor.png`;
+    const logoDiskominfoUrl = `${window.location.origin}/kominfo.png`;
+    const rows = ratingsByPeriod.map((rating, index) => {
+      const itemDate = rating.createdAt || rating.date;
+      const date = itemDate ? new Date(itemDate).toLocaleDateString('id-ID') : '-';
+      const comment = rating.comment?.trim()
+        ? escapeHtml(rating.comment)
+        : '<i class="muted">(Hanya bintang)</i>';
+
+      return `
+        <tr>
+          <td>${index + 1}</td>
+          <td>${escapeHtml(date)}</td>
+          <td><strong>${escapeHtml(rating.name || '-')}</strong></td>
+          <td>${escapeHtml(rating.service || 'SPBE Diskominfo')}</td>
+          <td class="rating">${escapeHtml(rating.rating ?? '-')} ★</td>
+          <td class="comment">${comment}</td>
+        </tr>
+      `;
+    }).join('');
+
+    printWindow.document.open();
+    printWindow.document.write(`<!doctype html>
+      <html lang="id">
         <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>Laporan Rekapitulasi Rating - Diskominfo Kota Bogor</title>
           <style>
-            body { font-family: Arial, sans-serif; color: #1e293b; margin: 20px; }
-            .header { text-align: center; border-bottom: 2px solid #0284c7; padding-bottom: 15px; margin-bottom: 20px; }
-            .header h1 { font-size: 18px; margin: 0; color: #0f172a; text-transform: uppercase; }
-            .header h2 { font-size: 14px; margin: 5px 0 0; color: #475569; font-weight: normal; }
-            .summary { display: flex; justify-content: space-between; margin-bottom: 20px; background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0; }
-            .summary-item { text-align: center; font-size: 12px; }
-            .summary-item strong { display: block; font-size: 16px; color: #0284c7; margin-top: 4px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
-            th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; }
-            th { background-color: #f1f5f9; color: #334155; font-weight: bold; }
-            tr:nth-child(even) { background-color: #fcfcfc; }
-            .footer { margin-top: 30px; text-align: right; font-size: 11px; color: #64748b; }
+            * { box-sizing: border-box; }
+            :root { color-scheme: light; }
+            body { margin: 0; background: #eef3f8; color: #172b4d; font: 11px/1.45 Arial, Helvetica, sans-serif; }
+            .page { width: 100%; max-width: 210mm; min-height: 297mm; margin: 0 auto; padding: 14mm 13mm 12mm; background: #fff; }
+            .masthead { display: grid; grid-template-columns: 22mm minmax(0, 1fr) 31mm; align-items: center; gap: 5mm; padding: 0 0 5mm; border-bottom: 2px solid #174f86; }
+            .masthead-logo { width: 19mm; height: 21mm; object-fit: contain; }
+            .masthead-logo-diskominfo { width: 30mm; height: 21mm; object-fit: contain; justify-self: end; }
+            .agency-copy { min-width: 0; color: #1b3658; line-height: 1.45; text-align: center; }
+            .eyebrow { display: block; color: #637b96; font-size: 8px; font-weight: 700; letter-spacing: 1.2px; }
+            .agency-copy strong { display: block; margin: 1mm 0; color: #123f70; font-size: 15px; letter-spacing: .25px; }
+            .agency-copy b { display: block; color: #174f86; font-size: 10px; letter-spacing: .3px; }
+            .agency-copy span.address { display: block; margin-top: 1mm; color: #64748b; font-size: 8px; }
+            .document-label { align-self: center; padding: 2.5mm 3mm; border: 1px solid #c8d9e9; border-radius: 3mm; color: #174f86; text-align: center; font-size: 8px; font-weight: 700; letter-spacing: .5px; }
+            .document-label span { display: block; margin-top: 1mm; color: #64748b; font-size: 7px; font-weight: 400; letter-spacing: 0; }
+            .report-title { padding: 8mm 0 5mm; text-align: center; }
+            .report-kicker { margin: 0 0 2mm; color: #64748b; font-size: 8px; font-weight: 700; letter-spacing: 1.4px; }
+            h1 { margin: 0; color: #123f70; font-size: 20px; line-height: 1.25; letter-spacing: .25px; }
+            .subtitle { margin: 2mm 0 4mm; color: #526b86; font-size: 10px; }
+            .period-row { display: flex; justify-content: center; flex-wrap: wrap; gap: 2mm; }
+            .period, .printed { display: inline-block; padding: 2mm 3mm; border-radius: 2mm; background: #f0f6fc; color: #234d78; font-size: 9px; }
+            .period strong { color: #123f70; }
+            .printed { background: #f7f9fc; color: #64748b; }
+            .section-heading { display: flex; align-items: center; gap: 3mm; margin: 0 0 3mm; color: #173f6a; font-size: 12px; font-weight: 700; }
+            .section-heading:after { height: 1px; flex: 1; background: #d7e3ef; content: ''; }
+            .summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3mm; margin: 0 0 7mm; }
+            .card { min-height: 23mm; padding: 3.5mm; border: 1px solid #d6e3ef; border-top: 3px solid #2874b8; border-radius: 2mm; background: #f8fbff; }
+            .card:nth-child(2) { border-top-color: #1a9b72; background: #f7fcfa; }
+            .card:nth-child(3) { border-top-color: #d99a22; background: #fffdf7; }
+            .card:nth-child(4) { border-top-color: #7d68b1; background: #faf9ff; }
+            .card .label { color: #526b86; font-size: 8px; font-weight: 700; }
+            .card strong { display: block; margin-top: 2mm; color: #123f70; font-size: 19px; line-height: 1.15; }
+            .table-wrap { width: 100%; }
+            table { width: 100%; border-collapse: collapse; table-layout: auto; border: 1px solid #cbd9e7; }
+            thead { display: table-header-group; }
+            th, td { padding: 2.6mm 2.2mm; border: 1px solid #d6e0eb; text-align: left; vertical-align: top; }
+            th { background: #174f86; color: #fff; font-size: 8px; font-weight: 700; letter-spacing: .3px; }
+            td { color: #334b65; font-size: 8.5px; overflow-wrap: anywhere; }
+            tbody tr:nth-child(even) { background: #f6f9fc; }
+            th:first-child, td:first-child { width: 8mm; text-align: center; }
+            th:nth-child(2), td:nth-child(2) { width: 22mm; white-space: nowrap; }
+            th:nth-child(5), td:nth-child(5) { width: 18mm; text-align: center; white-space: nowrap; }
+            .comment { white-space: pre-wrap; }
+            .muted { color: #647b93; }
+            .empty { padding: 10mm 3mm; color: #647b93; text-align: center; font-size: 9px; }
+            .closing { display: flex; align-items: flex-end; justify-content: space-between; gap: 10mm; margin-top: 12mm; padding-top: 4mm; border-top: 1px solid #e0e8f0; color: #365775; font-size: 8px; }
+            .motto { padding-left: 3mm; border-left: 2px solid #2874b8; color: #174f86; font-weight: 700; line-height: 1.6; }
+            .signoff { min-width: 48mm; text-align: center; line-height: 1.6; }
+            .signoff .signature-space { height: 14mm; }
+            .footer { display: flex; align-items: center; justify-content: space-between; gap: 5mm; margin-top: 7mm; padding-top: 3mm; border-top: 2px solid #174f86; color: #647b93; font-size: 7.5px; }
+            .footer strong { color: #174f86; }
+            @page { size: A4 portrait; margin: 0; }
+            @media screen { body { padding: 18px 0; } .page { box-shadow: 0 4px 24px #183b5b22; } }
+            @media print {
+              body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              .page { width: 210mm; min-height: 297mm; margin: 0; padding: 13mm 13mm 11mm; box-shadow: none; }
+              .masthead, .report-title, .summary, .section-heading { break-inside: avoid; }
+              tr { break-inside: avoid; }
+              thead { display: table-header-group; }
+              .closing, .footer { break-inside: avoid; }
+            }
           </style>
         </head>
         <body>
-          <div class="header">
-            <h1>Pemerintah Kota Bogor - Dinas Komunikasi dan Informatika</h1>
-            <h2>Laporan Rekapitulasi Kepuasan Layanan SPBE (${periodNames[selectedPeriod]})</h2>
-          </div>
-          <div class="summary">
-            <div class="summary-item">Total Responden<strong>${totalRatings} Orang</strong></div>
-            <div class="summary-item">Dengan Komentar<strong>${commentedRatings.length} Orang</strong></div>
-            <div class="summary-item">Hanya Bintang<strong>${starOnlyRatings.length} Orang</strong></div>
-            <div class="summary-item">Tiket Tanpa Rating<strong>${unratedTicketCount} Tiket</strong></div>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th style="width: 30px;">No</th>
-                <th style="width: 70px;">Tanggal</th>
-                <th style="width: 120px;">OPD Pengirim</th>
-                <th style="width: 130px;">Layanan</th>
-                <th style="width: 50px;">Rating</th>
-                <th>Ulasan / Komentar</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${ratingsByPeriod.map((r, index) => `
-                <tr>
-                  <td>${index + 1}</td>
-                  <td>${r.createdAt ? new Date(r.createdAt).toLocaleDateString('id-ID') : '-'}</td>
-                  <td><b>${r.name || '-'}</b></td>
-                  <td>${r.service || 'SPBE Diskominfo'}</td>
-                  <td style="text-align: center;"><b>${r.rating} ★</b></td>
-                  <td>${r.comment ? `"${r.comment}"` : '<i style="color: #94a3b8;">(Hanya bintang)</i>'}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-          <div class="footer">
-            <p>Dicetak pada: ${new Date().toLocaleString('id-ID')}</p>
-          </div>
+          <main class="page">
+            <header class="masthead">
+              <img class="masthead-logo" src="${escapeHtml(logoUrl)}" alt="Logo Pemerintah Kota Bogor">
+              <div class="agency-copy">
+                <span class="eyebrow">PEMERINTAH DAERAH</span>
+                <strong>PEMERINTAH KOTA BOGOR</strong>
+                <b>DINAS KOMUNIKASI DAN INFORMATIKA</b>
+                <span class="address">Jl. Ir. H. Juanda No. 10, Bogor Tengah, Kota Bogor, Jawa Barat 16121</span>
+              </div>
+              <img class="masthead-logo-diskominfo" src="${escapeHtml(logoDiskominfoUrl)}" alt="Logo Diskominfo Kota Bogor">
+            </header>
+
+            <section class="report-title">
+              <p class="report-kicker">SISTEM LAYANAN HELPDESK</p>
+              <h1>REKAPITULASI RATING</h1>
+              <p class="subtitle">Kepuasan Layanan SPBE · Dinas Komunikasi dan Informatika Pemerintah Kota Bogor</p>
+              <div class="period-row">
+                <span class="period"><strong>Periode:</strong> ${escapeHtml(periodNames[selectedPeriod])}</span>
+                <span class="printed">Tanggal cetak: ${escapeHtml(printedAt)}</span>
+              </div>
+            </section>
+
+            <h2 class="section-heading">Ringkasan Rating</h2>
+            <div class="summary">
+              <div class="card"><div class="label">TOTAL RESPONDEN</div><strong>${totalRatings}</strong></div>
+              <div class="card"><div class="label">DENGAN KOMENTAR</div><strong>${commentedRatings.length}</strong></div>
+              <div class="card"><div class="label">HANYA BINTANG</div><strong>${starOnlyRatings.length}</strong></div>
+              <div class="card"><div class="label">TIKET TANPA RATING</div><strong>${unratedTicketCount}</strong></div>
+            </div>
+
+            <h2 class="section-heading">Rincian Rating</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>No.</th><th>Tanggal</th><th>OPD Pengirim</th><th>Layanan</th><th>Rating</th><th>Ulasan / Komentar</th></tr>
+                </thead>
+                <tbody>${rows || '<tr><td class="empty" colspan="6">Tidak ada rating pada periode ini.</td></tr>'}</tbody>
+              </table>
+            </div>
+
+            <section class="closing">
+              <div class="motto">Kolaborasi Menuju<br>Bogor Digital</div>
+              <div class="signoff">Dinas Komunikasi dan Informatika<br>Pemerintah Kota Bogor<div class="signature-space"></div><strong>Petugas / Penanggung Jawab</strong></div>
+            </section>
+            <footer class="footer"><span><strong>DISKOMINFO KOTA BOGOR</strong> · Laporan Rekapitulasi Rating</span><span>Dicetak: ${escapeHtml(printedAt)}</span></footer>
+          </main>
           <script>
-            window.onload = function() { window.print(); }
+            window.addEventListener('load', () => {
+              const images = Array.from(document.images);
+              Promise.all(images.map(image => image.complete ? Promise.resolve() : new Promise(resolve => { image.onload = image.onerror = resolve; })))
+                .then(() => setTimeout(() => window.print(), 350));
+            });
           </script>
         </body>
-      </html>
-    `;
-
-    printWindow.document.write(htmlContent);
+      </html>`);
     printWindow.document.close();
   };
 

@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
 import { ActionModal } from '../../components/ActionModal';
 import { getPasswordStrength } from '../../utils/passwordStrength';
+import { getProfileImageUrl } from '../../utils/profileImageUrl';
 
 export const Profile = () => {
   const { user, setUser, users, setUsers, teams } = useAuth();
@@ -32,9 +33,12 @@ export const Profile = () => {
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(Boolean(user?.twoFactorEnabled ?? user?.is_two_factor_enabled));
   const [twoFactorSetup, setTwoFactorSetup] = useState(null);
   const [twoFactorOtp, setTwoFactorOtp] = useState('');
-  const [twoFactorBackupCodes, setTwoFactorBackupCodes] = useState([]);
   const [twoFactorError, setTwoFactorError] = useState('');
   const [isUpdatingTwoFactor, setIsUpdatingTwoFactor] = useState(false);
+  const [twoFactorSuccessMessage, setTwoFactorSuccessMessage] = useState('');
+  const [isTwoFactorNotificationVisible, setIsTwoFactorNotificationVisible] = useState(false);
+  const twoFactorNotificationTimerRef = useRef(null);
+  const twoFactorNotificationClearTimerRef = useRef(null);
 
   const [modalConfig, setModalConfig] = useState({
     isOpen: false,
@@ -66,13 +70,36 @@ export const Profile = () => {
         if (!active || !response.user) return;
         const enabled = Boolean(response.user.twoFactorEnabled ?? response.user.is_two_factor_enabled);
         setTwoFactorEnabled(enabled);
-        setUser(current => ({ ...current, ...response.user, twoFactorEnabled: enabled }));
+        setUser(current => ({
+          ...current,
+          ...response.user,
+          name: response.user.name || response.user.full_name || current?.name || current?.full_name || '',
+          twoFactorEnabled: enabled
+        }));
       })
       .catch(error => {
         if (active) setTwoFactorError(error.message || 'Status 2FA tidak dapat dimuat.');
       });
     return () => { active = false; };
   }, [user?.id, passwordChangeRequired, setUser]);
+
+  useEffect(() => () => {
+    clearTimeout(twoFactorNotificationTimerRef.current);
+    clearTimeout(twoFactorNotificationClearTimerRef.current);
+  }, []);
+
+  const showTwoFactorSuccess = (message) => {
+    clearTimeout(twoFactorNotificationTimerRef.current);
+    clearTimeout(twoFactorNotificationClearTimerRef.current);
+    setTwoFactorSuccessMessage(message);
+    setIsTwoFactorNotificationVisible(true);
+    twoFactorNotificationTimerRef.current = setTimeout(() => {
+      setIsTwoFactorNotificationVisible(false);
+    }, 3500);
+    twoFactorNotificationClearTimerRef.current = setTimeout(() => {
+      setTwoFactorSuccessMessage('');
+    }, 4500);
+  };
 
   const userRoles = (user?.roles && user.roles.length > 0)
     ? user.roles
@@ -90,7 +117,12 @@ export const Profile = () => {
     text: passwordStrengthText
   };
   // Menangkap berbagai kemungkinan nama properti foto dari state user database
-  const profileImage = user?.profile_image || user?.profileImage || user?.tndPhoto || user?.avatar || user?.foto;
+  const profileImageValue = user?.profile_image || user?.profileImage || user?.tndPhoto || user?.avatar || user?.foto;
+  const profileImage = getProfileImageUrl(
+    profileImageValue,
+    user?.profile_image_source || user?.profileImageSource,
+    user?.profileImageCacheVersion
+  );
   const profileInitials = String(user?.name || 'Pengguna SPBE')
     .trim()
     .split(/\s+/)
@@ -252,11 +284,9 @@ export const Profile = () => {
       setUser(updatedUser);
       sessionStorage.setItem('spbe_user', JSON.stringify(updatedUser));
       setTwoFactorEnabled(true);
-      setTwoFactorBackupCodes(response.backupCodes || []);
       setTwoFactorSetup(null);
       setTwoFactorOtp('');
-      setSuccessMessage('Verifikasi dua langkah berhasil diaktifkan.');
-      setTimeout(() => setSuccessMessage(''), 4000);
+      showTwoFactorSuccess('Autentikasi dua langkah berhasil diaktifkan.');
     } catch (error) {
       setTwoFactorError(error.message || 'Kode autentikator tidak valid.');
     } finally {
@@ -279,14 +309,36 @@ export const Profile = () => {
       sessionStorage.setItem('spbe_user', JSON.stringify(updatedUser));
       setTwoFactorEnabled(false);
       setTwoFactorOtp('');
-      setTwoFactorBackupCodes([]);
-      setSuccessMessage('Verifikasi dua langkah berhasil dinonaktifkan.');
-      setTimeout(() => setSuccessMessage(''), 4000);
+      showTwoFactorSuccess('Autentikasi dua langkah berhasil dinonaktifkan.');
     } catch (error) {
       setTwoFactorError(error.message || '2FA tidak dapat dinonaktifkan.');
     } finally {
       setIsUpdatingTwoFactor(false);
     }
+  };
+
+  const confirmEnableProfile2FA = () => {
+    setModalConfig({
+      isOpen: true,
+      type: 'confirm',
+      title: 'Aktifkan autentikasi dua langkah?',
+      message: 'Anda akan diminta memindai QR dan memasukkan kode autentikator untuk menyelesaikan aktivasi.',
+      confirmText: 'Lanjutkan',
+      cancelText: 'Batal',
+      onConfirm: startProfile2FASetup
+    });
+  };
+
+  const confirmDisableProfile2FA = () => {
+    setModalConfig({
+      isOpen: true,
+      type: 'warning',
+      title: 'Nonaktifkan autentikasi dua langkah?',
+      message: 'Perlindungan tambahan saat masuk akan dinonaktifkan. Anda yakin ingin melanjutkan?',
+      confirmText: 'Nonaktifkan 2FA',
+      cancelText: 'Batal',
+      onConfirm: disableProfile2FA
+    });
   };
 
   const getBadgeClass = (r) => {
@@ -569,7 +621,7 @@ export const Profile = () => {
               {twoFactorEnabled ? (
                 <button
                   type="button"
-                  onClick={disableProfile2FA}
+                  onClick={confirmDisableProfile2FA}
                   disabled={isUpdatingTwoFactor}
                   className="mt-3 w-full rounded-xl border border-rose-200 bg-white px-3 py-2.5 text-xs font-black text-rose-700 hover:bg-rose-50 disabled:cursor-wait disabled:opacity-50"
                 >
@@ -602,20 +654,12 @@ export const Profile = () => {
                   </div>
                 </form>
               ) : (
-                <button type="button" onClick={startProfile2FASetup} disabled={isUpdatingTwoFactor} className="mt-3 w-full rounded-xl bg-indigo-600 px-3 py-2.5 text-xs font-black text-white hover:bg-indigo-700 disabled:opacity-50">
+                <button type="button" onClick={confirmEnableProfile2FA} disabled={isUpdatingTwoFactor} className="mt-3 w-full rounded-xl bg-indigo-600 px-3 py-2.5 text-xs font-black text-white hover:bg-indigo-700 disabled:opacity-50">
                   {isUpdatingTwoFactor ? 'Menyiapkan...' : 'Aktifkan 2FA'}
                 </button>
               )}
 
               {twoFactorError && <p role="alert" className="mt-2 text-[11px] font-semibold text-rose-600">{twoFactorError}</p>}
-              {twoFactorBackupCodes.length > 0 && (
-                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
-                  <p className="text-[11px] font-black text-amber-900">Simpan kode cadangan ini di tempat aman. Kode hanya ditampilkan sekarang.</p>
-                  <div className="mt-2 grid grid-cols-2 gap-1 font-mono text-[11px] font-bold text-amber-900">
-                    {twoFactorBackupCodes.map(code => <span key={code}>{code}</span>)}
-                  </div>
-                </div>
-              )}
           </section>
 
           <div className="w-full h-px bg-slate-100 my-6" />
@@ -1078,6 +1122,16 @@ export const Profile = () => {
         cancelText={modalConfig.cancelText}
         onConfirm={modalConfig.onConfirm}
       />
+      {twoFactorSuccessMessage && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`fixed bottom-5 left-1/2 z-[60] flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800 shadow-lg transition-all duration-1000 ${isTwoFactorNotificationVisible ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'}`}
+        >
+          <Check className="h-4 w-4 shrink-0 text-emerald-600" />
+          <span>{twoFactorSuccessMessage}</span>
+        </div>
+      )}
     </div>
   );
 };

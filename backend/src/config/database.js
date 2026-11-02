@@ -165,7 +165,29 @@ const runAutoMigrations = async () => {
       handleMigrationError('registration_email_otps', err);
     }
 
-    // 8. Auto-seed services from official PDF if table is unpopulated
+    // 8. CREATE TABLE activity_logs for security and administrative audit events
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS activity_logs (
+          id BIGSERIAL PRIMARY KEY,
+          user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+          actor_name VARCHAR(255) NOT NULL,
+          actor_role VARCHAR(255) NOT NULL,
+          activity_type VARCHAR(80) NOT NULL,
+          description TEXT NOT NULL,
+          ticket_id UUID REFERENCES tickets(id) ON DELETE SET NULL,
+          metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id_created_at ON activity_logs(user_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_activity_logs_ticket_id_created_at ON activity_logs(ticket_id, created_at DESC);
+      `);
+    } catch (err) {
+      handleMigrationError('activity_logs', err);
+    }
+
+    // 9. Auto-seed services from official PDF if table is unpopulated
     try {
       const srvCheck = await pool.query('SELECT count(*) FROM services');
       if (parseInt(srvCheck.rows[0].count, 10) < 5) {
@@ -181,10 +203,11 @@ const runAutoMigrations = async () => {
   }
 };
 
-runAutoMigrations();
+const ready = runAutoMigrations();
 
 module.exports = {
   query: (text, params) => pool.query(text, params),
   pool,
-  runAutoMigrations
+  runAutoMigrations,
+  ready
 };

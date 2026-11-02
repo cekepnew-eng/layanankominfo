@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Edit2, Trash2, X, Users, Building, Mail, Search, Lock, KeyRound, Eye, EyeOff } from 'lucide-react';
+import { Edit2, Trash2, X, Users, Building, Mail, Search, Lock, KeyRound, Eye, EyeOff, ChevronDown } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
 import { ActionModal } from '../../components/ActionModal';
@@ -41,6 +41,7 @@ export const ManageUsers = () => {
   };
   const [activeTab, setActiveTab] = useState('semua');
   const [searchQuery, setSearchQuery] = useState('');
+  const [userSortOrder, setUserSortOrder] = useState('newest');
 
   const [editingUser, setEditingUser] = useState(null);
   const [editRoleVal, setEditRoleVal] = useState('user');
@@ -54,9 +55,11 @@ export const ManageUsers = () => {
     password: '',
     confirmPassword: '',
     roleName: 'MASYARAKAT',
+    roleNames: ['MASYARAKAT'],
     department: '',
-    teamId: ''
+    teamIds: []
   });
+  const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
   const [masyarakatFormError, setMasyarakatFormError] = useState('');
   const [showMasyarakatPassword, setShowMasyarakatPassword] = useState(false);
   const [showMasyarakatPasswordConfirmation, setShowMasyarakatPasswordConfirmation] = useState(false);
@@ -176,6 +179,10 @@ export const ManageUsers = () => {
 
   const handleAddUserManual = async (e) => {
     e.preventDefault();
+    if (newMasyarakatData.roleNames.length === 0) {
+      setMasyarakatFormError('Pilih minimal satu role untuk akun baru.');
+      return;
+    }
     if (!masyarakatPasswordIsValid) {
       setMasyarakatFormError('Password harus memenuhi semua kriteria hingga level Kuat.');
       return;
@@ -184,19 +191,22 @@ export const ManageUsers = () => {
       setMasyarakatFormError('Konfirmasi password tidak cocok.');
       return;
     }
-    if (newMasyarakatData.roleName === 'PEGAWAI' && !newMasyarakatData.teamId) {
-      setMasyarakatFormError('Pilih tim kerja untuk akun Pegawai.');
+    if (newMasyarakatData.roleNames.includes('PEGAWAI') && newMasyarakatData.teamIds.length === 0) {
+      setMasyarakatFormError('Pilih minimal satu tim kerja untuk akun Pegawai.');
       return;
     }
-    if (newMasyarakatData.roleName !== 'MASYARAKAT' && !newMasyarakatData.department.trim()) {
+    if (!newMasyarakatData.roleNames.includes('MASYARAKAT') && !newMasyarakatData.department.trim()) {
       setMasyarakatFormError('Nama instansi/perangkat daerah wajib diisi.');
       return;
     }
     try {
-      await api.createManualUser(newMasyarakatData);
+      const rolePriority = ['ADMIN', 'HELPDESK', 'PEGAWAI', 'USER', 'MASYARAKAT'];
+      const roleName = rolePriority.find(role => newMasyarakatData.roleNames.includes(role));
+      await api.createManualUser({ ...newMasyarakatData, roleName });
       setShowAddModal(false);
-      setNewMasyarakatData({ fullName: '', email: '', password: '', confirmPassword: '', roleName: 'MASYARAKAT', department: '', teamId: '' });
+      setNewMasyarakatData({ fullName: '', email: '', password: '', confirmPassword: '', roleName: 'MASYARAKAT', roleNames: ['MASYARAKAT'], department: '', teamIds: [] });
       setMasyarakatFormError('');
+      setIsRoleDropdownOpen(false);
       setShowMasyarakatPassword(false);
       setShowMasyarakatPasswordConfirmation(false);
       await fetchUsers();
@@ -216,8 +226,9 @@ export const ManageUsers = () => {
 
   const closeAddUserModal = () => {
     setShowAddModal(false);
-    setNewMasyarakatData({ fullName: '', email: '', password: '', confirmPassword: '', roleName: 'MASYARAKAT', department: '', teamId: '' });
+    setNewMasyarakatData({ fullName: '', email: '', password: '', confirmPassword: '', roleName: 'MASYARAKAT', roleNames: ['MASYARAKAT'], department: '', teamIds: [] });
     setMasyarakatFormError('');
+    setIsRoleDropdownOpen(false);
     setShowMasyarakatPassword(false);
     setShowMasyarakatPasswordConfirmation(false);
   };
@@ -385,6 +396,48 @@ export const ManageUsers = () => {
       (u.department || '').toLowerCase().includes(query)
     );
   });
+  const sortedFilteredUsers = [...filteredUsers].sort((a, b) => {
+    if (userSortOrder === 'name-asc' || userSortOrder === 'name-desc') {
+      const nameOrder = String(a.name || '').localeCompare(String(b.name || ''), 'id', { sensitivity: 'base' });
+      return userSortOrder === 'name-asc' ? nameOrder : -nameOrder;
+    }
+
+    const timeA = Date.parse(a.created_at || '');
+    const timeB = Date.parse(b.created_at || '');
+    const hasDateA = Number.isFinite(timeA);
+    const hasDateB = Number.isFinite(timeB);
+    if (hasDateA !== hasDateB) return hasDateA ? -1 : 1;
+    if (hasDateA && timeA !== timeB) {
+      return userSortOrder === 'newest' ? timeB - timeA : timeA - timeB;
+    }
+    return String(a.id).localeCompare(String(b.id), undefined, { numeric: true });
+  });
+
+  const handleToggleNewUserRole = (roleName) => {
+    setNewMasyarakatData(current => {
+      const selectedRoles = current.roleNames || [];
+      let roleNames;
+      if (roleName === 'MASYARAKAT') {
+        roleNames = selectedRoles.includes(roleName) ? [] : ['MASYARAKAT'];
+      } else if (roleName === 'USER' && selectedRoles.includes('MASYARAKAT')) {
+        roleNames = ['USER'];
+      } else if (selectedRoles.includes('MASYARAKAT')) {
+        roleNames = [roleName];
+      } else {
+        roleNames = selectedRoles.includes(roleName)
+          ? selectedRoles.filter(role => role !== roleName)
+          : [...selectedRoles, roleName];
+      }
+
+      return {
+        ...current,
+        roleNames,
+        department: roleNames.includes('MASYARAKAT') ? '' : current.department || 'Dinas Komunikasi dan Informatika',
+        teamIds: roleNames.includes('PEGAWAI') ? current.teamIds : []
+      };
+    });
+    setMasyarakatFormError('');
+  };
 
   return (
     <div className="space-y-8 font-sans text-left animate-in fade-in duration-200">
@@ -401,25 +454,40 @@ export const ManageUsers = () => {
         </button>
       </div>
 
-      <div className="relative max-w-md w-full">
-        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
-          <Search className="w-5 h-5" />
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="relative w-full max-w-md">
+          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
+            <Search className="w-5 h-5" />
+          </div>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Cari nama, email, NIP, atau unit kerja..."
+            className="w-full pl-11 pr-4 py-3 glass-card rounded-2xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 transition-all shadow-sm"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-650"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Cari nama, email, NIP, atau unit kerja..."
-          className="w-full pl-11 pr-4 py-3 glass-card rounded-2xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 transition-all shadow-sm"
-        />
-        {searchQuery && (
-          <button
-            onClick={() => setSearchQuery('')}
-            className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-650"
+        <label className="flex items-center gap-2 text-xs font-bold text-slate-500">
+          Urutkan
+          <select
+            value={userSortOrder}
+            onChange={event => setUserSortOrder(event.target.value)}
+            className="min-w-48 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-700 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
           >
-            <X className="w-4 h-4" />
-          </button>
-        )}
+            <option value="newest">Terbaru dibuat</option>
+            <option value="oldest">Terlama dibuat</option>
+            <option value="name-asc">Nama A–Z</option>
+            <option value="name-desc">Nama Z–A</option>
+          </select>
+        </label>
       </div>
 
       <div className="flex gap-2 border-b border-slate-200 overflow-x-auto pb-px">
@@ -463,7 +531,7 @@ export const ManageUsers = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-base text-slate-700">
-                {filteredUsers.map((u) => (
+                {sortedFilteredUsers.map((u) => (
                   <tr key={u.id} className="hover:bg-slate-50/50 transition-all">
                     <td className="px-6 py-4 font-bold text-slate-800">{u.name}</td>
                     <td className="px-6 py-4">
@@ -718,28 +786,54 @@ export const ManageUsers = () => {
 
             <form onSubmit={handleAddUserManual} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Role Akun</label>
-                <select
-                  required
-                  value={newMasyarakatData.roleName}
-                  onChange={event => {
-                    const roleName = event.target.value;
-                    setNewMasyarakatData(current => ({
-                      ...current,
-                      roleName,
-                      department: roleName === 'MASYARAKAT' ? '' : current.department || 'Dinas Komunikasi dan Informatika',
-                      teamId: roleName === 'PEGAWAI' ? current.teamId : ''
-                    }));
-                    setMasyarakatFormError('');
-                  }}
-                  className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-semibold focus:ring-2 focus:ring-sky-500"
-                >
-                  <option value="ADMIN">Admin</option>
-                  <option value="HELPDESK">Helpdesk</option>
-                  <option value="PEGAWAI">Pegawai</option>
-                  <option value="USER">OPD</option>
-                  <option value="MASYARAKAT">Masyarakat</option>
-                </select>
+                <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Role Akun</label>
+                <div className="relative">
+                  <button
+                    type="button"
+                    aria-expanded={isRoleDropdownOpen}
+                    onClick={() => setIsRoleDropdownOpen(open => !open)}
+                    className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white p-3 text-left text-sm font-semibold focus:ring-2 focus:ring-sky-500"
+                  >
+                    <span className={newMasyarakatData.roleNames.length ? 'text-slate-800' : 'text-slate-400'}>
+                      {newMasyarakatData.roleNames.length
+                        ? newMasyarakatData.roleNames.map(role => role === 'USER' ? 'OPD' : role === 'PEGAWAI' ? 'Pegawai' : role === 'MASYARAKAT' ? 'Masyarakat' : role).join(', ')
+                        : 'Pilih satu atau beberapa role'}
+                    </span>
+                    <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${isRoleDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {isRoleDropdownOpen && (
+                    <div className="mt-1 space-y-2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+                      {[
+                        { value: 'ADMIN', label: 'Admin' },
+                        { value: 'HELPDESK', label: 'Helpdesk' },
+                        { value: 'PEGAWAI', label: 'Pegawai' },
+                        { value: 'USER', label: 'OPD' },
+                        { value: 'MASYARAKAT', label: 'Masyarakat' }
+                      ].map(role => {
+                        const selected = newMasyarakatData.roleNames.includes(role.value);
+                        const masyarakatSelected = newMasyarakatData.roleNames.includes('MASYARAKAT');
+                        const isIncompatible = role.value === 'MASYARAKAT'
+                          ? newMasyarakatData.roleNames.some(value => value !== 'MASYARAKAT')
+                          : masyarakatSelected;
+                        return (
+                          <label key={role.value} className={`flex items-center gap-2 text-sm font-semibold ${isIncompatible ? 'cursor-not-allowed text-slate-400' : 'cursor-pointer text-slate-700'}`}>
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              disabled={isIncompatible}
+                              onChange={() => handleToggleNewUserRole(role.value)}
+                              className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 disabled:cursor-not-allowed"
+                            />
+                            {role.label}
+                          </label>
+                        );
+                      })}
+                      <p className="border-t border-slate-100 pt-2 text-[11px] text-slate-500">
+                        Role Masyarakat tidak dapat digabung dengan role lainnya.
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nama Lengkap</label>
@@ -753,7 +847,7 @@ export const ManageUsers = () => {
                   className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-sky-500 text-sm font-semibold"
                 />
               </div>
-              {newMasyarakatData.roleName !== 'MASYARAKAT' && (
+              {!newMasyarakatData.roleNames.includes('MASYARAKAT') && (
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Instansi / Perangkat Daerah</label>
                   <input
@@ -766,18 +860,30 @@ export const ManageUsers = () => {
                   />
                 </div>
               )}
-              {newMasyarakatData.roleName === 'PEGAWAI' && (
+              {newMasyarakatData.roleNames.includes('PEGAWAI') && (
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tim Kerja (Wajib)</label>
-                  <select
-                    required
-                    value={newMasyarakatData.teamId}
-                    onChange={event => setNewMasyarakatData(current => ({ ...current, teamId: event.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-semibold focus:ring-2 focus:ring-sky-500"
-                  >
-                    <option value="">Pilih tim kerja</option>
-                    {teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
-                  </select>
+                  <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Penugasan Tim Kerja Pelaksana (Wajib)</label>
+                  <div className="max-h-40 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    {teams.map(team => (
+                      <label key={team.id} className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={newMasyarakatData.teamIds.includes(String(team.id))}
+                          onChange={event => {
+                            setNewMasyarakatData(current => ({
+                              ...current,
+                              teamIds: event.target.checked
+                                ? [...current.teamIds, String(team.id)]
+                                : current.teamIds.filter(id => id !== String(team.id))
+                            }));
+                            setMasyarakatFormError('');
+                          }}
+                          className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                        />
+                        {team.name}
+                      </label>
+                    ))}
+                  </div>
                 </div>
               )}
               <div>
@@ -920,7 +1026,7 @@ export const ManageUsers = () => {
                 </p>
               )}
               <p className="rounded-xl border border-sky-100 bg-sky-50 p-3 text-sm font-medium text-sky-800">
-                Akun dibuat dengan role {newMasyarakatData.roleName === 'USER' ? 'OPD' : newMasyarakatData.roleName === 'MASYARAKAT' ? 'Masyarakat' : newMasyarakatData.roleName}. Password berlaku selama satu tahun.
+                Akun dibuat dengan role {newMasyarakatData.roleNames.map(role => role === 'USER' ? 'OPD' : role === 'PEGAWAI' ? 'Pegawai' : role === 'MASYARAKAT' ? 'Masyarakat' : role).join(', ') || 'belum dipilih'}. Password berlaku selama satu tahun.
               </p>
               <div className="flex gap-3 pt-3 border-t border-slate-100">
                 <button type="button" onClick={closeAddUserModal} className="flex-1 py-3 px-5 border border-slate-200 hover:bg-slate-50 rounded-xl text-sm sm:text-base font-bold text-slate-700 transition-all cursor-pointer">Batal</button>

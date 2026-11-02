@@ -30,6 +30,7 @@ app.use('/api', serviceRoutes);
 app.use('/api', ticketRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/mobile', mobileRoutes);
+app.use('/api/activity-logs', require('./routes/activityRoutes'));
 app.use('/api/admin/users', userRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/admin/teams', require('./routes/teamRoutes'));

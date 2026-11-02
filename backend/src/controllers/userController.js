@@ -2,6 +2,7 @@ const db = require('../config/database');
 const bcrypt = require('bcryptjs');
 const { getTndProfileImage } = require('../utils/tndProfileImage');
 const { getPasswordPolicyFailures } = require('../utils/passwordPolicy');
+const { recordRequestActivity } = require('../utils/activityLogger');
 
 async function authenticateTndUser(identifier, password) {
   const normalizedIdentifier = String(identifier || '').trim();
@@ -92,7 +93,7 @@ exports.verifyTndManualUser = async (req, res) => {
 exports.getAllUsers = async (req, res) => {
   try {
     const result = await db.pool.query(`
-      SELECT u.id, u.email, u.nip, u.full_name as name, u.phone_number as phone, u.department,
+      SELECT u.id, u.email, u.nip, u.full_name as name, u.phone_number as phone, u.department, u.created_at,
              u.profile_image, u.profile_image_source,
              COALESCE(tm.team_name, 'Dinas Komunikasi dan Informatika') as team,
              legacy_role.name as legacy_role
@@ -187,6 +188,12 @@ exports.updateUserRole = async (req, res) => {
       // No need to update users.role_id as it was dropped in the new schema
     }
 
+    const targetUser = await client.query('SELECT full_name FROM users WHERE id = $1', [id]);
+    await recordRequestActivity(client, req, {
+      activityType: 'user_updated',
+      description: `Admin memperbarui role atau penugasan pengguna ${targetUser.rows[0]?.full_name || id}.`,
+      metadata: { targetUserId: id, roles: roleNames, teamId: team_id ?? null }
+    });
     await client.query('COMMIT');
     res.json({ success: true, message: 'User updated' });
   } catch (error) {
@@ -199,25 +206,48 @@ exports.updateUserRole = async (req, res) => {
 
 exports.deleteUser = async (req, res) => {
   const { id } = req.params;
+  const client = await db.pool.connect();
   try {
-    await db.pool.query('DELETE FROM users WHERE id = $1', [id]);
+    await client.query('BEGIN');
+    const targetUser = await client.query('SELECT full_name FROM users WHERE id = $1', [id]);
+    if (!targetUser.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, message: 'User tidak ditemukan.' });
+    }
+    await recordRequestActivity(client, req, {
+      activityType: 'user_deleted',
+      description: `Admin menghapus pengguna ${targetUser.rows[0].full_name}.`,
+      metadata: { targetUserId: id }
+    });
+    await client.query('DELETE FROM users WHERE id = $1', [id]);
+    await client.query('COMMIT');
     res.json({ success: true, message: 'User deleted' });
   } catch (error) {
+    await client.query('ROLLBACK');
     res.status(500).json({ success: false, message: error.message });
+  } finally {
+    client.release();
   }
 };
 
 exports.reset2FA = async (req, res) => {
   const { id } = req.params;
   try {
-    await db.pool.query(
+    const result = await db.pool.query(
       `UPDATE users 
        SET is_two_factor_enabled = false, 
            two_factor_secret = null, 
            two_factor_reset_at = CURRENT_TIMESTAMP 
-       WHERE id = $1`,
+       WHERE id = $1 RETURNING full_name`,
       [id]
     );
+    if (result.rows[0]) {
+      await recordRequestActivity(db, req, {
+        activityType: 'user_2fa_reset',
+        description: `Admin mereset autentikasi dua faktor pengguna ${result.rows[0].full_name}.`,
+        metadata: { targetUserId: id }
+      });
+    }
     res.json({ success: true, message: '2FA berhasil direset. User harus scan QR ulang saat login.' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -261,6 +291,11 @@ exports.createUserManual = async (req, res) => {
       }
       await client.query('INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)', [userId, roleRes.rows[0].id]);
 
+      await recordRequestActivity(client, req, {
+        activityType: 'user_created',
+        description: `Admin membuat akun OPD ${profile.full_name}.`,
+        metadata: { targetUserId: userId, roles: ['USER'] }
+      });
       await client.query('COMMIT');
       res.json({
         success: true,
@@ -286,12 +321,23 @@ exports.createManualUser = async (req, res) => {
   const password = typeof req.body?.password === 'string' ? req.body.password : '';
   const confirmPassword = typeof req.body?.confirmPassword === 'string' ? req.body.confirmPassword : '';
   const phoneNumber = typeof req.body?.phoneNumber === 'string' ? req.body.phoneNumber.trim() : '';
-  const roleName = typeof req.body?.roleName === 'string' ? req.body.roleName.trim().toUpperCase() : 'MASYARAKAT';
+  const rawRoleNames = Array.isArray(req.body?.roleNames)
+    ? req.body.roleNames
+    : [typeof req.body?.roleName === 'string' ? req.body.roleName : 'MASYARAKAT'];
+  const hasInvalidRoleInput = rawRoleNames.some(role => typeof role !== 'string');
+  const roleNames = [...new Set(rawRoleNames
+    .filter(role => typeof role === 'string')
+    .map(role => role.trim().toUpperCase()))];
   const department = typeof req.body?.department === 'string' ? req.body.department.trim() : '';
-  const rawTeamId = req.body?.teamId;
-  const hasTeamId = rawTeamId !== undefined && rawTeamId !== null && rawTeamId !== '';
-  const teamId = hasTeamId ? Number(rawTeamId) : null;
+  const rawTeamIds = Array.isArray(req.body?.teamIds)
+    ? req.body.teamIds
+    : req.body?.teamId !== undefined && req.body?.teamId !== null && req.body?.teamId !== ''
+      ? [req.body.teamId]
+      : [];
+  const teamIds = [...new Set(rawTeamIds.map(Number))];
   const allowedRoles = new Set(['ADMIN', 'HELPDESK', 'PEGAWAI', 'USER', 'MASYARAKAT']);
+  const rolePriority = ['ADMIN', 'HELPDESK', 'PEGAWAI', 'USER', 'MASYARAKAT'];
+  const roleName = rolePriority.find(role => roleNames.includes(role));
 
   if (!fullName || fullName.length > 255) {
     return res.status(400).json({ success: false, message: 'Nama lengkap wajib diisi dan maksimal 255 karakter.' });
@@ -299,16 +345,19 @@ exports.createManualUser = async (req, res) => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 255) {
     return res.status(400).json({ success: false, message: 'Masukkan alamat email yang valid.' });
   }
-  if (!allowedRoles.has(roleName)) {
-    return res.status(400).json({ success: false, message: 'Role akun tidak valid.' });
+  if (hasInvalidRoleInput || roleNames.length === 0 || roleNames.some(role => !allowedRoles.has(role))) {
+    return res.status(400).json({ success: false, message: 'Pilih minimal satu role akun yang valid.' });
   }
-  if (roleName !== 'MASYARAKAT' && (!department || department.length > 255)) {
+  if (roleNames.includes('MASYARAKAT') && roleNames.length > 1) {
+    return res.status(400).json({ success: false, message: 'Role Masyarakat tidak dapat digabung dengan role lainnya.' });
+  }
+  if (!roleNames.includes('MASYARAKAT') && (!department || department.length > 255)) {
     return res.status(400).json({ success: false, message: 'Instansi/perangkat daerah wajib diisi dan maksimal 255 karakter.' });
   }
-  if (roleName === 'PEGAWAI' && (!Number.isInteger(teamId) || teamId <= 0)) {
-    return res.status(400).json({ success: false, message: 'Tim kerja wajib dipilih untuk role Pegawai.' });
+  if (roleNames.includes('PEGAWAI') && (teamIds.length === 0 || teamIds.some(id => !Number.isInteger(id) || id <= 0))) {
+    return res.status(400).json({ success: false, message: 'Minimal satu tim kerja wajib dipilih untuk role Pegawai.' });
   }
-  if (roleName !== 'PEGAWAI' && hasTeamId) {
+  if (!roleNames.includes('PEGAWAI') && teamIds.length > 0) {
     return res.status(400).json({ success: false, message: 'Tim kerja hanya dapat ditetapkan untuk role Pegawai.' });
   }
   const passwordFailures = getPasswordPolicyFailures(password);
@@ -334,17 +383,23 @@ exports.createManualUser = async (req, res) => {
       return res.status(409).json({ success: false, message: 'Email sudah terdaftar.' });
     }
 
-    await client.query(
-      'INSERT INTO roles (name) VALUES ($1) ON CONFLICT (name) DO NOTHING',
-      [roleName]
-    );
-    const roleRes = await client.query('SELECT id FROM roles WHERE name = $1', [roleName]);
-    if (roleRes.rows.length === 0) {
-      throw new Error(`Role ${roleName} belum tersedia.`);
+    const roleIds = [];
+    let primaryRoleId;
+    for (const selectedRole of roleNames) {
+      await client.query(
+        'INSERT INTO roles (name) VALUES ($1) ON CONFLICT (name) DO NOTHING',
+        [selectedRole]
+      );
+      const roleRes = await client.query('SELECT id FROM roles WHERE name = $1', [selectedRole]);
+      if (roleRes.rows.length === 0) {
+        throw new Error(`Role ${selectedRole} belum tersedia.`);
+      }
+      roleIds.push(roleRes.rows[0].id);
+      if (selectedRole === roleName) primaryRoleId = roleRes.rows[0].id;
     }
-    if (teamId) {
-      const teamRes = await client.query('SELECT id FROM teams WHERE id = $1', [teamId]);
-      if (teamRes.rows.length === 0) {
+    if (teamIds.length > 0) {
+      const teamRes = await client.query('SELECT id FROM teams WHERE id = ANY($1::int[])', [teamIds]);
+      if (teamRes.rows.length !== teamIds.length) {
         await client.query('ROLLBACK');
         return res.status(400).json({ success: false, message: 'Tim kerja yang dipilih tidak ditemukan.' });
       }
@@ -363,31 +418,38 @@ exports.createManualUser = async (req, res) => {
         passwordHash,
         fullName,
         phoneNumber || null,
-        roleRes.rows[0].id,
-        roleName === 'MASYARAKAT' ? 'Masyarakat Umum' : department
+        primaryRoleId,
+        roleNames.includes('MASYARAKAT') ? 'Masyarakat Umum' : department
       ]
     );
-    await client.query(
-      'INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)',
-      [userRes.rows[0].id, roleRes.rows[0].id]
-    );
-    if (teamId) {
+    for (const roleId of roleIds) {
+      await client.query(
+        'INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)',
+        [userRes.rows[0].id, roleId]
+      );
+    }
+    for (const teamId of teamIds) {
       await client.query('INSERT INTO team_members (user_id, team_id) VALUES ($1, $2)', [userRes.rows[0].id, teamId]);
     }
 
+    await recordRequestActivity(client, req, {
+      activityType: 'user_created',
+      description: `Admin membuat akun ${fullName}.`,
+      metadata: { targetUserId: userRes.rows[0].id, roles: roleNames, teamIds }
+    });
     await client.query('COMMIT');
     res.status(201).json({
       success: true,
-      message: `Akun ${roleName === 'USER' ? 'OPD' : roleName} berhasil dibuat.`,
+      message: `Akun dengan role ${roleNames.map(role => role === 'USER' ? 'OPD' : role).join(', ')} berhasil dibuat.`,
       userId: userRes.rows[0].id,
       user: {
         id: userRes.rows[0].id,
         email,
         name: fullName,
         role: roleName,
-        roles: [roleName],
-        department: roleName === 'MASYARAKAT' ? 'Masyarakat Umum' : department,
-        team_id: teamId
+        roles: roleNames,
+        department: roleNames.includes('MASYARAKAT') ? 'Masyarakat Umum' : department,
+        team_ids: teamIds
       }
     });
   } catch (error) {

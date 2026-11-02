@@ -61,6 +61,7 @@ router.get('/captcha', authController.getCaptcha);
 router.post('/login', authController.login);
 router.post('/login-2fa', login2FaLimiter, authController.login2FA);
 router.post('/2fa/skip-setup', login2FaLimiter, authenticateTempToken, authController.skip2FASetup);
+router.post('/user-agreement/accept', authenticateTempToken, authController.acceptUserAgreement);
 router.post('/register/request-otp', registrationOtpIpLimiter, registrationOtpLimiter, authController.requestRegistrationOtp);
 router.post('/register/verify-otp', registrationVerifyLimiter, authController.verifyRegistrationOtp);
 router.post('/register', registrationVerifyLimiter, authController.register);

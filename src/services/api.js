@@ -34,6 +34,13 @@ const handleResponse = async (res) => {
 };
 
 export const api = {
+  logout: async () => {
+    const res = await fetch(`${BASE_URL}/auth/logout`, {
+      method: 'POST',
+      headers: getHeaders()
+    });
+    return handleResponse(res);
+  },
   // TEAMS
   getTeams: async () => {
     const res = await fetch(`${BASE_URL}/admin/teams`, { headers: getHeaders() });
@@ -84,6 +91,16 @@ export const api = {
   },
   getUsers: async () => {
     const res = await fetch(`${BASE_URL}/admin/users`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+  getActivityLogs: async (params, options = {}) => {
+    const query = new URLSearchParams(
+      Object.entries(params).filter(([, value]) => value !== '' && value !== null && value !== undefined)
+    );
+    const res = await fetch(`${BASE_URL}/activity-logs?${query}`, {
+      headers: getHeaders(),
+      signal: options.signal
+    });
     return handleResponse(res);
   },
   createUserManual: async (payload) => {
@@ -186,6 +203,14 @@ export const api = {
     const res = await fetch(`${BASE_URL}/auth/2fa/skip-setup`, {
       method: 'POST',
       headers: { ...getHeaders(), 'Authorization': `Bearer ${tempToken}` }
+    });
+    return handleResponse(res);
+  },
+  acceptUserAgreement: async () => {
+    const res = await fetch(`${BASE_URL}/auth/user-agreement/accept`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ accepted: true })
     });
     return handleResponse(res);
   },
@@ -446,6 +471,14 @@ export const api = {
   // ADMIN
   getAdminTickets: async () => {
     const res = await fetch(`${BASE_URL}/admin/tickets`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+  getAdminTicketRecap: async ({ startDate, endDate, signal }) => {
+    const params = new URLSearchParams({ startDate, endDate });
+    const res = await fetch(`${BASE_URL}/admin/ticket-recap?${params}`, {
+      headers: getHeaders(),
+      signal
+    });
     return handleResponse(res);
   },
   getAdminRatings: async () => {

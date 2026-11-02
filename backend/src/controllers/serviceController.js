@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { recordRequestActivity } = require('../utils/activityLogger');
 
 // -----------------------------------------
 // PUBLIC API (For Users creating tickets)
@@ -106,6 +107,11 @@ exports.createCategory = async (req, res) => {
   try {
     const { name } = req.body;
     const result = await db.query('INSERT INTO service_categories (category_name) VALUES ($1) RETURNING id, category_name as name', [name]);
+    await recordRequestActivity(db, req, {
+      activityType: 'service_category_created',
+      description: `Admin membuat kategori layanan ${name}.`,
+      metadata: { categoryId: result.rows[0].id }
+    });
     res.status(201).json({ success: true, data: result.rows[0] });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error' });
@@ -117,6 +123,13 @@ exports.updateCategory = async (req, res) => {
     const { id } = req.params;
     const { name } = req.body;
     const result = await db.query('UPDATE service_categories SET category_name = $1 WHERE id = $2 RETURNING id, category_name as name', [name, id]);
+    if (result.rows[0]) {
+      await recordRequestActivity(db, req, {
+        activityType: 'service_category_updated',
+        description: `Admin memperbarui kategori layanan menjadi ${name}.`,
+        metadata: { categoryId: id }
+      });
+    }
     res.json({ success: true, data: result.rows[0] });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error' });
@@ -126,7 +139,14 @@ exports.updateCategory = async (req, res) => {
 exports.deleteCategory = async (req, res) => {
   try {
     const { id } = req.params;
-    await db.query('DELETE FROM service_categories WHERE id = $1', [id]);
+    const result = await db.query('DELETE FROM service_categories WHERE id = $1 RETURNING category_name', [id]);
+    if (result.rows[0]) {
+      await recordRequestActivity(db, req, {
+        activityType: 'service_category_deleted',
+        description: `Admin menghapus kategori layanan ${result.rows[0].category_name}.`,
+        metadata: { categoryId: id }
+      });
+    }
     res.json({ success: true, message: 'Category deleted' });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error' });
@@ -183,6 +203,11 @@ exports.createService = async (req, res) => {
       INSERT INTO services (category_id, service_name, target_sla, verification_type, sop_link, status, form_schema, required_docs, default_team_id)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *
     `, [finalCatId, name, target_sla || '7 Hari', verification_type || 'Wajib Verifikasi', sop_link || null, status || 'Aktif', JSON.stringify(form_schema || []), required_docs || '', finalDefTeam]);
+    await recordRequestActivity(db, req, {
+      activityType: 'service_created',
+      description: `Admin membuat layanan ${name}.`,
+      metadata: { serviceId: result.rows[0].id }
+    });
     res.status(201).json({ success: true, data: result.rows[0] });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error: ' + err.message });
@@ -213,6 +238,13 @@ exports.updateService = async (req, res) => {
           default_team_id = $9
       WHERE id = $10 RETURNING *
     `, [finalCatId || null, name || null, target_sla || null, verification_type || 'Wajib Verifikasi', sop_link || null, finalStatus, form_schema ? JSON.stringify(form_schema) : null, required_docs !== undefined ? required_docs : null, finalDefTeam, id]);
+    if (result.rows[0]) {
+      await recordRequestActivity(db, req, {
+        activityType: 'service_updated',
+        description: `Admin memperbarui layanan ${result.rows[0].service_name}.`,
+        metadata: { serviceId: id }
+      });
+    }
     res.json({ success: true, data: result.rows[0] });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error: ' + err.message });
@@ -221,7 +253,14 @@ exports.updateService = async (req, res) => {
 
 exports.deleteService = async (req, res) => {
   try {
-    await db.query('DELETE FROM services WHERE id = $1', [req.params.id]);
+    const result = await db.query('DELETE FROM services WHERE id = $1 RETURNING service_name', [req.params.id]);
+    if (result.rows[0]) {
+      await recordRequestActivity(db, req, {
+        activityType: 'service_deleted',
+        description: `Admin menghapus layanan ${result.rows[0].service_name}.`,
+        metadata: { serviceId: req.params.id }
+      });
+    }
     res.json({ success: true, message: 'Service deleted' });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error' });
@@ -239,6 +278,11 @@ exports.addRequirement = async (req, res) => {
       INSERT INTO service_requirements (service_id, document_name, is_mandatory)
       VALUES ($1, $2, $3) RETURNING *
     `, [id, document_name, is_mandatory ?? true]);
+    await recordRequestActivity(db, req, {
+      activityType: 'service_requirement_created',
+      description: `Admin menambahkan persyaratan ${document_name} pada layanan.`,
+      metadata: { serviceId: id, requirementId: result.rows[0].id }
+    });
     res.status(201).json({ success: true, data: result.rows[0] });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error' });
@@ -247,7 +291,17 @@ exports.addRequirement = async (req, res) => {
 
 exports.deleteRequirement = async (req, res) => {
   try {
-    await db.query('DELETE FROM service_requirements WHERE id = $1', [req.params.id]);
+    const result = await db.query(
+      'DELETE FROM service_requirements WHERE id = $1 RETURNING document_name, service_id',
+      [req.params.id]
+    );
+    if (result.rows[0]) {
+      await recordRequestActivity(db, req, {
+        activityType: 'service_requirement_deleted',
+        description: `Admin menghapus persyaratan ${result.rows[0].document_name}.`,
+        metadata: { serviceId: result.rows[0].service_id, requirementId: req.params.id }
+      });
+    }
     res.json({ success: true, message: 'Requirement deleted' });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error' });

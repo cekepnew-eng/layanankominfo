@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { recordRequestActivity } = require('../utils/activityLogger');
 
 const createHistory = async (client, ticketId, userId, oldStatusId, newStatusId, description) => {
   await client.query(`
@@ -872,6 +873,38 @@ exports.getAdminTickets = async (req, res) => {
   }
 };
 
+exports.getAdminTicketRecap = async (req, res) => {
+  const { startDate, endDate } = req.query;
+  const isValidDate = (value) => typeof value === 'string' &&
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`)) &&
+    new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) === value;
+
+  if (!isValidDate(startDate) || !isValidDate(endDate) || startDate > endDate) {
+    return res.status(400).json({ success: false, message: 'Rentang tanggal rekap tidak valid.' });
+  }
+
+  try {
+    const result = await db.query(`
+      SELECT t.id, t.ticket_number, t.created_at, t.status_id,
+             COALESCE(NULLIF(td.form_data->>'Nama Pemohon', ''), u.full_name) as pemohon,
+             s.service_name, st.name as status_name
+      FROM tickets t
+      JOIN users u ON t.user_id = u.id
+      JOIN services s ON t.service_id = s.id
+      JOIN ticket_statuses st ON t.status_id = st.id
+      LEFT JOIN ticket_details td ON td.ticket_id = t.id
+      WHERE t.created_at >= $1::date
+        AND t.created_at < ($2::date + INTERVAL '1 day')
+      ORDER BY t.created_at DESC
+    `, [startDate, endDate]);
+
+    res.json({ success: true, data: result.rows });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
 exports.getAdminRatings = async (req, res) => {
   try {
     const [ratingsResult, unratedResult] = await Promise.all([
@@ -921,7 +954,7 @@ exports.setRatingLandingVisibility = async (req, res) => {
     await client.query('SELECT pg_advisory_xact_lock($1)', [801245]);
 
     const rating = await client.query(
-      'SELECT id, selected_for_landing FROM ticket_feedback WHERE id = $1 FOR UPDATE',
+      'SELECT id, ticket_id, selected_for_landing FROM ticket_feedback WHERE id = $1 FOR UPDATE',
       [id]
     );
     if (rating.rows.length === 0) {
@@ -943,6 +976,12 @@ exports.setRatingLandingVisibility = async (req, res) => {
       'UPDATE ticket_feedback SET selected_for_landing = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
       [selectedForLanding, id]
     );
+    await recordRequestActivity(client, req, {
+      activityType: 'rating_visibility_updated',
+      description: `Admin ${selectedForLanding ? 'menampilkan' : 'menyembunyikan'} ulasan pada landing page.`,
+      ticketId: rating.rows[0].ticket_id,
+      metadata: { ratingId: id, selectedForLanding }
+    });
     await client.query('COMMIT');
     res.json({ success: true, selectedForLanding });
   } catch (err) {

@@ -3,6 +3,17 @@ import { api } from '../services/api';
 
 const AuthContext = createContext();
 
+const normalizeUser = (userData, refreshProfileImage = false) => {
+  if (!userData) return userData;
+  return {
+    ...userData,
+    name: userData.name || userData.full_name || '',
+    profileImageCacheVersion: refreshProfileImage
+      ? Date.now().toString(36)
+      : userData.profileImageCacheVersion || Date.now().toString(36)
+  };
+};
+
 export const useAuth = () => {
   return useContext(AuthContext);
 };
@@ -14,7 +25,7 @@ export const AuthProvider = ({ children }) => {
       try {
         const parsed = JSON.parse(saved);
         if (parsed && parsed.role) parsed.role = parsed.role;
-        return parsed;
+        return normalizeUser(parsed);
       } catch (e) {
         return null;
       }
@@ -61,7 +72,17 @@ export const AuthProvider = ({ children }) => {
         if (token) {
           sessionStorage.setItem('spbe_token', token);
         }
-        const userData = response.user || { id: null, email: '', name: '', role: 'USER', roles: ['USER'] };
+        if (response.requiresUserAgreement) {
+          sessionStorage.setItem('spbe_user_agreement_pending', 'true');
+          return {
+            success: true,
+            requiresUserAgreement: true,
+            token,
+            user: response.user
+          };
+        }
+        sessionStorage.removeItem('spbe_user_agreement_pending');
+        const userData = normalizeUser(response.user || { id: null, email: '', name: '', role: 'USER', roles: ['USER'] }, true);
         if (userData && userData.role) {
           userData.role = String(userData.role).toUpperCase();
         }
@@ -88,10 +109,18 @@ export const AuthProvider = ({ children }) => {
       const response = await api.login2FA(tempToken, otp, trustDevice);
       if (response.success) {
         sessionStorage.setItem('spbe_token', response.token);
+        if (response.requiresUserAgreement) {
+          sessionStorage.setItem('spbe_user_agreement_pending', 'true');
+          if (response.trustedDeviceToken) {
+            localStorage.setItem('spbe_trusted_device', response.trustedDeviceToken);
+          }
+          return { success: true, requiresUserAgreement: true };
+        }
+        sessionStorage.removeItem('spbe_user_agreement_pending');
         if (response.trustedDeviceToken) {
           localStorage.setItem('spbe_trusted_device', response.trustedDeviceToken);
         }
-        const userData = response.user;
+        const userData = normalizeUser(response.user, true);
         if (userData && userData.role) {
           userData.role = String(userData.role).toUpperCase();
         }
@@ -99,10 +128,28 @@ export const AuthProvider = ({ children }) => {
           userData.roles = userData.roles.map(role => String(role).toUpperCase());
         }
         setUser(userData);
-        return { success: true };
+        return { success: true, requiresUserAgreement: false };
       }
     } catch (err) {
       return { success: false, message: err.message };
+    }
+  };
+
+  const acceptUserAgreement = async () => {
+    try {
+      const response = await api.acceptUserAgreement();
+      const userData = normalizeUser(response.user, true);
+      if (userData?.role) userData.role = String(userData.role).toUpperCase();
+      if (userData?.roles) {
+        userData.roles = userData.roles.map(role => String(role).toUpperCase());
+      }
+      sessionStorage.setItem('spbe_token', response.token);
+      sessionStorage.removeItem('spbe_user_agreement_pending');
+      setUser(userData);
+      sessionStorage.setItem('spbe_user', JSON.stringify(userData));
+      return { success: true };
+    } catch (error) {
+      return { success: false, message: error.message || 'Persetujuan tidak dapat disimpan.' };
     }
   };
 
@@ -115,11 +162,18 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    sessionStorage.removeItem('spbe_user');
-    sessionStorage.removeItem('spbe_token');
-    window.location.href = '/auth/login';
+  const logout = async () => {
+    try {
+      await api.logout();
+    } catch (error) {
+      console.error('Failed to record logout activity:', error);
+    } finally {
+      setUser(null);
+      sessionStorage.removeItem('spbe_user');
+      sessionStorage.removeItem('spbe_token');
+      sessionStorage.removeItem('spbe_user_agreement_pending');
+      window.location.href = '/auth/login';
+    }
   };
 
   const [services, setServices] = useState([]);
@@ -143,7 +197,7 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={{ 
-      user, setUser, login, login2FA, register, logout,
+      user, setUser, login, login2FA, acceptUserAgreement, register, logout,
       tickets: [], setTickets: () => {},
       services, setServices,
       users: [], setUsers: () => {},

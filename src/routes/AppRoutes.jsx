@@ -16,6 +16,7 @@ import { MyTickets } from '../pages/dashboard/MyTickets';
 import { TicketHistory } from '../pages/dashboard/ManageTickets';
 import { TrackTicket } from '../pages/dashboard/TrackTicket';
 import { Profile } from '../pages/dashboard/Profile';
+import { ActivityLogs } from '../pages/dashboard/ActivityLogs';
 import { ProtectedRoute } from './ProtectedRoute';
 import { useAuth } from '../context/AuthContext';
 
@@ -75,6 +76,14 @@ export const AppRoutes = () => {
           element={
             <ProtectedRoute allowedRoles={['ADMIN']}>
               <TicketRecap />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="activity-logs"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN', 'HELPDESK', 'PEGAWAI', 'USER', 'MASYARAKAT']}>
+              <ActivityLogs />
             </ProtectedRoute>
           }
         />

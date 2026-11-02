@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { ActionModal } from '../components/ActionModal';
+import { getProfileImageUrl } from '../utils/profileImageUrl';
 import {
   LayoutDashboard,
   Users,
@@ -21,6 +22,7 @@ import {
   Search,
   Clock,
   ClipboardList,
+  Activity,
   X
 } from 'lucide-react';
 
@@ -68,7 +70,11 @@ export const DashboardLayout = () => {
   const toastFadeTimerRef = React.useRef(null);
   const [showSidebar, setShowSidebar] = useState(false);
   const notifRef = React.useRef(null);
-  const profileImage = user?.profile_image || user?.profileImage;
+  const profileImage = getProfileImageUrl(
+    user?.profile_image || user?.profileImage,
+    user?.profile_image_source || user?.profileImageSource,
+    user?.profileImageCacheVersion
+  );
   const [profileImageLoadError, setProfileImageLoadError] = useState(false);
   const profileInitials = String(user?.name || 'U')
     .trim()
@@ -324,6 +330,7 @@ export const DashboardLayout = () => {
     const home = { path: '/dashboard', label: 'Ringkasan', icon: LayoutDashboard };
     const history = { path: '/dashboard/history', label: getHistoryLabel(), icon: FileText };
     const ticketHistory = { path: '/dashboard/ticket-history', label: 'Tiket Selesai', icon: CheckSquare };
+    const activityLogs = { path: '/dashboard/activity-logs', label: 'Log Activity', icon: Activity };
     const trackTicket = { path: '/dashboard/track-ticket', label: 'Lacak Tiket', icon: Search };
     const profile = { path: '/dashboard/profile', label: 'Profil Pengguna', icon: User };
 
@@ -344,7 +351,7 @@ export const DashboardLayout = () => {
     const role = (user?.role || '').toUpperCase();
 
     if (role === 'HELPDESK') {
-      return [home, userLinks[0], history, ticketHistory, trackTicket, profile];
+      return [home, userLinks[0], history, ticketHistory, activityLogs, trackTicket, profile];
     }
 
     if (role === 'ADMIN') {
@@ -356,6 +363,7 @@ export const DashboardLayout = () => {
         adminLinks[3],
         history,
         ticketHistory,
+        activityLogs,
         trackTicket,
         adminLinks[4],
         profile
@@ -363,10 +371,10 @@ export const DashboardLayout = () => {
     }
 
     if (role === 'PEGAWAI') {
-      return [home, history, ticketHistory, profile];
+      return [home, history, ticketHistory, activityLogs, profile];
     }
 
-    return [home, ...userLinks, history, ticketHistory, profile];
+    return [home, ...userLinks, history, ticketHistory, activityLogs, profile];
   };
 
   const menuLinks = getMenuLinks();
@@ -386,7 +394,8 @@ export const DashboardLayout = () => {
       'create-ticket': 'Ajukan Layanan',
       profile: 'Profil Pengguna',
       history: getHistoryLabel(),
-      'ticket-history': 'Tiket Selesai'
+      'ticket-history': 'Tiket Selesai',
+      'activity-logs': 'Log Activity'
     };
 
     return mapping[pageName] || pageName;

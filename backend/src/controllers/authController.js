@@ -7,8 +7,21 @@ const crypto = require('crypto');
 const { sendResetOtpEmail, sendRegistrationOtpEmail } = require('../services/emailService');
 const { getTndProfileImage } = require('../utils/tndProfileImage');
 const { getPasswordPolicyFailures } = require('../utils/passwordPolicy');
+const { recordActivity } = require('../utils/activityLogger');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret-key-kominfo-2026';
+
+const logSuccessfulLogin = async (user, method = 'password') => {
+  const roles = user.roles?.length ? user.roles : await resolveUserRoles(user.id);
+  await recordActivity(db, {
+    actorId: user.id,
+    actorName: user.full_name,
+    actorRole: roles.join(', ') || 'UNKNOWN',
+    activityType: 'login',
+    description: 'Pengguna berhasil login.',
+    metadata: { method }
+  });
+};
 
 // Encryption config for 2FA secret
 const ENCRYPTION_KEY = crypto.scryptSync(JWT_SECRET, 'salt', 32);
@@ -105,6 +118,30 @@ function getPasswordExpiresAt(user) {
   return expiryDate.getTime();
 }
 
+function expireOldUserAgreement(user) {
+  if (!user?.user_agreement_accepted_at) return;
+
+  const expiresAt = new Date(user.user_agreement_accepted_at);
+  if (Number.isNaN(expiresAt.getTime())) {
+    user.user_agreement_accepted_at = null;
+    return;
+  }
+
+  const originalDay = expiresAt.getUTCDate();
+  expiresAt.setUTCDate(1);
+  expiresAt.setUTCMonth(expiresAt.getUTCMonth() + 4);
+  const lastDayOfMonth = new Date(Date.UTC(
+    expiresAt.getUTCFullYear(),
+    expiresAt.getUTCMonth() + 1,
+    0
+  )).getUTCDate();
+  expiresAt.setUTCDate(Math.min(originalDay, lastDayOfMonth));
+
+  if (expiresAt.getTime() <= Date.now()) {
+    user.user_agreement_accepted_at = null;
+  }
+}
+
 function getLoginIdentifierHash(identifier) {
   return crypto.createHash('sha256').update(String(identifier).trim().toLowerCase()).digest('hex');
 }
@@ -165,6 +202,7 @@ async function ensurePasswordCols() {
     await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_auth_source VARCHAR(10) NOT NULL DEFAULT 'LOCAL';");
     await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_reset_at TIMESTAMP;');
     await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_choice_completed BOOLEAN NOT NULL DEFAULT false;');
+    await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS user_agreement_accepted_at TIMESTAMPTZ;');
     await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS nip VARCHAR(50);');
     await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image TEXT;');
     await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_source VARCHAR(20);");
@@ -340,8 +378,10 @@ exports.login = async (req, res) => {
         user.roles.some(role => ['USER', 'PEGAWAI'].includes(String(role).toUpperCase())))
     );
 
-    // Hybrid SSO: Jika gagal login lokal, ATAU butuh sinkronisasi profil, coba validasi lewat API TND (hanya untuk non-masyarakat)
-    if (!isMasyarakat && (!isMatch || needsSync)) {
+    // Refresh TND-linked profiles on login, even when the account uses a local password.
+    const isTndLinkedProfile = String(user?.password_auth_source || '').toUpperCase() === 'TND'
+      || String(user?.profile_image_source || '').toUpperCase() === 'TND';
+    if (!isMasyarakat && (!isMatch || needsSync || isTndLinkedProfile)) {
       try {
         const tndUsername = loginIdentifier;
 
@@ -363,7 +403,7 @@ exports.login = async (req, res) => {
         }
 
         // Fallback untuk akun testing sandbox OPD (Rendi Triyawan) jika server dev-tnd sedang tidak merespon/akun belum disinkronkan di dev-tnd
-        if ((!tndData || tndData?.success === false) && (
+        if ((!tndData || tndData?.success === false) && !user && (
           tndUsername === '199902032025211037' ||
           tndUsername.toLowerCase() === 'renditriyawan@kotabogor.go.id' ||
           tndUsername.toLowerCase().includes('rendi')
@@ -538,6 +578,8 @@ exports.login = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Email, NIP, atau password salah.' });
     }
 
+    expireOldUserAgreement(user);
+
     if (user.profile_image_source === 'TND' && user.profile_image) {
       const ssoUrl = process.env.SSO_API_URL || 'https://dev-tnd.kotabogor.go.id/api-baru/api/v1/login';
       const normalizedImage = getTndProfileImage({ profile_image: user.profile_image }, {}, ssoUrl);
@@ -572,11 +614,13 @@ exports.login = async (req, res) => {
           {
             id: user.id, email: user.email, nip: user.nip, role: primaryRole, roles: user.roles,
             name: user.full_name, department: user.department, passwordChangeRequired,
-            passwordExpiresAt: getPasswordExpiresAt(user)
+            passwordExpiresAt: getPasswordExpiresAt(user),
+            ...(!user.user_agreement_accepted_at ? { purpose: 'user_agreement' } : {})
           },
           JWT_SECRET,
           { expiresIn: '24h' }
         );
+        if (user.user_agreement_accepted_at) await logSuccessfulLogin(user, 'trusted_device');
         return res.json({
           success: true,
           token,
@@ -589,8 +633,10 @@ exports.login = async (req, res) => {
             passwordChangeRequired,
             passwordExpiresAt: getPasswordExpiresAt(user),
             twoFactorEnabled: true,
-            twoFactorChoiceCompleted: Boolean(user.two_factor_choice_completed)
-          }
+            twoFactorChoiceCompleted: Boolean(user.two_factor_choice_completed),
+            userAgreementAccepted: Boolean(user.user_agreement_accepted_at)
+          },
+          requiresUserAgreement: !user.user_agreement_accepted_at
         });
       }
 
@@ -629,8 +675,10 @@ exports.login = async (req, res) => {
         name: user.full_name,
         department: user.department,
         passwordChangeRequired,
-        passwordExpiresAt: getPasswordExpiresAt(user)
+        passwordExpiresAt: getPasswordExpiresAt(user),
+        ...(!user.user_agreement_accepted_at ? { purpose: 'user_agreement' } : {})
       }, JWT_SECRET, { expiresIn: '24h' });
+      if (user.user_agreement_accepted_at) await logSuccessfulLogin(user);
       return res.json({
         success: true,
         token,
@@ -651,8 +699,10 @@ exports.login = async (req, res) => {
           passwordChangeRequired,
           passwordExpiresAt: getPasswordExpiresAt(user),
           twoFactorEnabled: false,
-          twoFactorChoiceCompleted: true
-        }
+          twoFactorChoiceCompleted: true,
+          userAgreementAccepted: Boolean(user.user_agreement_accepted_at)
+        },
+        requiresUserAgreement: !user.user_agreement_accepted_at
       });
     }
   } catch (err) {
@@ -899,6 +949,14 @@ exports.register = async (req, res) => {
       'UPDATE registration_email_otps SET is_used = true WHERE id = $1',
       [otpRecord.id]
     );
+    await recordActivity(client, {
+      actorId: insertResult.rows[0].id,
+      actorName: insertResult.rows[0].full_name,
+      actorRole: 'MASYARAKAT',
+      activityType: 'user_created',
+      description: `Pengguna mendaftarkan akun masyarakat ${insertResult.rows[0].full_name}.`,
+      metadata: { targetUserId: insertResult.rows[0].id }
+    });
     await client.query('COMMIT');
     transactionStarted = false;
 
@@ -930,6 +988,7 @@ exports.getMe = async (req, res) => {
     if (userRes.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
 
     const user = userRes.rows[0];
+    expireOldUserAgreement(user);
     user.roles = await resolveUserRoles(user.id);
     user.roles = user.roles.length ? user.roles : [getPrimaryRole(user.roles)];
     user.role = getPrimaryRole(user.roles);
@@ -938,6 +997,7 @@ exports.getMe = async (req, res) => {
     user.passwordExpiresAt = getPasswordExpiresAt(user);
     user.twoFactorEnabled = Boolean(user.is_two_factor_enabled);
     user.twoFactorChoiceCompleted = Boolean(user.two_factor_choice_completed);
+    user.userAgreementAccepted = Boolean(user.user_agreement_accepted_at);
     const safeUser = { ...user };
     delete safeUser.password_hash;
     delete safeUser.previous_password_hash;
@@ -955,6 +1015,71 @@ exports.getMe = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Server error fetching profile' });
+  }
+};
+
+exports.acceptUserAgreement = async (req, res) => {
+  if (req.user.purpose !== 'user_agreement') {
+    return res.status(403).json({ success: false, message: 'Token persetujuan pengguna tidak valid.' });
+  }
+  if (req.body?.accepted !== true) {
+    return res.status(400).json({ success: false, message: 'Persetujuan pengguna wajib diberikan.' });
+  }
+
+  try {
+    const result = await db.query(
+      `UPDATE users
+       SET user_agreement_accepted_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND is_active = true
+       RETURNING *`,
+      [req.user.id]
+    );
+    const user = result.rows[0];
+    if (!user) return res.status(404).json({ success: false, message: 'Pengguna tidak ditemukan.' });
+
+    user.roles = await resolveUserRoles(user.id);
+    user.roles = user.roles.length ? user.roles : [getPrimaryRole(user.roles)];
+    await logSuccessfulLogin(user, 'user_agreement');
+    const role = getPrimaryRole(user.roles);
+    const passwordChangeRequired = requiresAnnualPasswordChange(user);
+    const token = jwt.sign({
+      id: user.id,
+      email: user.email,
+      nip: user.nip,
+      role,
+      roles: user.roles,
+      name: user.full_name,
+      department: user.department,
+      passwordChangeRequired,
+      passwordExpiresAt: getPasswordExpiresAt(user)
+    }, JWT_SECRET, { expiresIn: '24h' });
+
+    const safeUser = { ...user };
+    delete safeUser.password_hash;
+    delete safeUser.previous_password_hash;
+    delete safeUser.two_factor_secret;
+    delete safeUser.backup_codes;
+
+    return res.json({
+      success: true,
+      token,
+      user: {
+        ...safeUser,
+        role,
+        roles: user.roles,
+        teams: await getUserTeams(user.id),
+        passwordChangeRequired,
+        passwordExpiresAt: getPasswordExpiresAt(user),
+        twoFactorEnabled: Boolean(user.is_two_factor_enabled),
+        twoFactorChoiceCompleted: Boolean(user.two_factor_choice_completed),
+        userAgreementAccepted: true,
+        profileImage: user.profile_image,
+        profileImageSource: user.profile_image_source
+      }
+    });
+  } catch (error) {
+    console.error('acceptUserAgreement error:', error.message);
+    return res.status(500).json({ success: false, message: 'Persetujuan pengguna tidak dapat disimpan.' });
   }
 };
 
@@ -1108,9 +1233,22 @@ exports.updateProfile = async (req, res) => {
 };
 
 exports.logout = async (req, res) => {
-  // Stateless JWT doesn't need strict logout unless handling refresh tokens or blacklisting.
-  // Returning success is enough for client to drop the token.
-  res.json({ success: true, message: 'Logged out successfully' });
+  try {
+    await recordActivity(db, {
+      actorId: req.user.id,
+      actorName: req.user.name,
+      actorRole: ((Array.isArray(req.user.roles) && req.user.roles.length) ? req.user.roles : [req.user.role])
+        .filter(Boolean)
+        .map(role => String(role).toUpperCase())
+        .join(', ') || 'UNKNOWN',
+      activityType: 'logout',
+      description: 'Pengguna logout.'
+    });
+    res.json({ success: true, message: 'Logged out successfully' });
+  } catch (error) {
+    console.error('logout activity log error:', error);
+    res.status(500).json({ success: false, message: 'Gagal mencatat aktivitas logout.' });
+  }
 };
 
 exports.generate2FA = async (req, res) => {
@@ -1157,6 +1295,7 @@ exports.skip2FASetup = async (req, res) => {
     const user = userRes.rows[0];
     if (!user) return res.status(404).json({ success: false, message: 'Pengguna tidak ditemukan.' });
 
+    expireOldUserAgreement(user);
     user.roles = await resolveUserRoles(user.id);
     if (user.is_two_factor_enabled) {
       return res.status(403).json({ success: false, message: 'Pilihan ini tidak berlaku untuk akun tersebut.' });
@@ -1165,6 +1304,7 @@ exports.skip2FASetup = async (req, res) => {
       'UPDATE users SET two_factor_choice_completed = true, two_factor_secret = NULL WHERE id = $1',
       [user.id]
     );
+    if (user.user_agreement_accepted_at) await logSuccessfulLogin(user, 'password');
 
     const primaryRole = getPrimaryRole(user.roles);
     const passwordChangeRequired = requiresAnnualPasswordChange(user);
@@ -1177,7 +1317,8 @@ exports.skip2FASetup = async (req, res) => {
       name: user.full_name,
       department: user.department,
       passwordChangeRequired,
-      passwordExpiresAt: getPasswordExpiresAt(user)
+      passwordExpiresAt: getPasswordExpiresAt(user),
+      ...(!user.user_agreement_accepted_at ? { purpose: 'user_agreement' } : {})
     }, JWT_SECRET, { expiresIn: '24h' });
 
     return res.json({
@@ -1200,8 +1341,10 @@ exports.skip2FASetup = async (req, res) => {
         passwordChangeRequired,
         passwordExpiresAt: getPasswordExpiresAt(user),
         twoFactorEnabled: false,
-        twoFactorChoiceCompleted: true
-      }
+        twoFactorChoiceCompleted: true,
+        userAgreementAccepted: Boolean(user.user_agreement_accepted_at)
+      },
+      requiresUserAgreement: !user.user_agreement_accepted_at
     });
   } catch (error) {
     console.error('skip2FASetup error:', error.message);
@@ -1248,8 +1391,17 @@ exports.verifySetup2FA = async (req, res) => {
 
     const updatedUserRes = await db.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
     const updatedUser = updatedUserRes.rows[0];
+    expireOldUserAgreement(updatedUser);
     updatedUser.roles = await resolveUserRoles(updatedUser.id);
     updatedUser.roles = updatedUser.roles.length ? updatedUser.roles : [getPrimaryRole(updatedUser.roles)];
+    await recordActivity(db, {
+      actorId: updatedUser.id,
+      actorName: updatedUser.full_name,
+      actorRole: updatedUser.roles.join(', ') || 'UNKNOWN',
+      activityType: 'two_factor_enabled',
+      description: 'Pengguna mengaktifkan autentikasi dua faktor.'
+    });
+    if (updatedUser.user_agreement_accepted_at) await logSuccessfulLogin(updatedUser, 'password_and_2fa');
     const primaryRole = getPrimaryRole(updatedUser.roles);
 
     const token = jwt.sign(
@@ -1257,7 +1409,8 @@ exports.verifySetup2FA = async (req, res) => {
         id: updatedUser.id, email: updatedUser.email, role: primaryRole, roles: updatedUser.roles,
         name: updatedUser.full_name, department: updatedUser.department,
         passwordChangeRequired: requiresAnnualPasswordChange(updatedUser),
-        passwordExpiresAt: getPasswordExpiresAt(updatedUser)
+        passwordExpiresAt: getPasswordExpiresAt(updatedUser),
+        ...(!updatedUser.user_agreement_accepted_at ? { purpose: 'user_agreement' } : {})
       },
       JWT_SECRET,
       { expiresIn: '24h' }
@@ -1285,8 +1438,10 @@ exports.verifySetup2FA = async (req, res) => {
         passwordChangeRequired: requiresAnnualPasswordChange(updatedUser),
         passwordExpiresAt: getPasswordExpiresAt(updatedUser),
         twoFactorEnabled: true,
-        twoFactorChoiceCompleted: true
-      }
+        twoFactorChoiceCompleted: true,
+        userAgreementAccepted: Boolean(updatedUser.user_agreement_accepted_at)
+      },
+      requiresUserAgreement: !updatedUser.user_agreement_accepted_at
     });
   } catch (err) {
     console.error(err);
@@ -1312,6 +1467,16 @@ exports.disableProfile2FA = async (req, res) => {
        WHERE id = $1`,
       [req.user.id]
     );
+    await recordActivity(db, {
+      actorId: req.user.id,
+      actorName: req.user.name,
+      actorRole: ((Array.isArray(req.user.roles) && req.user.roles.length) ? req.user.roles : [req.user.role])
+        .filter(Boolean)
+        .map(role => String(role).toUpperCase())
+        .join(', ') || 'UNKNOWN',
+      activityType: 'two_factor_disabled',
+      description: 'Pengguna menonaktifkan autentikasi dua faktor.'
+    });
     return res.json({
       success: true,
       twoFactorEnabled: false,
@@ -1345,6 +1510,7 @@ exports.login2FA = async (req, res) => {
     const user = userRes.rows[0];
     user.roles = await resolveUserRoles(user.id);
     user.roles = user.roles.length ? user.roles : [getPrimaryRole(user.roles)];
+    expireOldUserAgreement(user);
 
     if (!user.is_two_factor_enabled || !user.two_factor_secret) {
       return res.status(400).json({ success: false, message: '2FA is not enabled for this user' });
@@ -1394,12 +1560,14 @@ exports.login2FA = async (req, res) => {
 
     const primaryRole = getPrimaryRole(user.roles);
     const passwordChangeRequired = requiresAnnualPasswordChange(user);
+    if (user.user_agreement_accepted_at) await logSuccessfulLogin(user, 'password_and_2fa');
 
     const token = jwt.sign(
       {
         id: user.id, email: user.email, role: primaryRole, roles: user.roles,
         name: user.full_name, department: user.department, passwordChangeRequired,
-        passwordExpiresAt: getPasswordExpiresAt(user)
+        passwordExpiresAt: getPasswordExpiresAt(user),
+        ...(!user.user_agreement_accepted_at ? { purpose: 'user_agreement' } : {})
       },
       JWT_SECRET,
       { expiresIn: '24h' }
@@ -1434,8 +1602,10 @@ exports.login2FA = async (req, res) => {
         passwordChangeRequired,
         passwordExpiresAt: getPasswordExpiresAt(user),
         twoFactorEnabled: true,
-        twoFactorChoiceCompleted: true
-      }
+        twoFactorChoiceCompleted: true,
+        userAgreementAccepted: Boolean(user.user_agreement_accepted_at)
+      },
+      requiresUserAgreement: !user.user_agreement_accepted_at
     });
   } catch (err) {
     console.error(err);

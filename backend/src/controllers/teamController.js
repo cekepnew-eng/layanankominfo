@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { recordRequestActivity } = require('../utils/activityLogger');
 
 exports.getAllTeams = async (req, res) => {
   try {
@@ -96,6 +97,11 @@ exports.createTeam = async (req, res) => {
       }
     }
 
+    await recordRequestActivity(client, req, {
+      activityType: 'team_created',
+      description: `Admin membuat tim kerja ${name}.`,
+      metadata: { teamId, memberIds: validMemberIds }
+    });
     await client.query('COMMIT');
     res.json({ success: true, data: { ...result.rows[0], members: members || [], leader: leader || '' } });
   } catch (error) {
@@ -151,6 +157,11 @@ exports.updateTeam = async (req, res) => {
       );
     }
 
+    await recordRequestActivity(client, req, {
+      activityType: 'team_updated',
+      description: `Admin memperbarui tim kerja ${result.rows[0]?.name || id}.`,
+      metadata: { teamId: id, memberIds: validMemberIds }
+    });
     await client.query('COMMIT');
     res.json({ success: true, data: { ...result.rows[0], members: members || [], leader: leader || '' } });
   } catch (error) {
@@ -163,10 +174,26 @@ exports.updateTeam = async (req, res) => {
 
 exports.deleteTeam = async (req, res) => {
   const { id } = req.params;
+  const client = await db.pool.connect();
   try {
-    await db.pool.query('DELETE FROM teams WHERE id = $1', [id]);
+    await client.query('BEGIN');
+    const team = await client.query('SELECT team_name FROM teams WHERE id = $1', [id]);
+    if (!team.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, message: 'Tim tidak ditemukan.' });
+    }
+    await recordRequestActivity(client, req, {
+      activityType: 'team_deleted',
+      description: `Admin menghapus tim kerja ${team.rows[0].team_name}.`,
+      metadata: { teamId: id }
+    });
+    await client.query('DELETE FROM teams WHERE id = $1', [id]);
+    await client.query('COMMIT');
     res.json({ success: true, message: 'Team deleted' });
   } catch (error) {
+    await client.query('ROLLBACK');
     res.status(500).json({ success: false, message: error.message });
+  } finally {
+    client.release();
   }
 };

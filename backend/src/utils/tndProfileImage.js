@@ -34,7 +34,7 @@ function getTndProfileImage(tndUser, tndData, ssoUrl) {
 
   const image = candidate.trim();
   try {
-    const configuredBaseUrl = process.env.TND_PHOTO_BASE_URL;
+    const configuredBaseUrl = process.env.TND_PHOTO_BASE_URL || process.env.VITE_PROFILE_IMAGE_URL;
     if (/^https?:\/\//i.test(image)) {
       const imageUrl = new URL(image);
       if (configuredBaseUrl) {

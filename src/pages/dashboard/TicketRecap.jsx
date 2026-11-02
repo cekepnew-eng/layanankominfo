@@ -40,27 +40,45 @@ export const TicketRecap = () => {
   const [startDate, setStartDate] = useState(formatDateInput(new Date(today.getFullYear(), today.getMonth(), 1)));
   const [endDate, setEndDate] = useState(formatDateInput(today));
   const [selectedPreset, setSelectedPreset] = useState('monthly');
+  const [refreshKey, setRefreshKey] = useState(0);
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [exportError, setExportError] = useState('');
 
-  const fetchTickets = async () => {
-    setLoading(true);
-    setErrorMessage('');
-    try {
-      const response = await api.getAdminTickets();
-      setTickets(Array.isArray(response.data) ? response.data : []);
-    } catch (error) {
-      setErrorMessage(error.message || 'Gagal memuat rekap tiket.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchTickets();
-  }, []);
+    const controller = new AbortController();
+    const loadTickets = async () => {
+      if (!startDate || !endDate || startDate > endDate) {
+        setTickets([]);
+        setLoading(false);
+        setErrorMessage('');
+        return;
+      }
+
+      setLoading(true);
+      setErrorMessage('');
+      try {
+        const response = await api.getAdminTicketRecap({
+          startDate,
+          endDate,
+          signal: controller.signal
+        });
+        setTickets(Array.isArray(response.data) ? response.data : []);
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          setErrorMessage(error.message || 'Gagal memuat rekap tiket.');
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    };
+
+    loadTickets();
+    return () => controller.abort();
+  }, [startDate, endDate, refreshKey]);
+
+  const fetchTickets = () => setRefreshKey(current => current + 1);
 
   const start = parseDateInput(startDate);
   const end = parseDateInput(endDate);
@@ -157,7 +175,7 @@ export const TicketRecap = () => {
             .masthead { display: grid; grid-template-columns: 22mm minmax(0, 1fr) 31mm; align-items: center; gap: 5mm; padding: 0 0 5mm; border-bottom: 2px solid #174f86; }
             .masthead-logo { width: 19mm; height: 21mm; object-fit: contain; }
             .masthead-logo-diskominfo { width: 30mm; height: 21mm; object-fit: contain; justify-self: end; }
-            .agency-copy { min-width: 0; color: #1b3658; line-height: 1.45; }
+            .agency-copy { min-width: 0; color: #1b3658; line-height: 1.45; text-align: center; }
             .eyebrow { display: block; color: #637b96; font-size: 8px; font-weight: 700; letter-spacing: 1.2px; }
             .agency-copy strong { display: block; margin: 1mm 0; color: #123f70; font-size: 15px; letter-spacing: .25px; }
             .agency-copy b { display: block; color: #174f86; font-size: 10px; letter-spacing: .3px; }
