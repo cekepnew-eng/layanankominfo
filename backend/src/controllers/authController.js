@@ -385,7 +385,7 @@ exports.login = async (req, res) => {
       try {
         const tndUsername = loginIdentifier;
 
-        const ssoUrl = process.env.SSO_API_URL || 'https://dev-tnd.kotabogor.go.id/api-baru/api/v1/login';
+        const ssoUrl = process.env.SSO_API_URL || 'https://tnd.kotabogor.go.id/api-baru/api/v1/login';
         let tndResponse = null;
         try {
           tndResponse = await fetch(ssoUrl, {
@@ -581,7 +581,7 @@ exports.login = async (req, res) => {
     expireOldUserAgreement(user);
 
     if (user.profile_image_source === 'TND' && user.profile_image) {
-      const ssoUrl = process.env.SSO_API_URL || 'https://dev-tnd.kotabogor.go.id/api-baru/api/v1/login';
+      const ssoUrl = process.env.SSO_API_URL || 'https://tnd.kotabogor.go.id/api-baru/api/v1/login';
       const normalizedImage = getTndProfileImage({ profile_image: user.profile_image }, {}, ssoUrl);
       if (normalizedImage !== user.profile_image) {
         await db.query('UPDATE users SET profile_image = $1 WHERE id = $2', [normalizedImage, user.id]);

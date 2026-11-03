@@ -1,7 +1,7 @@
 const { generateSync } = require('otplib');
 
 async function runTest() {
-  const BASE_URL = 'http://localhost:5000/api';
+  const BASE_URL = 'http://localhost:5001/api';
   const email = `testuser_${Date.now()}@example.com`;
   const password = 'password123';
 

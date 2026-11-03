@@ -12,7 +12,7 @@ async function authenticateTndUser(identifier, password) {
     throw error;
   }
 
-  const ssoUrl = process.env.SSO_API_URL || 'https://dev-tnd.kotabogor.go.id/api-baru/api/v1/login';
+  const ssoUrl = process.env.SSO_API_URL || 'https://tnd.kotabogor.go.id/api-baru/api/v1/login';
   let response = null;
   try {
     response = await fetch(ssoUrl, {
