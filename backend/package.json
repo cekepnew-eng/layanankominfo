@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "node server.js",
-    "db:seed": "node seed_services.js",
+    "db:seed": "node seed.js",
+    "db:seed:admin": "node seed-admin.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
