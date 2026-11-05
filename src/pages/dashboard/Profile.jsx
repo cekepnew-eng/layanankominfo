@@ -11,8 +11,11 @@ export const Profile = () => {
 
   const isMasyarakat = user?.role?.toLowerCase() === 'masyarakat' || user?.roles?.some(r => r.toLowerCase() === 'masyarakat');
   const isPegawai = user?.role?.toLowerCase() === 'pegawai' || user?.roles?.some(r => r.toLowerCase() === 'pegawai');
+  const isTndAccount = String(user?.password_auth_source || user?.passwordAuthSource || '').toUpperCase() === 'TND'
+    || String(user?.profile_image_source || user?.profileImageSource || '').toUpperCase() === 'TND'
+    || (Boolean(user?.nip) && !isMasyarakat);
   const passwordExpiresAt = user?.passwordExpiresAt ? new Date(user.passwordExpiresAt).getTime() : null;
-  const passwordChangeRequired = Boolean(
+  const passwordChangeRequired = !isTndAccount && Boolean(
     user?.passwordChangeRequired ||
     (passwordExpiresAt !== null && !Number.isNaN(passwordExpiresAt) && Date.now() >= passwordExpiresAt)
   );
@@ -133,7 +136,9 @@ export const Profile = () => {
     .toUpperCase() || 'U';
   const isTndProfileImage = String(user?.profile_image_source || user?.profileImageSource || '').toUpperCase() === 'TND';
   const isAdmin = userRoles.some(role => String(role).toUpperCase() === 'ADMIN');
-  const canUploadProfileImage = isAdmin || userRoles.some(role => String(role).toUpperCase() === 'MASYARAKAT');
+  const canUploadProfileImage = isAdmin || userRoles.some(role =>
+    ['HELPDESK', 'MASYARAKAT'].includes(String(role).toUpperCase())
+  );
   const passwordMinLength = 8;
 
   useEffect(() => {
@@ -528,7 +533,7 @@ export const Profile = () => {
                 </div>
               )}
           </div>
-          {canUploadProfileImage && (!isTndProfileImage || isAdmin) && (
+          {canUploadProfileImage && !isTndAccount && (!isTndProfileImage || isAdmin) && (
             <div className="relative mt-3">
               <button
                 type="button"
@@ -579,8 +584,12 @@ export const Profile = () => {
               )}
             </div>
           )}
-          {isTndProfileImage && !isAdmin && (
-            <p className="mt-2 text-[11px] font-semibold text-slate-400">Foto profil tersinkronisasi dari TND</p>
+          {(isTndAccount || (isTndProfileImage && !isAdmin)) && (
+            <p className="mt-2 text-[11px] font-semibold text-slate-400">
+              {isTndAccount
+                ? 'Data identitas, foto, dan kata sandi akun dikelola oleh TND.'
+                : 'Foto profil tersinkronisasi dari TND'}
+            </p>
           )}
 
           <h3 className="text-xl font-black text-slate-900 mt-4 tracking-tight">
@@ -725,10 +734,15 @@ export const Profile = () => {
                 Rincian Identitas Pengguna
               </h3>
               <p className="text-xs text-slate-500 font-semibold mt-0.5">
-                {isMasyarakat
+                {isMasyarakat && !isTndAccount
                   ? 'Kelola data identitas profil dan kata sandi akun masyarakat umum.'
                   : 'Data resmi yang tersinkronisasi dalam basis data layanan SPBE Diskominfo Kota Bogor.'}
               </p>
+              {isTndAccount && (
+                <p className="mt-2 text-xs font-semibold text-sky-700">
+                  Identitas dan kata sandi akun TND tidak dapat diubah melalui Helpdesk.
+                </p>
+              )}
             </div>
 
             {successMessage && (
@@ -738,13 +752,13 @@ export const Profile = () => {
               </div>
             )}
 
-            {passwordChangeRequired && (
+            {passwordChangeRequired && !isTndAccount && (
               <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm font-semibold text-amber-900">
                 Masa berlaku kata sandi satu tahun telah berakhir. Ganti kata sandi sekarang untuk melanjutkan menggunakan layanan.
               </div>
             )}
 
-            {isMasyarakat ? (
+            {isMasyarakat && !isTndAccount ? (
               <form onSubmit={handleUpdateProfile} className="space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="p-4 bg-slate-50/80 rounded-xl border border-slate-200/80 flex items-start gap-3.5 focus-within:border-sky-300 transition-colors">
@@ -1073,7 +1087,7 @@ export const Profile = () => {
                   </div>
                 )}
 
-                {passwordChangeRequired && (
+                {passwordChangeRequired && !isTndAccount && (
                   <form onSubmit={handleUpdateProfile} className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50/60 p-5">
                     <div>
                       <h4 className="text-sm font-black text-slate-900">Kata Sandi Wajib Diperbarui</h4>

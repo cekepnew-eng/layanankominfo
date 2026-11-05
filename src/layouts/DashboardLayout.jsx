@@ -437,7 +437,7 @@ export const DashboardLayout = () => {
   const profileSubtitle = user ? `${getProfileRoleLabel()} • ${getProfileDeptLabel()}` : '';
 
   return (
-    <div className="h-screen w-full theme-premium-bg flex font-sans overflow-hidden">
+    <div className="h-[100dvh] md:h-screen w-full theme-premium-bg flex font-sans overflow-hidden">
       {/* Mobile Sidebar Overlay */}
       {showSidebar && (
         <div
@@ -543,7 +543,7 @@ export const DashboardLayout = () => {
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 h-full max-md:min-h-0 overflow-hidden">
         <header className="h-20 shrink-0 glass-panel border-b-0 flex items-center justify-between px-4 sm:px-8 z-10 sticky top-0">
           <div className="flex items-center gap-2">
             <button
@@ -740,7 +740,7 @@ export const DashboardLayout = () => {
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-8 overflow-y-auto overflow-x-hidden w-full custom-scrollbar">
+        <main className="flex-1 max-md:min-h-0 p-4 sm:p-8 overflow-y-auto overflow-x-hidden w-full custom-scrollbar">
           <ErrorBoundary>
             <Outlet />
           </ErrorBoundary>

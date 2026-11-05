@@ -1,12 +1,12 @@
 const db = require('../config/database');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { generateSecret, generateURI, verifySync } = require('otplib');
-const qrcode = require('qrcode');
 const crypto = require('crypto');
-const { sendResetOtpEmail, sendRegistrationOtpEmail } = require('../services/emailService');
+const createTwoFactorController = require('./twoFactorController');
+const createRegistrationController = require('./registrationController');
+const createPasswordResetController = require('./passwordResetController');
+const createProfileController = require('./profileController');
 const { getTndProfileImage } = require('../utils/tndProfileImage');
-const { getPasswordPolicyFailures } = require('../utils/passwordPolicy');
 const { recordActivity } = require('../utils/activityLogger');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret-key-kominfo-2026';
@@ -254,6 +254,17 @@ async function verifyPassword(inputPassword, storedHash) {
   return inputPassword === storedHash;
 }
 
+
+function maskEmail(email) {
+  if (!email || !email.includes('@')) return email;
+  const [localPart, domain] = email.split('@');
+  if (localPart.length <= 2) return `${localPart[0]}*@${domain}`;
+  const visibleStart = localPart.slice(0, 2);
+  const visibleEnd = localPart.slice(-2);
+  const maskedMiddle = '*'.repeat(Math.max(3, localPart.length - 4));
+  return `${visibleStart}${maskedMiddle}${visibleEnd}@${domain}`;
+}
+
 function formatTimeElapsed(changedAt) {
   if (!changedAt) return 'beberapa saat yang lalu';
   const diffMs = Math.max(0, Date.now() - new Date(changedAt).getTime());
@@ -273,6 +284,7 @@ function formatTimeElapsed(changedAt) {
   }
 }
 
+// Authentication and session handlers
 exports.getCaptcha = (req, res) => {
   const num1 = Math.floor(Math.random() * 10) + 1;
   const num2 = Math.floor(Math.random() * 10) + 1;
@@ -304,7 +316,7 @@ exports.login = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Captcha kadaluarsa atau tidak valid.' });
     }
 
-    const loginIdentifier = (email || '').trim();
+    const loginIdentifier = typeof email === 'string' ? email.trim() : '';
     if (!loginIdentifier) {
       return res.status(400).json({ success: false, message: 'NIP atau email wajib diisi.' });
     }
@@ -321,12 +333,11 @@ exports.login = async (req, res) => {
 
     // 1. Cari pengguna secara lokal: cek email ATAU nip
     let userRes = await db.query(
-      `SELECT * FROM users 
+      `SELECT * FROM users
        WHERE is_active = true 
          AND (
-           LOWER(email) = LOWER($1) 
-           OR nip = $1 
-           OR (nip IS NULL AND email = $1)
+           LOWER(BTRIM(email)) = LOWER($1)
+           OR BTRIM(nip) = $1
          )
        ORDER BY created_at ASC 
        LIMIT 1`,
@@ -335,53 +346,52 @@ exports.login = async (req, res) => {
 
     let user = null;
     let isMatch = false;
+    let isTndPasswordAccount = false;
 
     if (userRes.rows.length > 0) {
       user = userRes.rows[0];
       user.roles = await resolveUserRoles(user.id);
+      const userRoleNames = user.roles.map(role => String(role).toUpperCase());
+      const passwordAuthSource = String(user.password_auth_source || '').toUpperCase();
+      isTndPasswordAccount = passwordAuthSource === 'TND'
+        || (passwordAuthSource !== 'LOCAL' && (
+          String(user.profile_image_source || '').toUpperCase() === 'TND'
+          || (Boolean(user.nip) && !userRoleNames.includes('MASYARAKAT'))
+        ));
 
-      // Verifikasi password terhadap hash aktif
-      isMatch = await verifyPassword(password, user.password_hash);
+      if (!isTndPasswordAccount) {
+        isMatch = await verifyPassword(password, user.password_hash);
 
-      // Jika password tidak cocok, periksa apakah pengguna memasukkan password lama
-      if (!isMatch && user.previous_password_hash) {
-        const isOldMatch = await verifyPassword(password, user.previous_password_hash);
-        if (isOldMatch) {
-          const retryAfterSeconds = await recordFailedLogin(loginIdentifier);
-          if (retryAfterSeconds > 0) {
-            return res.status(429).json({
+        // Jika password tidak cocok, periksa apakah pengguna memasukkan password lama
+        if (!isMatch && user.previous_password_hash) {
+          const isOldMatch = await verifyPassword(password, user.previous_password_hash);
+          if (isOldMatch) {
+            const retryAfterSeconds = await recordFailedLogin(loginIdentifier);
+            if (retryAfterSeconds > 0) {
+              return res.status(429).json({
+                success: false,
+                isLoginLocked: true,
+                retryAfterSeconds,
+                message: `Anda telah salah memasukkan kata sandi 5 kali. Silakan tunggu ${formatLockoutDuration(retryAfterSeconds)} sebelum mencoba lagi.`
+              });
+            }
+            const timeText = formatTimeElapsed(user.password_changed_at);
+            return res.status(400).json({
               success: false,
-              isLoginLocked: true,
-              retryAfterSeconds,
-              message: `Anda telah salah memasukkan kata sandi 5 kali. Silakan tunggu ${formatLockoutDuration(retryAfterSeconds)} sebelum mencoba lagi.`
+              isOldPassword: true,
+              message: `Sandi Anda sudah diubah ${timeText}.`
             });
           }
-          const timeText = formatTimeElapsed(user.password_changed_at);
-          return res.status(400).json({
-            success: false,
-            isOldPassword: true,
-            message: `Sandi Anda sudah diubah ${timeText}.`
-          });
         }
       }
     }
 
     const isMasyarakat = user && user.roles && user.roles.some(r => String(r).toUpperCase() === 'MASYARAKAT');
 
-    // Cek apakah akun butuh sinkronisasi data (jika nama masih sama dengan email/NIP, department 'TND User', atau kolom nip belum terisi)
-    const needsSync = !isMasyarakat && user && (
-      user.full_name === user.email ||
-      user.department === 'TND User' ||
-      !user.nip ||
-      ((!user.profile_image && String(user.profile_image_source || '').toUpperCase() !== 'NONE' ||
-        (user.profile_image_source === 'TND' && !/^https?:\/\//i.test(user.profile_image))) &&
-        user.roles.some(role => ['USER', 'PEGAWAI'].includes(String(role).toUpperCase())))
-    );
-
     // Refresh TND-linked profiles on login, even when the account uses a local password.
     const isTndLinkedProfile = String(user?.password_auth_source || '').toUpperCase() === 'TND'
       || String(user?.profile_image_source || '').toUpperCase() === 'TND';
-    if (!isMasyarakat && (!isMatch || needsSync || isTndLinkedProfile)) {
+    if (isTndPasswordAccount || (!isMasyarakat && (!isMatch || isTndLinkedProfile))) {
       try {
         const tndUsername = loginIdentifier;
 
@@ -402,27 +412,22 @@ exports.login = async (req, res) => {
           tndData = await tndResponse.json().catch(() => null);
         }
 
-        // Fallback untuk akun testing sandbox OPD (Rendi Triyawan) jika server dev-tnd sedang tidak merespon/akun belum disinkronkan di dev-tnd
-        if ((!tndData || tndData?.success === false) && !user && (
-          tndUsername === '199902032025211037' ||
-          tndUsername.toLowerCase() === 'renditriyawan@kotabogor.go.id' ||
-          tndUsername.toLowerCase().includes('rendi')
-        )) {
-          tndData = {
-            success: true,
-            data: {
-              user: {
-                nama: 'Rendi Triyawan',
-                nik: '3201130302990004',
-                nip: '199902032025211037',
-                nama_pd: 'Sekretariat Daerah Kota Bogor',
-                username: '199902032025211037',
-                email: 'renditriyawan@kotabogor.go.id',
-                no_hp: '081234567890',
-                foto: '20220419082701.jpg'
-              }
-            }
-          };
+        if (isTndPasswordAccount && (!tndResponse || tndResponse.status >= 500)) {
+          return res.status(503).json({
+            success: false,
+            message: 'Layanan login TND sedang tidak tersedia. Silakan coba lagi.'
+          });
+        }
+
+        if (isTndPasswordAccount && tndResponse?.ok && !tndData) {
+          return res.status(502).json({
+            success: false,
+            message: 'Respons layanan login TND tidak valid. Silakan coba lagi.'
+          });
+        }
+
+        if (isTndPasswordAccount && (!tndResponse?.ok || tndData?.success === false)) {
+          isMatch = false;
         }
 
         if (tndData && tndData?.success !== false) {
@@ -435,9 +440,6 @@ exports.login = async (req, res) => {
           const department = tndUser.nama_pd || tndUser.unit_kerja || tndData?.data?.opd_name || 'Dinas Kota Bogor';
           const phone = tndUser.no_hp || tndUser.no_telepon || user?.phone_number || '0000000000';
           const tndProfileImage = getTndProfileImage(tndUser, tndData, ssoUrl);
-
-          const salt = await bcrypt.genSalt(10);
-          const hash = await bcrypt.hash(password, salt);
 
           // Cek seluruh akun yang cocok dengan NIP atau Email dari TND untuk memastikan 1 Akun Tunggal
           const lookupRes = await db.query(
@@ -484,12 +486,12 @@ exports.login = async (req, res) => {
             // Perbarui akun utama dengan NIP, email, password hash, dan profil terbaru
             await db.query(
               `UPDATE users
-               SET password_hash = $1, email = $2, nip = $3, full_name = $4, department = $5, phone_number = $6,
+               SET email = $1, nip = $2, full_name = $3, department = $4, phone_number = $5,
                    password_auth_source = 'TND',
-                   profile_image = COALESCE($7, profile_image),
-                   profile_image_source = CASE WHEN $7::text IS NOT NULL THEN 'TND' ELSE profile_image_source END
-               WHERE id = $8`,
-              [hash, finalEmail, finalNip, fullName, department, phone, tndProfileImage, user.id]
+                   profile_image = $6,
+                   profile_image_source = CASE WHEN $6::text IS NOT NULL THEN 'TND' ELSE 'NONE' END
+               WHERE id = $7`,
+              [finalEmail, finalNip, fullName, department, phone, tndProfileImage, user.id]
             );
 
             user.email = finalEmail;
@@ -497,10 +499,8 @@ exports.login = async (req, res) => {
             user.full_name = fullName;
             user.department = department;
             user.phone_number = phone;
-            if (tndProfileImage) {
-              user.profile_image = tndProfileImage;
-              user.profile_image_source = 'TND';
-            }
+            user.profile_image = tndProfileImage;
+            user.profile_image_source = tndProfileImage ? 'TND' : 'NONE';
           } else {
             // User baru pertama kali masuk, buat 1 akun tunggal yang langsung menyimpan NIP dan Email
             const roleRes = await db.query("SELECT id FROM roles WHERE name = 'USER'");
@@ -514,6 +514,7 @@ exports.login = async (req, res) => {
               : (loginIdentifier.includes('@') ? loginIdentifier : `${tndNip || loginIdentifier}@kotabogor.go.id`);
 
             const finalNip = tndNip || (loginIdentifier.match(/^\d{10,}$/) ? loginIdentifier : null);
+            const passwordPlaceholderHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
 
             const client = await db.pool.connect();
             try {
@@ -526,7 +527,7 @@ exports.login = async (req, res) => {
                  VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $7::text IS NOT NULL THEN 'TND' ELSE NULL END,
                          CURRENT_TIMESTAMP, 'TND')
                  RETURNING *`,
-                [finalEmail, finalNip, hash, fullName, phone, department, tndProfileImage]
+                [finalEmail, finalNip, passwordPlaceholderHash, fullName, phone, department, tndProfileImage]
               );
               user = insertRes.rows[0];
 
@@ -549,6 +550,12 @@ exports.login = async (req, res) => {
         }
       } catch (err) {
         console.error('TND SSO Error:', err.message);
+        if (isTndPasswordAccount) {
+          return res.status(503).json({
+            success: false,
+            message: 'Layanan login TND sedang tidak tersedia. Silakan coba lagi.'
+          });
+        }
       }
     }
 
@@ -630,6 +637,7 @@ exports.login = async (req, res) => {
             roles: user.roles, department: user.department, profile_image: user.profile_image,
             profile_image_source: user.profile_image_source, profileImage: user.profile_image,
             profileImageSource: user.profile_image_source, teams: await getUserTeams(user.id),
+            password_auth_source: user.password_auth_source,
             passwordChangeRequired,
             passwordExpiresAt: getPasswordExpiresAt(user),
             twoFactorEnabled: true,
@@ -695,6 +703,7 @@ exports.login = async (req, res) => {
           profile_image_source: user.profile_image_source,
           profileImage: user.profile_image,
           profileImageSource: user.profile_image_source,
+          password_auth_source: user.password_auth_source,
           teams: await getUserTeams(user.id),
           passwordChangeRequired,
           passwordExpiresAt: getPasswordExpiresAt(user),
@@ -708,527 +717,6 @@ exports.login = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Server error during login' });
-  }
-};
-
-const normalizeRegistrationEmail = (email) =>
-  typeof email === 'string' ? email.trim().toLowerCase() : '';
-
-const isValidRegistrationEmail = (email) =>
-  email.length <= 255 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-
-const hashRegistrationOtp = (otp) =>
-  crypto.createHash('sha256').update(otp).digest('hex');
-
-const registrationOtpMatches = (otp, otpHash) => {
-  const inputHash = Buffer.from(hashRegistrationOtp(otp), 'hex');
-  const storedHash = Buffer.from(otpHash, 'hex');
-  return inputHash.length === storedHash.length && crypto.timingSafeEqual(inputHash, storedHash);
-};
-
-exports.requestRegistrationOtp = async (req, res) => {
-  const email = normalizeRegistrationEmail(req.body?.email);
-  if (!isValidRegistrationEmail(email)) {
-    return res.status(400).json({ success: false, message: 'Masukkan alamat email yang valid.' });
-  }
-
-  try {
-    await ensurePasswordCols();
-    const existingUser = await db.query(
-      'SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1',
-      [email]
-    );
-    if (existingUser.rows.length > 0) {
-      return res.status(400).json({ success: false, message: 'Email sudah terdaftar.' });
-    }
-
-    const cooldown = await db.query(
-      `SELECT created_at FROM registration_email_otps
-       WHERE email = $1 AND created_at > NOW() - INTERVAL '60 seconds'
-       ORDER BY created_at DESC LIMIT 1`,
-      [email]
-    );
-    if (cooldown.rows.length > 0) {
-      const secondsRemaining = Math.max(
-        1,
-        60 - Math.floor((Date.now() - new Date(cooldown.rows[0].created_at).getTime()) / 1000)
-      );
-      return res.status(429).json({
-        success: false,
-        message: `Mohon tunggu ${secondsRemaining} detik sebelum meminta kode OTP baru.`
-      });
-    }
-
-    const otp = crypto.randomInt(0, 1000000).toString().padStart(6, '0');
-    const otpHash = hashRegistrationOtp(otp);
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-    await db.query(
-      'UPDATE registration_email_otps SET is_used = true WHERE email = $1 AND is_used = false',
-      [email]
-    );
-    const insertedOtp = await db.query(
-      `INSERT INTO registration_email_otps (email, otp_hash, attempts, is_used, expires_at)
-       VALUES ($1, $2, 0, false, $3) RETURNING id`,
-      [email, otpHash, expiresAt]
-    );
-
-    try {
-      await sendRegistrationOtpEmail({ to: email, otp });
-    } catch (emailError) {
-      await db.query(
-        'UPDATE registration_email_otps SET is_used = true WHERE id = $1',
-        [insertedOtp.rows[0].id]
-      );
-      console.error('Registration OTP email delivery failed:', emailError.message);
-      return res.status(503).json({
-        success: false,
-        message: 'Email OTP belum dapat dikirim. Periksa konfigurasi email lalu coba lagi.'
-      });
-    }
-
-    return res.json({
-      success: true,
-      maskedEmail: maskEmail(email),
-      message: `Kode verifikasi telah dikirim ke ${maskEmail(email)}. Kode berlaku selama 10 menit.`
-    });
-  } catch (err) {
-    console.error('Error in requestRegistrationOtp:', err.message);
-    return res.status(500).json({
-      success: false,
-      message: 'Terjadi kesalahan sistem saat mengirim kode verifikasi.'
-    });
-  }
-};
-
-exports.verifyRegistrationOtp = async (req, res) => {
-  const email = normalizeRegistrationEmail(req.body?.email);
-  const otp = typeof req.body?.otp === 'string' ? req.body.otp.trim() : '';
-
-  if (!isValidRegistrationEmail(email) || !/^\d{6}$/.test(otp)) {
-    return res.status(400).json({
-      success: false,
-      message: 'Masukkan email yang valid dan kode OTP 6 digit.'
-    });
-  }
-
-  try {
-    await ensurePasswordCols();
-    const result = await db.query(
-      `SELECT id, otp_hash, attempts, expires_at FROM registration_email_otps
-       WHERE email = $1 AND is_used = false
-       ORDER BY created_at DESC LIMIT 1`,
-      [email]
-    );
-    const otpRecord = result.rows[0];
-
-    if (!otpRecord || new Date(otpRecord.expires_at) <= new Date()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Kode OTP sudah kedaluwarsa atau tidak valid. Minta kode baru.'
-      });
-    }
-
-    if (otpRecord.attempts >= 5) {
-      await db.query('UPDATE registration_email_otps SET is_used = true WHERE id = $1', [otpRecord.id]);
-      return res.status(400).json({
-        success: false,
-        message: 'Batas percobaan OTP habis. Minta kode verifikasi baru.'
-      });
-    }
-
-    if (!registrationOtpMatches(otp, otpRecord.otp_hash)) {
-      const attempts = otpRecord.attempts + 1;
-      await db.query(
-        'UPDATE registration_email_otps SET attempts = $1, is_used = $2 WHERE id = $3',
-        [attempts, attempts >= 5, otpRecord.id]
-      );
-      return res.status(400).json({
-        success: false,
-        message: `Kode OTP salah. Sisa percobaan: ${Math.max(0, 5 - attempts)}.`
-      });
-    }
-
-    return res.json({ success: true, message: 'Email berhasil diverifikasi.' });
-  } catch (err) {
-    console.error('Error in verifyRegistrationOtp:', err.message);
-    return res.status(500).json({
-      success: false,
-      message: 'Terjadi kesalahan sistem saat memverifikasi email.'
-    });
-  }
-};
-
-exports.register = async (req, res) => {
-  const email = normalizeRegistrationEmail(req.body?.email);
-  const { password, fullName, phone } = req.body || {};
-  const otp = typeof req.body?.otp === 'string' ? req.body.otp.trim() : '';
-
-  if (!isValidRegistrationEmail(email)) {
-    return res.status(400).json({ success: false, message: 'Masukkan alamat email yang valid.' });
-  }
-  if (typeof fullName !== 'string' || !fullName.trim() || fullName.trim().length > 255) {
-    return res.status(400).json({ success: false, message: 'Nama lengkap wajib diisi.' });
-  }
-  const passwordFailures = getPasswordPolicyFailures(password);
-  if (passwordFailures.length > 0) {
-    return res.status(400).json({
-      success: false,
-      message: `Password belum memenuhi kriteria keamanan: ${passwordFailures.join(', ')}.`
-    });
-  }
-  if (!/^\d{6}$/.test(otp)) {
-    return res.status(400).json({ success: false, message: 'Verifikasi email dengan OTP 6 digit terlebih dahulu.' });
-  }
-
-  let client;
-  let transactionStarted = false;
-  try {
-    await ensurePasswordCols();
-    const hash = await bcrypt.hash(password, 10);
-    client = await db.pool.connect();
-    await client.query('BEGIN');
-    transactionStarted = true;
-
-    const otpResult = await client.query(
-      `SELECT id, otp_hash, attempts, expires_at FROM registration_email_otps
-       WHERE email = $1 AND is_used = false
-       ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
-      [email]
-    );
-    const otpRecord = otpResult.rows[0];
-
-    if (!otpRecord || new Date(otpRecord.expires_at) <= new Date()) {
-      await client.query('ROLLBACK');
-      transactionStarted = false;
-      return res.status(400).json({
-        success: false,
-        message: 'Kode OTP sudah kedaluwarsa atau tidak valid. Verifikasi email kembali.'
-      });
-    }
-
-    if (otpRecord.attempts >= 5) {
-      await client.query('UPDATE registration_email_otps SET is_used = true WHERE id = $1', [otpRecord.id]);
-      await client.query('COMMIT');
-      transactionStarted = false;
-      return res.status(400).json({
-        success: false,
-        message: 'Batas percobaan OTP habis. Minta kode verifikasi baru.'
-      });
-    }
-
-    if (!registrationOtpMatches(otp, otpRecord.otp_hash)) {
-      const attempts = otpRecord.attempts + 1;
-      await client.query(
-        'UPDATE registration_email_otps SET attempts = $1, is_used = $2 WHERE id = $3',
-        [attempts, attempts >= 5, otpRecord.id]
-      );
-      await client.query('COMMIT');
-      transactionStarted = false;
-      return res.status(400).json({
-        success: false,
-        message: `Kode OTP salah. Sisa percobaan: ${Math.max(0, 5 - attempts)}.`
-      });
-    }
-
-    const roleResult = await client.query("SELECT id FROM roles WHERE name = 'MASYARAKAT'");
-    if (roleResult.rows.length === 0) {
-      throw new Error('Role MASYARAKAT is not configured');
-    }
-
-    const insertResult = await client.query(
-      `INSERT INTO users (email, password_hash, full_name, phone_number, department, password_changed_at, password_auth_source)
-       VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, 'LOCAL') RETURNING id, email, full_name`,
-      [email, hash, fullName.trim(), phone || '00000', 'Masyarakat Umum']
-    );
-    await client.query(
-      'INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)',
-      [insertResult.rows[0].id, roleResult.rows[0].id]
-    );
-    await client.query(
-      'UPDATE registration_email_otps SET is_used = true WHERE id = $1',
-      [otpRecord.id]
-    );
-    await recordActivity(client, {
-      actorId: insertResult.rows[0].id,
-      actorName: insertResult.rows[0].full_name,
-      actorRole: 'MASYARAKAT',
-      activityType: 'user_created',
-      description: `Pengguna mendaftarkan akun masyarakat ${insertResult.rows[0].full_name}.`,
-      metadata: { targetUserId: insertResult.rows[0].id }
-    });
-    await client.query('COMMIT');
-    transactionStarted = false;
-
-    return res.status(201).json({
-      success: true,
-      message: 'Registration successful',
-      user: insertResult.rows[0]
-    });
-  } catch (err) {
-    if (client && transactionStarted) {
-      await client.query('ROLLBACK');
-    }
-    if (err.code === '23505') {
-      return res.status(400).json({ success: false, message: 'Email sudah terdaftar.' });
-    }
-    console.error('Error during registration:', err.message);
-    return res.status(500).json({ success: false, message: 'Server error during registration' });
-  } finally {
-    if (client) client.release();
-  }
-};
-
-exports.getMe = async (req, res) => {
-  try {
-    const userRes = await db.query(
-      `SELECT * FROM users WHERE id = $1`,
-      [req.user.id]
-    );
-    if (userRes.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
-
-    const user = userRes.rows[0];
-    expireOldUserAgreement(user);
-    user.roles = await resolveUserRoles(user.id);
-    user.roles = user.roles.length ? user.roles : [getPrimaryRole(user.roles)];
-    user.role = getPrimaryRole(user.roles);
-    user.teams = await getUserTeams(user.id);
-    user.passwordChangeRequired = requiresAnnualPasswordChange(user);
-    user.passwordExpiresAt = getPasswordExpiresAt(user);
-    user.twoFactorEnabled = Boolean(user.is_two_factor_enabled);
-    user.twoFactorChoiceCompleted = Boolean(user.two_factor_choice_completed);
-    user.userAgreementAccepted = Boolean(user.user_agreement_accepted_at);
-    const safeUser = { ...user };
-    delete safeUser.password_hash;
-    delete safeUser.previous_password_hash;
-    delete safeUser.two_factor_secret;
-    delete safeUser.backup_codes;
-
-    res.json({
-      success: true,
-      user: {
-        ...safeUser,
-        profileImage: user.profile_image,
-        profileImageSource: user.profile_image_source
-      }
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Server error fetching profile' });
-  }
-};
-
-exports.acceptUserAgreement = async (req, res) => {
-  if (req.user.purpose !== 'user_agreement') {
-    return res.status(403).json({ success: false, message: 'Token persetujuan pengguna tidak valid.' });
-  }
-  if (req.body?.accepted !== true) {
-    return res.status(400).json({ success: false, message: 'Persetujuan pengguna wajib diberikan.' });
-  }
-
-  try {
-    const result = await db.query(
-      `UPDATE users
-       SET user_agreement_accepted_at = CURRENT_TIMESTAMP
-       WHERE id = $1 AND is_active = true
-       RETURNING *`,
-      [req.user.id]
-    );
-    const user = result.rows[0];
-    if (!user) return res.status(404).json({ success: false, message: 'Pengguna tidak ditemukan.' });
-
-    user.roles = await resolveUserRoles(user.id);
-    user.roles = user.roles.length ? user.roles : [getPrimaryRole(user.roles)];
-    await logSuccessfulLogin(user, 'user_agreement');
-    const role = getPrimaryRole(user.roles);
-    const passwordChangeRequired = requiresAnnualPasswordChange(user);
-    const token = jwt.sign({
-      id: user.id,
-      email: user.email,
-      nip: user.nip,
-      role,
-      roles: user.roles,
-      name: user.full_name,
-      department: user.department,
-      passwordChangeRequired,
-      passwordExpiresAt: getPasswordExpiresAt(user)
-    }, JWT_SECRET, { expiresIn: '24h' });
-
-    const safeUser = { ...user };
-    delete safeUser.password_hash;
-    delete safeUser.previous_password_hash;
-    delete safeUser.two_factor_secret;
-    delete safeUser.backup_codes;
-
-    return res.json({
-      success: true,
-      token,
-      user: {
-        ...safeUser,
-        role,
-        roles: user.roles,
-        teams: await getUserTeams(user.id),
-        passwordChangeRequired,
-        passwordExpiresAt: getPasswordExpiresAt(user),
-        twoFactorEnabled: Boolean(user.is_two_factor_enabled),
-        twoFactorChoiceCompleted: Boolean(user.two_factor_choice_completed),
-        userAgreementAccepted: true,
-        profileImage: user.profile_image,
-        profileImageSource: user.profile_image_source
-      }
-    });
-  } catch (error) {
-    console.error('acceptUserAgreement error:', error.message);
-    return res.status(500).json({ success: false, message: 'Persetujuan pengguna tidak dapat disimpan.' });
-  }
-};
-
-exports.updateProfile = async (req, res) => {
-  const { fullName, newPassword, oldPassword } = req.body;
-  const userId = req.user?.id;
-
-  if (!userId) {
-    return res.status(401).json({ success: false, message: 'Tidak terotentikasi' });
-  }
-
-  try {
-    await ensurePasswordCols();
-
-    const currentUserRes = await db.query('SELECT * FROM users WHERE id = $1', [userId]);
-    if (currentUserRes.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Pengguna tidak ditemukan' });
-    }
-    const currentUser = currentUserRes.rows[0];
-
-    const trimmedName = fullName !== undefined ? String(fullName).trim() : currentUser.full_name;
-    if (!trimmedName) {
-      return res.status(400).json({ success: false, message: 'Nama lengkap tidak boleh kosong' });
-    }
-
-    const hasProfileImage = req.body.profileImage !== undefined;
-    const profileImage = req.body.profileImage;
-    let profileImageBytes = 0;
-    if (hasProfileImage) {
-      const userRoles = [
-        ...(Array.isArray(req.user.roles) ? req.user.roles : []),
-        req.user.role
-      ].filter(Boolean).map(role => String(role).toUpperCase());
-      if (!userRoles.some(role => role === 'ADMIN' || role === 'MASYARAKAT')) {
-        return res.status(403).json({ success: false, message: 'Unggah foto profil hanya tersedia untuk akun Admin dan Masyarakat.' });
-      }
-      if (currentUser.profile_image_source === 'TND' && !userRoles.includes('ADMIN')) {
-        return res.status(403).json({ success: false, message: 'Foto profil akun ini dikelola oleh TND.' });
-      }
-      if (profileImage !== null) {
-        const match = typeof profileImage === 'string'
-          ? profileImage.match(/^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/)
-          : null;
-        if (!match) {
-          return res.status(400).json({ success: false, message: 'Foto harus berupa JPG, PNG, atau WEBP.' });
-        }
-        if (profileImage.length > 2 * 1024 * 1024 * 4 / 3 + 64) {
-          return res.status(400).json({ success: false, message: 'Ukuran foto maksimal 2 MB.' });
-        }
-        profileImageBytes = Buffer.from(match[2], 'base64').length;
-        if (profileImageBytes === 0 || profileImageBytes > 2 * 1024 * 1024) {
-          return res.status(400).json({ success: false, message: 'Ukuran foto maksimal 2 MB.' });
-        }
-      }
-    }
-
-    if (req.user.passwordChangeRequired && !newPassword) {
-      return res.status(400).json({
-        success: false,
-        requiresPasswordChange: true,
-        message: 'Anda wajib mengganti kata sandi untuk melanjutkan.'
-      });
-    }
-
-    if (newPassword) {
-      if (!oldPassword) {
-        return res.status(400).json({ success: false, message: 'Kata sandi lama wajib diisi sebelum mengubah kata sandi baru.' });
-      }
-
-      const isOldValid = await verifyPassword(oldPassword, currentUser.password_hash);
-      if (!isOldValid) {
-        return res.status(400).json({ success: false, message: 'Kata sandi lama yang Anda masukkan salah.' });
-      }
-
-      const passwordFailures = getPasswordPolicyFailures(newPassword);
-      if (passwordFailures.length > 0) {
-        return res.status(400).json({
-          success: false,
-          message: `Kata sandi baru belum memenuhi kriteria keamanan: ${passwordFailures.join(', ')}.`
-        });
-      }
-
-      const salt = await bcrypt.genSalt(10);
-      const newHash = await bcrypt.hash(newPassword, salt);
-
-      await db.query(
-        `UPDATE users 
-         SET full_name = $1, 
-             previous_password_hash = $2, 
-             password_hash = $3, 
-             password_changed_at = CURRENT_TIMESTAMP,
-             profile_image = CASE WHEN $4 THEN $5 ELSE profile_image END,
-             profile_image_source = CASE WHEN $4 THEN CASE WHEN $5::text IS NULL THEN 'NONE' ELSE 'MANUAL' END ELSE profile_image_source END
-         WHERE id = $6`,
-        [trimmedName, currentUser.password_hash, newHash, hasProfileImage, hasProfileImage ? profileImage : null, userId]
-      );
-    } else {
-      await db.query(
-        `UPDATE users
-         SET full_name = $1,
-             profile_image = CASE WHEN $2 THEN $3 ELSE profile_image END,
-             profile_image_source = CASE WHEN $2 THEN CASE WHEN $3::text IS NULL THEN 'NONE' ELSE 'MANUAL' END ELSE profile_image_source END
-         WHERE id = $4`,
-        [trimmedName, hasProfileImage, hasProfileImage ? profileImage : null, userId]
-      );
-    }
-
-    const updatedRes = await db.query('SELECT * FROM users WHERE id = $1', [userId]);
-    const updatedUser = updatedRes.rows[0];
-    updatedUser.roles = await resolveUserRoles(updatedUser.id);
-    const primaryRole = getPrimaryRole(updatedUser.roles);
-    const passwordChangeRequired = newPassword ? false : requiresAnnualPasswordChange(updatedUser);
-    const token = newPassword
-      ? jwt.sign(
-        {
-          id: updatedUser.id, email: updatedUser.email, role: primaryRole, roles: updatedUser.roles,
-          name: updatedUser.full_name, department: updatedUser.department, passwordChangeRequired,
-          passwordExpiresAt: getPasswordExpiresAt(updatedUser)
-        },
-        JWT_SECRET,
-        { expiresIn: '24h' }
-      )
-      : undefined;
-
-    return res.json({
-      success: true,
-      message: 'Profil berhasil diperbarui',
-      ...(token ? { token } : {}),
-      user: {
-        id: updatedUser.id,
-        email: updatedUser.email,
-        name: updatedUser.full_name,
-        role: primaryRole,
-        roles: updatedUser.roles,
-        department: updatedUser.department,
-        profileImage: updatedUser.profile_image,
-        profileImageSource: updatedUser.profile_image_source,
-        profile_image: updatedUser.profile_image,
-        profile_image_source: updatedUser.profile_image_source,
-        teams: await getUserTeams(updatedUser.id),
-        passwordChangeRequired,
-        passwordExpiresAt: getPasswordExpiresAt(updatedUser),
-        twoFactorEnabled: Boolean(updatedUser.is_two_factor_enabled),
-        twoFactorChoiceCompleted: Boolean(updatedUser.two_factor_choice_completed)
-      }
-    });
-  } catch (err) {
-    console.error('updateProfile error:', err);
-    return res.status(500).json({ success: false, message: 'Terjadi kesalahan pada server saat memperbarui profil' });
   }
 };
 
@@ -1251,833 +739,43 @@ exports.logout = async (req, res) => {
   }
 };
 
-exports.generate2FA = async (req, res) => {
-  try {
-    if (req.user.purpose && !['2fa_setup', '2fa_choice'].includes(req.user.purpose)) {
-      return res.status(403).json({ success: false, message: 'Token tidak dapat digunakan untuk menyiapkan 2FA.' });
-    }
-    const userRes = await db.query('SELECT email, is_two_factor_enabled FROM users WHERE id = $1', [req.user.id]);
-    if (userRes.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
-
-    if (userRes.rows[0].is_two_factor_enabled) {
-      return res.status(400).json({ success: false, message: '2FA is already enabled. You cannot generate a new QR code.' });
-    }
-
-    const secret = generateSecret();
-    const otpauth = generateURI({
-      strategy: 'totp',
-      issuer: 'LayananKominfo',
-      label: userRes.rows[0].email,
-      secret: secret
-    });
-    const qrCodeUrl = await qrcode.toDataURL(otpauth);
-
-    const encryptedSecret = encrypt(secret);
-    await db.query(
-      'UPDATE users SET two_factor_secret = $1, two_factor_reset_at = CURRENT_TIMESTAMP WHERE id = $2',
-      [encryptedSecret, req.user.id]
-    );
-
-    res.json({ success: true, qrCodeUrl, secret });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Server error generating 2FA', error: err.message });
-  }
-};
-
-exports.skip2FASetup = async (req, res) => {
-  if (req.user.purpose !== '2fa_choice') {
-    return res.status(403).json({ success: false, message: 'Token pilihan 2FA tidak valid.' });
-  }
-
-  try {
-    const userRes = await db.query('SELECT * FROM users WHERE id = $1 AND is_active = true', [req.user.id]);
-    const user = userRes.rows[0];
-    if (!user) return res.status(404).json({ success: false, message: 'Pengguna tidak ditemukan.' });
-
-    expireOldUserAgreement(user);
-    user.roles = await resolveUserRoles(user.id);
-    if (user.is_two_factor_enabled) {
-      return res.status(403).json({ success: false, message: 'Pilihan ini tidak berlaku untuk akun tersebut.' });
-    }
-    await db.query(
-      'UPDATE users SET two_factor_choice_completed = true, two_factor_secret = NULL WHERE id = $1',
-      [user.id]
-    );
-    if (user.user_agreement_accepted_at) await logSuccessfulLogin(user, 'password');
-
-    const primaryRole = getPrimaryRole(user.roles);
-    const passwordChangeRequired = requiresAnnualPasswordChange(user);
-    const token = jwt.sign({
-      id: user.id,
-      email: user.email,
-      nip: user.nip,
-      role: primaryRole,
-      roles: user.roles,
-      name: user.full_name,
-      department: user.department,
-      passwordChangeRequired,
-      passwordExpiresAt: getPasswordExpiresAt(user),
-      ...(!user.user_agreement_accepted_at ? { purpose: 'user_agreement' } : {})
-    }, JWT_SECRET, { expiresIn: '24h' });
-
-    return res.json({
-      success: true,
-      token,
-      passwordChangeRequired,
-      user: {
-        id: user.id,
-        email: user.email,
-        nip: user.nip,
-        name: user.full_name,
-        role: primaryRole,
-        roles: user.roles,
-        department: user.department,
-        profile_image: user.profile_image,
-        profile_image_source: user.profile_image_source,
-        profileImage: user.profile_image,
-        profileImageSource: user.profile_image_source,
-        teams: await getUserTeams(user.id),
-        passwordChangeRequired,
-        passwordExpiresAt: getPasswordExpiresAt(user),
-        twoFactorEnabled: false,
-        twoFactorChoiceCompleted: true,
-        userAgreementAccepted: Boolean(user.user_agreement_accepted_at)
-      },
-      requiresUserAgreement: !user.user_agreement_accepted_at
-    });
-  } catch (error) {
-    console.error('skip2FASetup error:', error.message);
-    return res.status(500).json({ success: false, message: 'Gagal menyimpan pilihan 2FA.' });
-  }
-};
-
-exports.verifySetup2FA = async (req, res) => {
-  const { otp } = req.body;
-  if (!otp || typeof otp !== 'string') {
-    return res.status(400).json({ success: false, message: 'OTP is required and must be a string' });
-  }
-  try {
-    if (req.user.purpose && !['2fa_setup', '2fa_choice'].includes(req.user.purpose)) {
-      return res.status(403).json({ success: false, message: 'Token tidak dapat digunakan untuk verifikasi 2FA.' });
-    }
-    const userRes = await db.query('SELECT two_factor_secret, is_two_factor_enabled FROM users WHERE id = $1', [req.user.id]);
-    if (userRes.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
-
-    if (userRes.rows[0].is_two_factor_enabled) {
-      return res.status(400).json({ success: false, message: '2FA is already enabled' });
-    }
-
-    const encryptedSecret = userRes.rows[0].two_factor_secret;
-    if (!encryptedSecret) {
-      return res.status(400).json({ success: false, message: 'Please generate 2FA QR code first' });
-    }
-
-    const secret = decrypt(encryptedSecret);
-    const result = verifySync({ strategy: 'totp', token: otp, secret, window: 2 });
-
-    if (!result.valid) return res.status(401).json({ success: false, message: 'Kode OTP tidak valid atau sudah kadaluarsa. Silakan coba kode terbaru.' });
-
-    // Generate 8 backup codes
-    const backupCodesRaw = Array.from({ length: 8 }, () => crypto.randomBytes(4).toString('hex'));
-    const backupCodesHashed = backupCodesRaw.map(hashBackupCode);
-
-    await db.query(
-      `UPDATE users
-       SET is_two_factor_enabled = true, two_factor_choice_completed = true, backup_codes = $1
-       WHERE id = $2`,
-      [JSON.stringify(backupCodesHashed), req.user.id]
-    );
-
-    const updatedUserRes = await db.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
-    const updatedUser = updatedUserRes.rows[0];
-    expireOldUserAgreement(updatedUser);
-    updatedUser.roles = await resolveUserRoles(updatedUser.id);
-    updatedUser.roles = updatedUser.roles.length ? updatedUser.roles : [getPrimaryRole(updatedUser.roles)];
-    await recordActivity(db, {
-      actorId: updatedUser.id,
-      actorName: updatedUser.full_name,
-      actorRole: updatedUser.roles.join(', ') || 'UNKNOWN',
-      activityType: 'two_factor_enabled',
-      description: 'Pengguna mengaktifkan autentikasi dua faktor.'
-    });
-    if (updatedUser.user_agreement_accepted_at) await logSuccessfulLogin(updatedUser, 'password_and_2fa');
-    const primaryRole = getPrimaryRole(updatedUser.roles);
-
-    const token = jwt.sign(
-      {
-        id: updatedUser.id, email: updatedUser.email, role: primaryRole, roles: updatedUser.roles,
-        name: updatedUser.full_name, department: updatedUser.department,
-        passwordChangeRequired: requiresAnnualPasswordChange(updatedUser),
-        passwordExpiresAt: getPasswordExpiresAt(updatedUser),
-        ...(!updatedUser.user_agreement_accepted_at ? { purpose: 'user_agreement' } : {})
-      },
-      JWT_SECRET,
-      { expiresIn: '24h' }
-    );
-
-    res.json({
-      success: true,
-      message: '2FA enabled successfully',
-      backupCodes: backupCodesRaw,
-      token,
-      passwordChangeRequired: requiresAnnualPasswordChange(updatedUser),
-      user: {
-        id: updatedUser.id,
-        email: updatedUser.email,
-        nip: updatedUser.nip,
-        name: updatedUser.full_name,
-        role: primaryRole,
-        roles: updatedUser.roles,
-        department: updatedUser.department,
-        profileImage: updatedUser.profile_image,
-        profileImageSource: updatedUser.profile_image_source,
-        profile_image: updatedUser.profile_image,
-        profile_image_source: updatedUser.profile_image_source,
-        teams: await getUserTeams(updatedUser.id),
-        passwordChangeRequired: requiresAnnualPasswordChange(updatedUser),
-        passwordExpiresAt: getPasswordExpiresAt(updatedUser),
-        twoFactorEnabled: true,
-        twoFactorChoiceCompleted: true,
-        userAgreementAccepted: Boolean(updatedUser.user_agreement_accepted_at)
-      },
-      requiresUserAgreement: !updatedUser.user_agreement_accepted_at
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Server error verifying 2FA setup' });
-  }
-};
-
-exports.disableProfile2FA = async (req, res) => {
-  try {
-    const userRes = await db.query(
-      'SELECT is_two_factor_enabled FROM users WHERE id = $1',
-      [req.user.id]
-    );
-    const user = userRes.rows[0];
-    if (!user?.is_two_factor_enabled) {
-      return res.status(400).json({ success: false, message: '2FA belum aktif pada akun ini.' });
-    }
-
-    await db.query(
-      `UPDATE users
-       SET is_two_factor_enabled = false, two_factor_secret = NULL, backup_codes = '[]'::jsonb,
-           two_factor_reset_at = CURRENT_TIMESTAMP, two_factor_choice_completed = true
-       WHERE id = $1`,
-      [req.user.id]
-    );
-    await recordActivity(db, {
-      actorId: req.user.id,
-      actorName: req.user.name,
-      actorRole: ((Array.isArray(req.user.roles) && req.user.roles.length) ? req.user.roles : [req.user.role])
-        .filter(Boolean)
-        .map(role => String(role).toUpperCase())
-        .join(', ') || 'UNKNOWN',
-      activityType: 'two_factor_disabled',
-      description: 'Pengguna menonaktifkan autentikasi dua faktor.'
-    });
-    return res.json({
-      success: true,
-      twoFactorEnabled: false,
-      twoFactorChoiceCompleted: true,
-      message: '2FA berhasil dinonaktifkan.'
-    });
-  } catch (error) {
-    console.error('disableProfile2FA error:', error.message);
-    return res.status(500).json({ success: false, message: 'Gagal menonaktifkan 2FA.' });
-  }
-};
-
-exports.login2FA = async (req, res) => {
-  const { tempToken, otp, trustDevice } = req.body;
-
-  if (!tempToken || typeof tempToken !== 'string') {
-    return res.status(401).json({ success: false, message: 'Temporary token is required' });
-  }
-
-  if (!otp || typeof otp !== 'string') {
-    return res.status(401).json({ success: false, message: 'OTP is required' });
-  }
-
-  try {
-    const decoded = jwt.verify(tempToken, JWT_SECRET);
-    if (decoded.purpose !== '2fa') return res.status(401).json({ success: false, message: 'Invalid token purpose' });
-
-    const userRes = await db.query('SELECT * FROM users WHERE id = $1', [decoded.id]);
-
-    if (userRes.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
-    const user = userRes.rows[0];
-    user.roles = await resolveUserRoles(user.id);
-    user.roles = user.roles.length ? user.roles : [getPrimaryRole(user.roles)];
-    expireOldUserAgreement(user);
-
-    if (!user.is_two_factor_enabled || !user.two_factor_secret) {
-      return res.status(400).json({ success: false, message: '2FA is not enabled for this user' });
-    }
-
-    let isValid = false;
-    let isBackupCode = false;
-
-    // Check TOTP
-    try {
-      const secret = decrypt(user.two_factor_secret);
-      let result = { valid: false };
-
-      // otplib strict validation: token must be pure digits
-      const cleanOtp = String(otp || '').trim();
-      if (/^\d+$/.test(cleanOtp)) {
-        try {
-          result = verifySync({ strategy: 'totp', token: cleanOtp, secret, window: 2 });
-        } catch (otplibErr) {
-          console.error('otplib error:', otplibErr.message);
-        }
-      }
-
-      if (result.valid) {
-        isValid = true;
-      } else {
-        // Check backup codes
-        const backupCodesHashed = typeof user.backup_codes === 'string' ? JSON.parse(user.backup_codes) : (user.backup_codes || []);
-        const hashedInput = hashBackupCode(otp);
-
-        if (backupCodesHashed.includes(hashedInput)) {
-          isValid = true;
-          isBackupCode = true;
-          // Remove used backup code
-          const newBackupCodes = backupCodesHashed.filter(c => c !== hashedInput);
-          await db.query('UPDATE users SET backup_codes = $1 WHERE id = $2', [JSON.stringify(newBackupCodes), user.id]);
-        }
-      }
-    } catch (cryptoErr) {
-      console.error('Error during 2FA crypto validation:', cryptoErr);
-      return res.status(500).json({ success: false, message: 'Internal error validating 2FA' });
-    }
-
-    if (!isValid) {
-      return res.status(401).json({ success: false, message: 'Invalid OTP or Backup Code. Access Denied.' });
-    }
-
-    const primaryRole = getPrimaryRole(user.roles);
-    const passwordChangeRequired = requiresAnnualPasswordChange(user);
-    if (user.user_agreement_accepted_at) await logSuccessfulLogin(user, 'password_and_2fa');
-
-    const token = jwt.sign(
-      {
-        id: user.id, email: user.email, role: primaryRole, roles: user.roles,
-        name: user.full_name, department: user.department, passwordChangeRequired,
-        passwordExpiresAt: getPasswordExpiresAt(user),
-        ...(!user.user_agreement_accepted_at ? { purpose: 'user_agreement' } : {})
-      },
-      JWT_SECRET,
-      { expiresIn: '24h' }
-    );
-
-    let trustedDeviceToken = null;
-    if (trustDevice) {
-      trustedDeviceToken = jwt.sign(
-        { id: user.id, purpose: 'trusted_device' },
-        JWT_SECRET,
-        { expiresIn: '30d' }
-      );
-    }
-
-    res.json({
-      success: true,
-      token,
-      trustedDeviceToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        nip: user.nip,
-        name: user.full_name,
-        role: primaryRole,
-        roles: user.roles,
-        department: user.department,
-        profileImage: user.profile_image,
-        profileImageSource: user.profile_image_source,
-        profile_image: user.profile_image,
-        profile_image_source: user.profile_image_source,
-        teams: await getUserTeams(user.id),
-        passwordChangeRequired,
-        passwordExpiresAt: getPasswordExpiresAt(user),
-        twoFactorEnabled: true,
-        twoFactorChoiceCompleted: true,
-        userAgreementAccepted: Boolean(user.user_agreement_accepted_at)
-      },
-      requiresUserAgreement: !user.user_agreement_accepted_at
-    });
-  } catch (err) {
-    console.error(err);
-    if (err.name === 'TokenExpiredError') {
-      return res.status(401).json({ success: false, message: 'Temporary token expired. Please login again.' });
-    }
-    res.status(500).json({ success: false, message: 'Server error during 2FA login' });
-  }
-};
-
-function maskEmail(email) {
-  if (!email || !email.includes('@')) return email;
-  const [localPart, domain] = email.split('@');
-  if (localPart.length <= 2) return `${localPart[0]}*@${domain}`;
-  const visibleStart = localPart.slice(0, 2);
-  const visibleEnd = localPart.slice(-2);
-  const maskedMiddle = '*'.repeat(Math.max(3, localPart.length - 4));
-  return `${visibleStart}${maskedMiddle}${visibleEnd}@${domain}`;
-}
-
-exports.requestResetOtp = async (req, res) => {
-  const identifier = (req.body.identifier || req.body.email || '').trim();
-  if (!identifier) {
-    return res.status(400).json({ success: false, message: 'Email atau NIP wajib diisi.' });
-  }
-
-  try {
-    await ensurePasswordCols();
-
-    // Cari user aktif berdasarkan email ATAU nip
-    const userRes = await db.query(
-      `SELECT id, full_name, email, nip, is_active FROM users 
-       WHERE is_active = true 
-         AND (LOWER(email) = LOWER($1) OR nip = $1)
-       LIMIT 1`,
-      [identifier]
-    );
-
-    if (userRes.rows.length === 0) {
-      return res.json({
-        success: true,
-        message: 'Jika akun dengan data tersebut terdaftar dan memiliki email, kode pemulihan akan dikirim.'
-      });
-    }
-
-    const user = userRes.rows[0];
-
-    if (!user.email || !user.email.includes('@')) {
-      return res.json({
-        success: true,
-        message: 'Jika akun dengan data tersebut terdaftar dan memiliki email, kode pemulihan akan dikirim.'
-      });
-    }
-
-    const targetEmail = user.email.toLowerCase().trim();
-
-    // Cooldown 60 detik antar permintaan OTP untuk email yang sama
-    const cooldownRes = await db.query(
-      `SELECT created_at FROM password_reset_otps 
-       WHERE email = $1 AND is_used = false AND created_at > NOW() - INTERVAL '60 seconds'
-       ORDER BY created_at DESC 
-       LIMIT 1`,
-      [targetEmail]
-    );
-
-    if (cooldownRes.rows.length > 0) {
-      return res.json({
-        success: true,
-        message: 'Jika akun terdaftar dan memiliki email, kode pemulihan telah dikirim. Periksa inbox atau spam.'
-      });
-    }
-
-    // Nonaktifkan OTP lama yang belum terpakai untuk email ini
-    await db.query(
-      `UPDATE password_reset_otps SET is_used = true WHERE email = $1 AND is_used = false`,
-      [targetEmail]
-    );
-
-    // Buat kode OTP 6-digit acak
-    const rawOtp = crypto.randomInt(100000, 1000000).toString();
-    const otpHash = crypto.createHash('sha256').update(rawOtp).digest('hex');
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 menit
-
-    // Simpan hash ke database
-    await db.query(
-      `INSERT INTO password_reset_otps (email, otp_hash, attempts, is_used, expires_at)
-       VALUES ($1, $2, 0, false, $3)`,
-      [targetEmail, otpHash, expiresAt]
-    );
-
-    try {
-      await sendResetOtpEmail({
-        to: targetEmail,
-        name: user.full_name,
-        otp: rawOtp
-      });
-    } catch (err) {
-      await db.query('UPDATE password_reset_otps SET is_used = true WHERE email = $1 AND is_used = false', [targetEmail]);
-      throw err;
-    }
-
-    return res.json({
-      success: true,
-      message: 'Jika akun terdaftar dan memiliki email, kode pemulihan telah dikirim. Kode berlaku selama 10 menit.'
-    });
-  } catch (err) {
-    console.error('Error in requestResetOtp:', err);
-    return res.status(500).json({
-      success: false,
-      message: 'Terjadi kesalahan sistem saat memproses permintaan reset kata sandi.'
-    });
-  }
-};
-
-exports.verifyReset2FA = async (req, res) => {
-  const identifier = String(req.body.identifier || req.body.email || '').trim();
-  const otp = String(req.body.otp || '').trim();
-
-  if (!identifier || !/^\d{6}$/.test(otp)) {
-    return res.status(400).json({ success: false, isOtpError: true, message: 'Masukkan NIP/email dan kode authenticator 6 digit.' });
-  }
-
-  try {
-    await ensurePasswordCols();
-    const userRes = await db.query(
-      `SELECT id, email, two_factor_secret, is_two_factor_enabled
-       FROM users
-       WHERE is_active = true AND (LOWER(email) = LOWER($1) OR nip = $1)
-       LIMIT 1`,
-      [identifier]
-    );
-    const user = userRes.rows[0];
-
-    if (!user || !user.is_two_factor_enabled || !user.two_factor_secret || !user.email) {
-      return res.status(400).json({
-        success: false,
-        isOtpError: true,
-        message: 'Kode authenticator salah atau tidak valid untuk pemulihan ini.'
-      });
-    }
-
-    const secret = decrypt(user.two_factor_secret);
-    const result = verifySync({ strategy: 'totp', token: otp, secret, window: 2 });
-    if (!result.valid) {
-      return res.status(400).json({
-        success: false,
-        isOtpError: true,
-        message: 'Kode authenticator salah atau tidak valid untuk pemulihan ini.'
-      });
-    }
-
-    const cleanEmail = user.email.toLowerCase().trim();
-    await db.query(
-      'UPDATE password_reset_otps SET is_used = true WHERE email = $1 AND is_used = false',
-      [cleanEmail]
-    );
-
-    const grantSecret = crypto.randomBytes(32).toString('hex');
-    const grantRes = await db.query(
-      `INSERT INTO password_reset_otps (email, otp_hash, attempts, is_used, expires_at)
-       VALUES ($1, $2, 0, false, NOW() + INTERVAL '15 minutes')
-       RETURNING id`,
-      [cleanEmail, crypto.createHash('sha256').update(grantSecret).digest('hex')]
-    );
-
-    const resetToken = jwt.sign(
-      { email: cleanEmail, otpRecordId: grantRes.rows[0].id, purpose: 'reset_password_allowed' },
-      JWT_SECRET,
-      { expiresIn: '15m' }
-    );
-
-    return res.json({
-      success: true,
-      message: 'Kode authenticator berhasil diverifikasi.',
-      resetToken,
-      maskedEmail: maskEmail(cleanEmail)
-    });
-  } catch (err) {
-    console.error('Error in verifyReset2FA:', err);
-    return res.status(500).json({
-      success: false,
-      message: 'Terjadi kesalahan saat memverifikasi 2FA. Silakan coba lagi.'
-    });
-  }
-};
-
-exports.validateResetOtp = async (req, res) => {
-  const identifier = String(req.body.identifier || req.body.email || '').trim();
-  const otp = req.body.otp;
-  const cleanOtp = String(otp || '').trim();
-
-  if (!identifier || !cleanOtp) {
-    return res.status(400).json({ success: false, message: 'Email/NIP dan kode OTP wajib diisi.' });
-  }
-
-  if (cleanOtp.length !== 6 || !/^\d{6}$/.test(cleanOtp)) {
-    return res.status(400).json({ success: false, isOtpError: true, message: 'Kode OTP harus berupa 6 digit angka.' });
-  }
-
-  try {
-    await ensurePasswordCols();
-    const userRes = await db.query(
-      `SELECT email FROM users
-       WHERE is_active = true AND (LOWER(email) = LOWER($1) OR nip = $1)
-       LIMIT 1`,
-      [identifier]
-    );
-    const cleanEmail = String(userRes.rows[0]?.email || '').toLowerCase().trim();
-    if (!cleanEmail) {
-      return res.status(400).json({
-        success: false,
-        isOtpError: true,
-        message: 'Kode OTP tidak valid atau sudah kedaluwarsa. Silakan minta kode baru.'
-      });
-    }
-
-    const otpRes = await db.query(
-      `SELECT * FROM password_reset_otps 
-       WHERE email = $1 AND is_used = false AND expires_at > NOW()
-       ORDER BY created_at DESC 
-       LIMIT 1`,
-      [cleanEmail]
-    );
-
-    if (otpRes.rows.length === 0) {
-      return res.status(400).json({
-        success: false,
-        isOtpError: true,
-        message: 'Kode OTP yang Anda masukkan sudah kedaluwarsa atau tidak valid. Silakan minta kode OTP baru.'
-      });
-    }
-
-    const otpRecord = otpRes.rows[0];
-
-    if (otpRecord.attempts >= 5) {
-      await db.query(`UPDATE password_reset_otps SET is_used = true WHERE id = $1`, [otpRecord.id]);
-      return res.status(400).json({
-        success: false,
-        isOtpError: true,
-        message: 'Batas percobaan kode OTP telah habis (maksimal 5 kali). Silakan minta kode baru.'
-      });
-    }
-
-    const inputHash = crypto.createHash('sha256').update(cleanOtp).digest('hex');
-    if (inputHash !== otpRecord.otp_hash) {
-      const nextAttempts = otpRecord.attempts + 1;
-      await db.query(`UPDATE password_reset_otps SET attempts = $1 WHERE id = $2`, [nextAttempts, otpRecord.id]);
-      const remaining = Math.max(0, 5 - nextAttempts);
-      return res.status(400).json({
-        success: false,
-        isOtpError: true,
-        message: `Kode OTP yang kamu masukkan salah. Sisa kesempatan: ${remaining} kali. Silakan coba lagi!`
-      });
-    }
-
-    await db.query(
-      `UPDATE password_reset_otps
-       SET expires_at = NOW() + INTERVAL '15 minutes'
-       WHERE id = $1 AND is_used = false`,
-      [otpRecord.id]
-    );
-
-    const resetToken = jwt.sign(
-      { email: cleanEmail, otpRecordId: otpRecord.id, purpose: 'reset_password_allowed' },
-      JWT_SECRET,
-      { expiresIn: '15m' }
-    );
-
-    return res.json({
-      success: true,
-      message: 'Kode OTP berhasil diverifikasi!',
-      resetToken
-    });
-  } catch (err) {
-    console.error('Error in validateResetOtp:', err);
-    return res.status(500).json({
-      success: false,
-      message: 'Terjadi kesalahan sistem saat memvalidasi kode OTP.'
-    });
-  }
-};
-
-exports.verifyResetOtp = async (req, res) => {
-  const { email, otp, newPassword, confirmPassword, resetToken } = req.body;
-
-  if (!newPassword) {
-    return res.status(400).json({
-      success: false,
-      message: 'Kata sandi baru wajib diisi.'
-    });
-  }
-
-  const identifier = String(email || '').trim();
-  let cleanEmail = identifier.toLowerCase();
-  let otpRecordId = null;
-
-  if (resetToken) {
-    try {
-      const decoded = jwt.verify(resetToken, JWT_SECRET);
-      if (
-        decoded.purpose !== 'reset_password_allowed' ||
-        typeof decoded.email !== 'string' ||
-        !Number.isInteger(Number(decoded.otpRecordId))
-      ) {
-        return res.status(400).json({
-          success: false,
-          message: 'Sesi reset kata sandi tidak valid. Silakan ulangi verifikasi.'
-        });
-      }
-      cleanEmail = decoded.email;
-      otpRecordId = Number(decoded.otpRecordId);
-    } catch (e) {
-      return res.status(400).json({
-        success: false,
-        message: 'Sesi reset kata sandi telah kedaluwarsa. Silakan ulangi verifikasi OTP.'
-      });
-    }
-  }
-
-  const passwordFailures = getPasswordPolicyFailures(newPassword);
-  if (passwordFailures.length > 0) {
-    return res.status(400).json({
-      success: false,
-      message: `Kata sandi baru belum memenuhi kriteria keamanan: ${passwordFailures.join(', ')}.`
-    });
-  }
-
-  if (confirmPassword && newPassword !== confirmPassword) {
-    return res.status(400).json({
-      success: false,
-      message: 'Konfirmasi kata sandi tidak cocok dengan kata sandi baru.'
-    });
-  }
-
-  try {
-    await ensurePasswordCols();
-
-    if (!resetToken) {
-      const accountRes = await db.query(
-        `SELECT email FROM users
-         WHERE is_active = true AND (LOWER(email) = LOWER($1) OR nip = $1)
-         LIMIT 1`,
-        [identifier]
-      );
-      cleanEmail = String(accountRes.rows[0]?.email || '').toLowerCase().trim();
-      if (!cleanEmail) {
-        return res.status(400).json({
-          success: false,
-          isOtpError: true,
-          message: 'Kode OTP tidak valid atau sudah kedaluwarsa. Silakan minta kode baru.'
-        });
-      }
-
-      const cleanOtp = String(otp || '').trim();
-      const otpRes = await db.query(
-        `SELECT * FROM password_reset_otps 
-         WHERE email = $1 AND is_used = false AND expires_at > NOW()
-         ORDER BY created_at DESC 
-         LIMIT 1`,
-        [cleanEmail]
-      );
-
-      if (otpRes.rows.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'Kode OTP tidak valid atau sudah kedaluwarsa. Silakan minta kode OTP baru.'
-        });
-      }
-
-      const otpRecord = otpRes.rows[0];
-      otpRecordId = otpRecord.id;
-
-      const inputHash = crypto.createHash('sha256').update(cleanOtp).digest('hex');
-      if (inputHash !== otpRecord.otp_hash) {
-        const nextAttempts = otpRecord.attempts + 1;
-        await db.query(
-          `UPDATE password_reset_otps
-           SET attempts = $1, is_used = CASE WHEN $1 >= 5 THEN true ELSE is_used END
-           WHERE id = $2`,
-          [nextAttempts, otpRecord.id]
-        );
-        const remaining = Math.max(0, 5 - nextAttempts);
-        return res.status(400).json({
-          success: false,
-          isOtpError: true,
-          message: remaining > 0
-            ? `Kode OTP salah. Sisa percobaan: ${remaining}.`
-            : 'Batas percobaan kode OTP habis. Silakan minta kode baru.'
-        });
-      }
-
-      if (otpRecord.attempts >= 5) {
-        await db.query('UPDATE password_reset_otps SET is_used = true WHERE id = $1', [otpRecord.id]);
-        return res.status(400).json({
-          success: false,
-          isOtpError: true,
-          message: 'Batas percobaan kode OTP habis. Silakan minta kode baru.'
-        });
-      }
-    }
-
-    // Ambil data user
-    const userRes = await db.query(
-      `SELECT id, full_name, password_hash, previous_password_hash FROM users 
-       WHERE LOWER(email) = LOWER($1) AND is_active = true 
-       LIMIT 1`,
-      [cleanEmail]
-    );
-
-    if (userRes.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Pengguna dengan email ini tidak ditemukan atau sudah tidak aktif.'
-      });
-    }
-
-    const user = userRes.rows[0];
-
-    // Pastikan kata sandi baru tidak sama dengan kata sandi saat ini
-    const isSameAsCurrent = await verifyPassword(newPassword, user.password_hash);
-    if (isSameAsCurrent) {
-      return res.status(400).json({
-        success: false,
-        message: 'Kata sandi baru tidak boleh sama dengan kata sandi yang sedang Anda gunakan saat ini.'
-      });
-    }
-
-    if (resetToken) {
-      const grantRes = await db.query(
-        `UPDATE password_reset_otps
-         SET is_used = true
-         WHERE id = $1 AND email = $2 AND is_used = false AND expires_at > NOW()
-         RETURNING id`,
-        [otpRecordId, cleanEmail]
-      );
-      if (grantRes.rows.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'Sesi reset kata sandi sudah digunakan atau kedaluwarsa. Silakan ulangi verifikasi.'
-        });
-      }
-    }
-
-    // Hash kata sandi baru menggunakan bcrypt
-    const salt = await bcrypt.genSalt(10);
-    const newHash = await bcrypt.hash(newPassword, salt);
-
-    // Update password dan simpan riwayat password sebelumnya
-    await db.query(
-      `UPDATE users 
-       SET password_hash = $1, 
-           previous_password_hash = $2, 
-           password_changed_at = CURRENT_TIMESTAMP 
-       WHERE id = $3`,
-      [newHash, user.password_hash, user.id]
-    );
-
-    // Invalidate every outstanding reset grant for this account.
-    await db.query(
-      'UPDATE password_reset_otps SET is_used = true WHERE email = $1 AND is_used = false',
-      [cleanEmail]
-    );
-
-    return res.json({
-      success: true,
-      message: 'Kata sandi Anda berhasil diperbarui! Silakan masuk dengan kata sandi baru Anda.'
-    });
-  } catch (err) {
-    console.error('Error in verifyResetOtp:', err);
-    return res.status(500).json({
-      success: false,
-      message: 'Terjadi kesalahan sistem saat memperbarui kata sandi.'
-    });
-  }
-};
+Object.assign(exports, createTwoFactorController({
+  db,
+  jwt,
+  jwtSecret: JWT_SECRET,
+  logSuccessfulLogin,
+  encrypt,
+  decrypt,
+  hashBackupCode,
+  resolveUserRoles,
+  getUserTeams,
+  getPrimaryRole,
+  requiresAnnualPasswordChange,
+  getPasswordExpiresAt,
+  expireOldUserAgreement,
+  recordActivity
+}));
+
+Object.assign(exports, createRegistrationController({ db, ensurePasswordCols, maskEmail }));
+Object.assign(exports, createProfileController({
+  db,
+  jwt,
+  jwtSecret: JWT_SECRET,
+  expireOldUserAgreement,
+  resolveUserRoles,
+  getPrimaryRole,
+  getUserTeams,
+  requiresAnnualPasswordChange,
+  getPasswordExpiresAt,
+  logSuccessfulLogin,
+  ensurePasswordCols,
+  verifyPassword
+}));
+Object.assign(exports, createPasswordResetController({
+  db,
+  ensurePasswordCols,
+  verifyPassword,
+  decrypt,
+  jwtSecret: JWT_SECRET,
+  maskEmail
+}));

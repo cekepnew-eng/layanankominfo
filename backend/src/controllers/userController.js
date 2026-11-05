@@ -24,28 +24,13 @@ async function authenticateTndUser(identifier, password) {
     console.error('TND fetch network error in userController:', err.message);
   }
 
-  let payload = await response?.json().catch(() => ({}));
-  if ((!response || !response.ok || payload?.success === false) && (
-    normalizedIdentifier === '199902032025211037' ||
-    normalizedIdentifier.toLowerCase() === 'renditriyawan@kotabogor.go.id' ||
-    normalizedIdentifier.toLowerCase().includes('rendi')
-  )) {
-    payload = {
-      success: true,
-      data: {
-        user: {
-          nama: 'Rendi Triyawan',
-          nik: '3201130302990004',
-          nip: '199902032025211037',
-          nama_pd: 'Sekretariat Daerah Kota Bogor',
-          username: '199902032025211037',
-          email: 'renditriyawan@kotabogor.go.id',
-          no_hp: '081234567890',
-          foto: '20220419082701.jpg'
-        }
-      }
-    };
-  } else if (!response || !response.ok || payload?.success === false) {
+  const payload = await response?.json().catch(() => ({}));
+  if (!response || response.status >= 500) {
+    const error = new Error('Layanan login TND tidak dapat dihubungi. Periksa koneksi server.');
+    error.status = 502;
+    throw error;
+  }
+  if (!response.ok || payload?.success === false) {
     const error = new Error('NIP/NIK/Gmail tidak terdaftar di TND atau password TND salah.');
     error.status = 400;
     throw error;
