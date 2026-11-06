@@ -5,6 +5,7 @@ import { api } from '../../services/api';
 import { ActionModal } from '../../components/ActionModal';
 import { getPasswordStrength } from '../../utils/passwordStrength';
 import { getProfileImageUrl } from '../../utils/profileImageUrl';
+import { validateUploadFile } from '../../utils/fileValidation';
 
 export const Profile = () => {
   const { user, setUser, users, setUsers, teams } = useAuth();
@@ -137,7 +138,7 @@ export const Profile = () => {
   const isTndProfileImage = String(user?.profile_image_source || user?.profileImageSource || '').toUpperCase() === 'TND';
   const isAdmin = userRoles.some(role => String(role).toUpperCase() === 'ADMIN');
   const canUploadProfileImage = isAdmin || userRoles.some(role =>
-    ['HELPDESK', 'MASYARAKAT'].includes(String(role).toUpperCase())
+    ['HELPDESK', 'PEGAWAI', 'USER', 'MASYARAKAT'].includes(String(role).toUpperCase())
   );
   const passwordMinLength = 8;
 
@@ -161,18 +162,7 @@ export const Profile = () => {
       });
       return;
     }
-    if (file.size > 2 * 1024 * 1024) {
-      setModalConfig({
-        isOpen: true,
-        type: 'warning',
-        title: 'Ukuran Foto Terlalu Besar',
-        message: 'Ukuran foto maksimal 2 MB.',
-        confirmText: 'Mengerti',
-        cancelText: '',
-        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
-      });
-      return;
-    }
+    if (!validateUploadFile(file)) return;
 
     setIsUploadingProfileImage(true);
     try {

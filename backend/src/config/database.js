@@ -117,6 +117,7 @@ const runAutoMigrations = async () => {
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS nip VARCHAR(50);');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image TEXT;');
       await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_source VARCHAR(20);");
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0;');
       await pool.query('CREATE INDEX IF NOT EXISTS idx_users_nip ON users(nip);');
     } catch (err) {
       handleMigrationError('users.password_tracking', err);

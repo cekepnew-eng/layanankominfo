@@ -5,6 +5,7 @@ import { getCurrentLogTimeFormatted } from '../utils/dateUtils';
 import { SopModal } from './SopModal';
 import { ActionModal } from './ActionModal';
 import { parseFileValue } from '../utils/fileUtils';
+import { validateUploadFile } from '../utils/fileValidation';
 
 export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
   const { services } = useAuth();
@@ -268,14 +269,19 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
                       {field.label} {field.required !== false && <span className="text-red-500">*</span>}
                     </label>
+                    <p className="text-[11px] text-slate-500">Dokumen maksimal 5 MB, foto maksimal 2 MB.</p>
                     <div className="border-2 border-dashed border-slate-200 hover:border-sky-500 rounded-2xl p-4 text-center bg-slate-50 transition-all">
                       <input
                         type="file"
-                        accept=".pdf,image/*"
+                        accept=".pdf,application/pdf,image/jpeg,image/png,image/webp"
                         required={field.required !== false && !formData[fieldKey]}
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
+                             if (!validateUploadFile(file)) {
+                               e.target.value = '';
+                               return;
+                             }
                              const reader = new FileReader();
                              reader.onload = (ev) => {
                                setFormData({...formData, [fieldKey]: ev.target.result, [`${fieldKey}_name`]: file.name});

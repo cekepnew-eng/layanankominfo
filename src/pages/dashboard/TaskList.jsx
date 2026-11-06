@@ -5,6 +5,7 @@ import { getCurrentLogTimeFormatted } from '../../utils/dateUtils';
 import { TicketDetailModal } from '../../components/TicketDetailModal';
 import { api } from '../../services/api';
 import { ActionModal } from '../../components/ActionModal';
+import { validateUploadFile } from '../../utils/fileValidation';
 
 export const TaskList = () => {
   const { user } = useAuth();
@@ -98,6 +99,10 @@ export const TaskList = () => {
   const handleBastFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      if (!validateUploadFile(file)) {
+        e.target.value = '';
+        return;
+      }
       setFileName(file.name);
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -425,7 +430,7 @@ export const TaskList = () => {
                     <div className="flex gap-2 text-sky-700">
                       <Upload className="w-4 h-4 shrink-0 mt-0.5" />
                       <div className="text-xs space-y-1">
-                        <p className="font-bold">Unggah Berkas BAST (Opsional)</p>
+                        <p className="font-bold">Unggah Berkas BAST (Opsional, maks. 5 MB)</p>
                         <p className="text-slate-600 leading-relaxed">Unggah file dokumen resmi Berita Acara Serah Terima (PDF) agar pemohon dapat melihat dokumen dan memberi penilaian SKM.</p>
                       </div>
                     </div>

@@ -69,12 +69,17 @@ const createProfileController = ({
       const result = await db.query(
         `UPDATE users
          SET user_agreement_accepted_at = CURRENT_TIMESTAMP
-         WHERE id = $1 AND is_active = true
+         WHERE id = $1 AND is_active = true AND session_version = $2
          RETURNING *`,
-        [req.user.id]
+        [req.user.id, Number(req.user.sessionVersion) || 0]
       );
       const user = result.rows[0];
-      if (!user) return res.status(404).json({ success: false, message: 'Pengguna tidak ditemukan.' });
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: 'Sesi login telah digantikan oleh login baru. Silakan login kembali.'
+        });
+      }
 
       user.roles = await resolveUserRoles(user.id);
       user.roles = user.roles.length ? user.roles : [getPrimaryRole(user.roles)];
@@ -90,7 +95,8 @@ const createProfileController = ({
         name: user.full_name,
         department: user.department,
         passwordChangeRequired,
-        passwordExpiresAt: getPasswordExpiresAt(user)
+        passwordExpiresAt: getPasswordExpiresAt(user),
+        sessionVersion: Number(user.session_version) || 0
       }, jwtSecret, { expiresIn: '24h' });
 
       const safeUser = { ...user };
@@ -166,8 +172,8 @@ const createProfileController = ({
 
       let profileImageBytes = 0;
       if (hasProfileImage) {
-        if (!userRoles.some(role => ['ADMIN', 'HELPDESK', 'MASYARAKAT'].includes(role))) {
-          return res.status(403).json({ success: false, message: 'Unggah foto profil hanya tersedia untuk akun Admin, Helpdesk, dan Masyarakat.' });
+        if (!userRoles.some(role => ['ADMIN', 'HELPDESK', 'PEGAWAI', 'USER', 'MASYARAKAT'].includes(role))) {
+          return res.status(403).json({ success: false, message: 'Unggah foto profil tidak tersedia untuk role akun ini.' });
         }
         if (currentUser.profile_image_source === 'TND' && !userRoles.includes('ADMIN')) {
           return res.status(403).json({ success: false, message: 'Foto profil akun ini dikelola oleh TND.' });
@@ -250,7 +256,8 @@ const createProfileController = ({
           {
             id: updatedUser.id, email: updatedUser.email, role: primaryRole, roles: updatedUser.roles,
             name: updatedUser.full_name, department: updatedUser.department, passwordChangeRequired,
-            passwordExpiresAt: getPasswordExpiresAt(updatedUser)
+            passwordExpiresAt: getPasswordExpiresAt(updatedUser),
+            sessionVersion: Number(req.user.sessionVersion) || 0
           },
           jwtSecret,
           { expiresIn: '24h' }

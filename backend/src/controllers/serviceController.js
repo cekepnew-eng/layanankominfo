@@ -1,5 +1,6 @@
 const db = require('../config/database');
 const { recordRequestActivity } = require('../utils/activityLogger');
+const { validateUploadPayload } = require('../utils/uploadValidation');
 
 // -----------------------------------------
 // PUBLIC API (For Users creating tickets)
@@ -189,6 +190,9 @@ exports.getAdminServices = async (req, res) => {
 exports.createService = async (req, res) => {
   const { category_name, category_id, name, target_sla, verification_type, sop_link, status, form_schema, required_docs, default_team_id } = req.body;
   try {
+    const uploadError = validateUploadPayload([sop_link, required_docs], { documentsOnly: true });
+    if (uploadError) return res.status(400).json({ success: false, message: uploadError });
+
     let finalCatId = category_id;
     if (!finalCatId && category_name) {
       const catRes = await db.query('SELECT id FROM service_categories WHERE category_name = $1', [category_name]);
@@ -218,6 +222,9 @@ exports.updateService = async (req, res) => {
   const { id } = req.params;
   const { category_name, category_id, name, target_sla, verification_type, sop_link, status, form_schema, required_docs, default_team_id, is_active } = req.body;
   try {
+    const uploadError = validateUploadPayload([sop_link, required_docs], { documentsOnly: true });
+    if (uploadError) return res.status(400).json({ success: false, message: uploadError });
+
     let finalCatId = category_id;
     if (!finalCatId && category_name) {
       const catRes = await db.query('SELECT id FROM service_categories WHERE category_name = $1', [category_name]);

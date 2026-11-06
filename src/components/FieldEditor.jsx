@@ -81,7 +81,7 @@ export const FieldEditor = ({ field, onChange, onDelete, level = 0 }) => {
               <label className="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer px-2">
                 <input
                   type="checkbox"
-                  checked={field.required || false}
+                  checked={field.required !== false}
                   onChange={(e) => onChange({ ...field, required: e.target.checked })}
                   className="w-3.5 h-3.5 rounded text-sky-600"
                 />

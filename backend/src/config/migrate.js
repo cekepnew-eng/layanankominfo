@@ -60,6 +60,7 @@ const runMigration = async () => {
         backup_codes JSONB DEFAULT '[]'::jsonb,
         password_changed_at TIMESTAMP,
         password_auth_source VARCHAR(10) NOT NULL DEFAULT 'LOCAL',
+        session_version INTEGER NOT NULL DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );

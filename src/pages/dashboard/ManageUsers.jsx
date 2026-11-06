@@ -5,6 +5,11 @@ import { api } from '../../services/api';
 import { ActionModal } from '../../components/ActionModal';
 import { getPasswordStrength } from '../../utils/passwordStrength';
 
+const isManualLocalUser = (user) =>
+  String(user?.password_auth_source || 'LOCAL').toUpperCase() === 'LOCAL'
+  && !user?.nip
+  && String(user?.profile_image_source || '').toUpperCase() !== 'TND';
+
 export const ManageUsers = () => {
   const { teams, setTeams, fetchTeams, user, setUser } = useAuth();
   const [users, setUsers] = useState([]);
@@ -116,7 +121,7 @@ export const ManageUsers = () => {
       initialRoles = ['masyarakat'];
     } else {
       initialRoles = initialRoles.filter(r => r !== 'masyarakat');
-      if (!initialRoles.includes('user')) {
+      if (!isManualLocalUser(u) && !initialRoles.includes('user')) {
         initialRoles.push('user');
       }
     }
@@ -147,7 +152,8 @@ export const ManageUsers = () => {
       return;
     }
 
-    if (roleKey === 'user') {
+    const canToggleOpdRole = isManualLocalUser(editingUser);
+    if (roleKey === 'user' && !canToggleOpdRole) {
       // User (OPD / Dinas) adalah peran dasar instansi dan wajib aktif
       return;
     }
@@ -158,7 +164,7 @@ export const ManageUsers = () => {
         : [...prev, roleKey];
 
       newRoles = newRoles.filter(r => r !== 'masyarakat');
-      if (!newRoles.includes('user')) {
+      if (!canToggleOpdRole && !newRoles.includes('user')) {
         newRoles.push('user');
       }
 
@@ -242,8 +248,20 @@ export const ManageUsers = () => {
     );
 
     let finalRoles = isMasyarakat ? ['masyarakat'] : editRolesVal.filter(r => r !== 'masyarakat');
-    if (!isMasyarakat && !finalRoles.includes('user')) {
+    if (!isMasyarakat && !isManualLocalUser(editingUser) && !finalRoles.includes('user')) {
       finalRoles.push('user');
+    }
+    if (finalRoles.length === 0) {
+      setModalConfig({
+        isOpen: true,
+        type: 'warning',
+        title: 'Pilih Hak Akses',
+        message: 'Pilih minimal satu hak akses sebelum menyimpan perubahan.',
+        confirmText: 'Mengerti',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
+      return;
     }
 
     const assignedTeamIds = Object.keys(editTeamAssignments).filter(id => editTeamAssignments[id]);
@@ -412,6 +430,8 @@ export const ManageUsers = () => {
     }
     return String(a.id).localeCompare(String(b.id), undefined, { numeric: true });
   });
+  const canDeleteUser = (u) =>
+    String(u.password_auth_source || '').toUpperCase() !== 'TND' && !u.nip;
 
   const handleToggleNewUserRole = (roleName) => {
     setNewMasyarakatData(current => {
@@ -588,8 +608,9 @@ export const ManageUsers = () => {
                         </button>
                         <button
                           onClick={() => handlePromptDeleteUser(u)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-all cursor-pointer"
-                          title="Hapus Pengguna"
+                          disabled={!canDeleteUser(u)}
+                          className={`p-1.5 rounded-lg transition-all ${canDeleteUser(u) ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer' : 'text-slate-300 cursor-not-allowed'}`}
+                          title={canDeleteUser(u) ? 'Hapus Pengguna' : 'Akun TND/API tidak dapat dihapus'}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -688,7 +709,7 @@ export const ManageUsers = () => {
                       // Akun OPD / Instansi tidak dapat diubah menjadi Masyarakat
                       if (item.key === 'masyarakat') {
                         isDisabled = true;
-                      } else if (item.key === 'user') {
+                      } else if (item.key === 'user' && !isManualLocalUser(editingUser)) {
                         // User (OPD / Dinas) adalah peran dasar instansi dan wajib aktif
                         isDisabled = true;
                       }

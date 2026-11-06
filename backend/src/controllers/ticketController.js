@@ -1,5 +1,6 @@
 const db = require('../config/database');
 const { recordRequestActivity } = require('../utils/activityLogger');
+const { validateUploadPayload, validateRequiredFileFields } = require('../utils/uploadValidation');
 
 const createHistory = async (client, ticketId, userId, oldStatusId, newStatusId, description) => {
   await client.query(`
@@ -87,8 +88,17 @@ exports.createTicket = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Layanan tidak ditemukan atau ID layanan tidak valid.' });
     }
 
+    const srvRes = await client.query(
+      'SELECT verification_type, default_team_id, form_schema FROM services WHERE id = $1',
+      [finalServiceId]
+    );
+    const uploadError = validateUploadPayload(form_data) || validateRequiredFileFields(srvRes.rows[0]?.form_schema, form_data);
+    if (uploadError) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ success: false, message: uploadError });
+    }
+
     // Check if service needs verification
-    const srvRes = await client.query('SELECT verification_type, default_team_id FROM services WHERE id = $1', [finalServiceId]);
     const rawVerifType = String(srvRes.rows[0]?.verification_type || '').trim().toLowerCase();
     const isAuto = rawVerifType === 'otomatis' || rawVerifType === 'auto' || rawVerifType === 'false';
     const needsVerification = !isAuto;
@@ -321,6 +331,19 @@ exports.updateTicketData = async (req, res) => {
     if (ticketOwnerId !== req.user.id && !isHelpdeskOrAdmin) {
       await client.query('ROLLBACK');
       return res.status(403).json({ success: false, message: 'Akses ditolak: Anda bukan pemilik tiket ini.' });
+    }
+
+    const serviceSchemaRes = await client.query(
+      `SELECT s.form_schema
+       FROM tickets t
+       JOIN services s ON s.id = t.service_id
+       WHERE t.id = $1`,
+      [actualTicketId]
+    );
+    const uploadError = validateUploadPayload(form_data) || validateRequiredFileFields(serviceSchemaRes.rows[0]?.form_schema, form_data);
+    if (uploadError) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ success: false, message: uploadError });
     }
 
     // Update the form_data in ticket_details
@@ -758,6 +781,11 @@ exports.updateProgress = async (req, res) => {
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
+    const uploadError = validateUploadPayload(bastFileBase64, { documentsOnly: true });
+    if (uploadError) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ success: false, message: uploadError });
+    }
     const oldRes = await client.query('SELECT progress, status_id FROM tickets WHERE id = $1', [id]);
     const oldStatus = oldRes.rows[0].status_id;
     let newStatus = oldStatus;

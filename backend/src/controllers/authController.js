@@ -8,6 +8,7 @@ const createPasswordResetController = require('./passwordResetController');
 const createProfileController = require('./profileController');
 const { getTndProfileImage } = require('../utils/tndProfileImage');
 const { recordActivity } = require('../utils/activityLogger');
+const { incrementUserSessionVersion } = require('../utils/userSession');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret-key-kominfo-2026';
 
@@ -206,6 +207,7 @@ async function ensurePasswordCols() {
     await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS nip VARCHAR(50);');
     await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image TEXT;');
     await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_source VARCHAR(20);");
+    await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0;');
     await db.query('CREATE INDEX IF NOT EXISTS idx_users_nip ON users(nip);');
     await db.query(`
       CREATE TABLE IF NOT EXISTS password_reset_otps (
@@ -617,11 +619,13 @@ exports.login = async (req, res) => {
       if (isTrustedDevice) {
         const primaryRole = getPrimaryRole(user.roles);
         const passwordChangeRequired = requiresAnnualPasswordChange(user);
+        const sessionVersion = await incrementUserSessionVersion(db, user.id);
         const token = jwt.sign(
           {
             id: user.id, email: user.email, nip: user.nip, role: primaryRole, roles: user.roles,
             name: user.full_name, department: user.department, passwordChangeRequired,
             passwordExpiresAt: getPasswordExpiresAt(user),
+            sessionVersion,
             ...(!user.user_agreement_accepted_at ? { purpose: 'user_agreement' } : {})
           },
           JWT_SECRET,
@@ -649,7 +653,12 @@ exports.login = async (req, res) => {
       }
 
       const tempToken = jwt.sign(
-        { id: user.id, email: user.email, purpose: '2fa' },
+        {
+          id: user.id,
+          email: user.email,
+          sessionVersion: Number(user.session_version) || 0,
+          purpose: '2fa'
+        },
         JWT_SECRET,
         { expiresIn: '5m' }
       );
@@ -661,7 +670,12 @@ exports.login = async (req, res) => {
       });
     } else if (!user.two_factor_choice_completed) {
       const tempToken = jwt.sign(
-        { id: user.id, email: user.email, purpose: '2fa_choice' },
+        {
+          id: user.id,
+          email: user.email,
+          sessionVersion: Number(user.session_version) || 0,
+          purpose: '2fa_choice'
+        },
         JWT_SECRET,
         { expiresIn: '15m' }
       );
@@ -674,6 +688,7 @@ exports.login = async (req, res) => {
     } else {
       const primaryRole = getPrimaryRole(user.roles);
       const passwordChangeRequired = requiresAnnualPasswordChange(user);
+      const sessionVersion = await incrementUserSessionVersion(db, user.id);
       const token = jwt.sign({
         id: user.id,
         email: user.email,
@@ -684,6 +699,7 @@ exports.login = async (req, res) => {
         department: user.department,
         passwordChangeRequired,
         passwordExpiresAt: getPasswordExpiresAt(user),
+        sessionVersion,
         ...(!user.user_agreement_accepted_at ? { purpose: 'user_agreement' } : {})
       }, JWT_SECRET, { expiresIn: '24h' });
       if (user.user_agreement_accepted_at) await logSuccessfulLogin(user);

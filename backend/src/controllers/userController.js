@@ -79,6 +79,7 @@ exports.getAllUsers = async (req, res) => {
   try {
     const result = await db.pool.query(`
       SELECT u.id, u.email, u.nip, u.full_name as name, u.phone_number as phone, u.department, u.created_at,
+             u.password_auth_source,
              u.profile_image, u.profile_image_source,
              COALESCE(tm.team_name, 'Dinas Komunikasi dan Informatika') as team,
              legacy_role.name as legacy_role
@@ -145,9 +146,20 @@ exports.updateUserRole = async (req, res) => {
 
     if (Array.isArray(roleNames) && roleNames.length > 0) {
       // Pastikan OPD tidak bisa menjadi Masyarakat dan Masyarakat tidak bisa menjadi OPD
-      const uRes = await client.query('SELECT department FROM users WHERE id = $1', [id]);
+      const uRes = await client.query(
+        'SELECT department, password_auth_source, nip, profile_image_source FROM users WHERE id = $1 FOR UPDATE',
+        [id]
+      );
+      if (!uRes.rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ success: false, message: 'User tidak ditemukan.' });
+      }
       const dept = (uRes.rows[0]?.department || '').trim().toLowerCase();
       const isMasyarakat = dept === 'masyarakat umum' || dept === 'masyarakat';
+      const isManualLocalUser =
+        String(uRes.rows[0].password_auth_source || 'LOCAL').toUpperCase() === 'LOCAL'
+        && !uRes.rows[0].nip
+        && String(uRes.rows[0].profile_image_source || '').toUpperCase() !== 'TND';
 
       let normalized = roleNames.map(r => String(r).trim().toUpperCase()).filter(Boolean);
 
@@ -155,7 +167,7 @@ exports.updateUserRole = async (req, res) => {
         normalized = ['MASYARAKAT'];
       } else {
         normalized = normalized.filter(r => r !== 'MASYARAKAT');
-        if (!normalized.includes('USER')) {
+        if (!isManualLocalUser && !normalized.includes('USER')) {
           normalized.push('USER');
         }
       }
@@ -194,10 +206,20 @@ exports.deleteUser = async (req, res) => {
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
-    const targetUser = await client.query('SELECT full_name FROM users WHERE id = $1', [id]);
+    const targetUser = await client.query(
+      'SELECT full_name, nip, password_auth_source FROM users WHERE id = $1 FOR UPDATE',
+      [id]
+    );
     if (!targetUser.rows[0]) {
       await client.query('ROLLBACK');
       return res.status(404).json({ success: false, message: 'User tidak ditemukan.' });
+    }
+    if (
+      String(targetUser.rows[0].password_auth_source || '').toUpperCase() === 'TND'
+      || Boolean(targetUser.rows[0].nip)
+    ) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ success: false, message: 'Akun yang terhubung ke TND/API tidak dapat dihapus.' });
     }
     await recordRequestActivity(client, req, {
       activityType: 'user_deleted',

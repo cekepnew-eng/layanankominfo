@@ -7,6 +7,7 @@ import { ActionModal } from '../../components/ActionModal';
 
 import { FormBuilder } from '../../components/FormBuilder';
 import { parseFileValue } from '../../utils/fileUtils';
+import { validateUploadFile } from '../../utils/fileValidation';
 
 const parseSlaValues = (slaStr) => {
   if (!slaStr) return { min: '', max: '' };
@@ -607,7 +608,7 @@ export const ManageServices = () => {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Unggah Dokumen SOP (PDF)</label>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Unggah Dokumen SOP (PDF, maks. 5 MB)</label>
               <div className="border border-slate-200 bg-slate-50/80 rounded-2xl p-3 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
@@ -636,6 +637,10 @@ export const ManageServices = () => {
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) {
+                        if (!validateUploadFile(file)) {
+                          e.target.value = '';
+                          return;
+                        }
                         setSopFile(file);
                       }
                     }}
@@ -650,7 +655,7 @@ export const ManageServices = () => {
             </div>
 
             <div className="col-span-2">
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Dokumen yang Harus Disiapkan Pemohon (Template)</label>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Dokumen yang Harus Disiapkan Pemohon (Template, maks. 5 MB)</label>
               <div className="border border-slate-200 bg-slate-50/80 rounded-2xl p-3.5 space-y-2.5 overflow-hidden">
                 <div className="flex items-center justify-between gap-3 overflow-hidden">
                   <div className="flex items-center gap-2.5 min-w-0 flex-1 overflow-hidden">
@@ -672,6 +677,10 @@ export const ManageServices = () => {
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) {
+                        if (!validateUploadFile(file)) {
+                          e.target.value = '';
+                          return;
+                        }
                         setRequiredDocsFile(file);
                       }
                     }}

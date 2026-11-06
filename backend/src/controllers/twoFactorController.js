@@ -1,6 +1,7 @@
 const { generateSecret, generateURI, verifySync } = require('otplib');
 const qrcode = require('qrcode');
 const crypto = require('crypto');
+const { incrementUserSessionVersion } = require('../utils/userSession');
 
 const createTwoFactorController = ({
   db,
@@ -23,8 +24,14 @@ const createTwoFactorController = ({
       if (req.user.purpose && !['2fa_setup', '2fa_choice'].includes(req.user.purpose)) {
         return res.status(403).json({ success: false, message: 'Token tidak dapat digunakan untuk menyiapkan 2FA.' });
       }
-      const userRes = await db.query('SELECT email, is_two_factor_enabled FROM users WHERE id = $1', [req.user.id]);
+      const userRes = await db.query(
+        'SELECT email, is_two_factor_enabled, session_version FROM users WHERE id = $1',
+        [req.user.id]
+      );
       if (userRes.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
+      if (req.user.purpose && Number(req.user.sessionVersion) !== Number(userRes.rows[0].session_version)) {
+        return res.status(401).json({ success: false, message: 'Sesi login telah digantikan oleh login baru. Silakan login kembali.' });
+      }
 
       if (userRes.rows[0].is_two_factor_enabled) {
         return res.status(400).json({ success: false, message: '2FA is already enabled. You cannot generate a new QR code.' });
@@ -61,16 +68,27 @@ const createTwoFactorController = ({
       const userRes = await db.query('SELECT * FROM users WHERE id = $1 AND is_active = true', [req.user.id]);
       const user = userRes.rows[0];
       if (!user) return res.status(404).json({ success: false, message: 'Pengguna tidak ditemukan.' });
+      if (Number(req.user.sessionVersion) !== Number(user.session_version)) {
+        return res.status(401).json({ success: false, message: 'Sesi login telah digantikan oleh login baru. Silakan login kembali.' });
+      }
 
       expireOldUserAgreement(user);
       user.roles = await resolveUserRoles(user.id);
       if (user.is_two_factor_enabled) {
         return res.status(403).json({ success: false, message: 'Pilihan ini tidak berlaku untuk akun tersebut.' });
       }
-      await db.query(
-        'UPDATE users SET two_factor_choice_completed = true, two_factor_secret = NULL WHERE id = $1',
-        [user.id]
+      const sessionRes = await db.query(
+        `UPDATE users
+         SET two_factor_choice_completed = true,
+             two_factor_secret = NULL,
+             session_version = session_version + 1
+         WHERE id = $1 AND session_version = $2
+         RETURNING session_version`,
+        [user.id, Number(req.user.sessionVersion) || 0]
       );
+      if (!sessionRes.rows[0]) {
+        return res.status(401).json({ success: false, message: 'Sesi login telah digantikan oleh login baru. Silakan login kembali.' });
+      }
       if (user.user_agreement_accepted_at) await logSuccessfulLogin(user, 'password');
 
       const primaryRole = getPrimaryRole(user.roles);
@@ -85,6 +103,7 @@ const createTwoFactorController = ({
         department: user.department,
         passwordChangeRequired,
         passwordExpiresAt: getPasswordExpiresAt(user),
+        sessionVersion: Number(sessionRes.rows[0].session_version),
         ...(!user.user_agreement_accepted_at ? { purpose: 'user_agreement' } : {})
       }, jwtSecret, { expiresIn: '24h' });
 
@@ -128,8 +147,14 @@ const createTwoFactorController = ({
       if (req.user.purpose && !['2fa_setup', '2fa_choice'].includes(req.user.purpose)) {
         return res.status(403).json({ success: false, message: 'Token tidak dapat digunakan untuk verifikasi 2FA.' });
       }
-      const userRes = await db.query('SELECT two_factor_secret, is_two_factor_enabled FROM users WHERE id = $1', [req.user.id]);
+      const userRes = await db.query(
+        'SELECT two_factor_secret, is_two_factor_enabled, session_version FROM users WHERE id = $1',
+        [req.user.id]
+      );
       if (userRes.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
+      if (req.user.purpose && Number(req.user.sessionVersion) !== Number(userRes.rows[0].session_version)) {
+        return res.status(401).json({ success: false, message: 'Sesi login telah digantikan oleh login baru. Silakan login kembali.' });
+      }
 
       if (userRes.rows[0].is_two_factor_enabled) {
         return res.status(400).json({ success: false, message: '2FA is already enabled' });
@@ -148,12 +173,19 @@ const createTwoFactorController = ({
       const backupCodesRaw = Array.from({ length: 8 }, () => crypto.randomBytes(4).toString('hex'));
       const backupCodesHashed = backupCodesRaw.map(hashBackupCode);
 
-      await db.query(
+      const sessionRes = await db.query(
         `UPDATE users
-         SET is_two_factor_enabled = true, two_factor_choice_completed = true, backup_codes = $1
-         WHERE id = $2`,
-        [JSON.stringify(backupCodesHashed), req.user.id]
+         SET is_two_factor_enabled = true,
+             two_factor_choice_completed = true,
+             backup_codes = $1,
+             session_version = session_version + 1
+         WHERE id = $2 AND session_version = $3
+         RETURNING session_version`,
+        [JSON.stringify(backupCodesHashed), req.user.id, Number(req.user.sessionVersion) || 0]
       );
+      if (!sessionRes.rows[0]) {
+        return res.status(401).json({ success: false, message: 'Sesi login telah digantikan oleh login baru. Silakan login kembali.' });
+      }
 
       const updatedUserRes = await db.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
       const updatedUser = updatedUserRes.rows[0];
@@ -176,6 +208,7 @@ const createTwoFactorController = ({
           name: updatedUser.full_name, department: updatedUser.department,
           passwordChangeRequired: requiresAnnualPasswordChange(updatedUser),
           passwordExpiresAt: getPasswordExpiresAt(updatedUser),
+          sessionVersion: Number(sessionRes.rows[0].session_version),
           ...(!updatedUser.user_agreement_accepted_at ? { purpose: 'user_agreement' } : {})
         },
         jwtSecret,
@@ -274,6 +307,9 @@ const createTwoFactorController = ({
 
       if (userRes.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
       const user = userRes.rows[0];
+      if (Number(decoded.sessionVersion) !== Number(user.session_version)) {
+        return res.status(401).json({ success: false, message: 'Sesi login telah digantikan oleh login baru. Silakan login kembali.' });
+      }
       user.roles = await resolveUserRoles(user.id);
       user.roles = user.roles.length ? user.roles : [getPrimaryRole(user.roles)];
       expireOldUserAgreement(user);
@@ -318,6 +354,7 @@ const createTwoFactorController = ({
 
       const primaryRole = getPrimaryRole(user.roles);
       const passwordChangeRequired = requiresAnnualPasswordChange(user);
+      const sessionVersion = await incrementUserSessionVersion(db, user.id);
       if (user.user_agreement_accepted_at) await logSuccessfulLogin(user, 'password_and_2fa');
 
       const token = jwt.sign(
@@ -325,6 +362,7 @@ const createTwoFactorController = ({
           id: user.id, email: user.email, role: primaryRole, roles: user.roles,
           name: user.full_name, department: user.department, passwordChangeRequired,
           passwordExpiresAt: getPasswordExpiresAt(user),
+          sessionVersion,
           ...(!user.user_agreement_accepted_at ? { purpose: 'user_agreement' } : {})
         },
         jwtSecret,

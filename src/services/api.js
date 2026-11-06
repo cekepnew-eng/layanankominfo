@@ -19,6 +19,8 @@ const handleResponse = async (res) => {
       || (res.status === 403 && data.message === 'Invalid or Expired Token');
     if (invalidSession && !data.requiresPasswordChange) {
       if (!window.location.pathname.startsWith('/auth/login')) {
+        sessionStorage.removeItem('spbe_token');
+        sessionStorage.removeItem('spbe_user');
         localStorage.removeItem('spbe_token');
         localStorage.removeItem('spbe_user');
         window.location.href = '/auth/login';
