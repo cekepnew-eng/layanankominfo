@@ -221,6 +221,17 @@ exports.deleteUser = async (req, res) => {
       await client.query('ROLLBACK');
       return res.status(403).json({ success: false, message: 'Akun yang terhubung ke TND/API tidak dapat dihapus.' });
     }
+    const ticketHistory = await client.query(
+      'SELECT EXISTS (SELECT 1 FROM tickets WHERE user_id = $1) AS has_ticket_history',
+      [id]
+    );
+    if (ticketHistory.rows[0].has_ticket_history) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        success: false,
+        message: 'Pengguna tidak dapat dihapus karena memiliki riwayat tiket.'
+      });
+    }
     await recordRequestActivity(client, req, {
       activityType: 'user_deleted',
       description: `Admin menghapus pengguna ${targetUser.rows[0].full_name}.`,
@@ -231,6 +242,12 @@ exports.deleteUser = async (req, res) => {
     res.json({ success: true, message: 'User deleted' });
   } catch (error) {
     await client.query('ROLLBACK');
+    if (error.code === '23503') {
+      return res.status(409).json({
+        success: false,
+        message: 'Akun ini masih memiliki data yang terkait, seperti notifikasi atau riwayat tiket, sehingga belum dapat dihapus.'
+      });
+    }
     res.status(500).json({ success: false, message: error.message });
   } finally {
     client.release();

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { api } from '../services/api';
+import { ActionModal } from '../components/ActionModal';
 
 const AuthContext = createContext();
 
@@ -34,6 +35,29 @@ export const AuthProvider = ({ children }) => {
   });
 
   const [teams, setTeams] = useState([]);
+  const [sessionExpiredMessage, setSessionExpiredMessage] = useState('');
+
+  useEffect(() => {
+    const handleSessionExpired = (event) => {
+      setSessionExpiredMessage(
+        event.detail?.message
+        || 'Akun Anda telah digunakan untuk login di perangkat lain. Silakan login kembali.'
+      );
+    };
+
+    window.addEventListener('spbe-session-expired', handleSessionExpired);
+    return () => window.removeEventListener('spbe-session-expired', handleSessionExpired);
+  }, []);
+
+  const handleSessionExpiredClose = () => {
+    setSessionExpiredMessage('');
+    sessionStorage.removeItem('spbe_session_expired');
+    sessionStorage.removeItem('spbe_user');
+    sessionStorage.removeItem('spbe_token');
+    sessionStorage.removeItem('spbe_user_agreement_pending');
+    setUser(null);
+    window.location.href = '/auth/login';
+  };
 
   useEffect(() => {
     if (user) {
@@ -71,6 +95,7 @@ export const AuthProvider = ({ children }) => {
         const token = response.token || sessionStorage.getItem('spbe_token');
         if (token) {
           sessionStorage.setItem('spbe_token', token);
+          sessionStorage.removeItem('spbe_session_expired');
         }
         if (response.requiresUserAgreement) {
           sessionStorage.setItem('spbe_user_agreement_pending', 'true');
@@ -109,6 +134,7 @@ export const AuthProvider = ({ children }) => {
       const response = await api.login2FA(tempToken, otp, trustDevice);
       if (response.success) {
         sessionStorage.setItem('spbe_token', response.token);
+        sessionStorage.removeItem('spbe_session_expired');
         if (response.requiresUserAgreement) {
           sessionStorage.setItem('spbe_user_agreement_pending', 'true');
           if (response.trustedDeviceToken) {
@@ -144,6 +170,7 @@ export const AuthProvider = ({ children }) => {
         userData.roles = userData.roles.map(role => String(role).toUpperCase());
       }
       sessionStorage.setItem('spbe_token', response.token);
+      sessionStorage.removeItem('spbe_session_expired');
       sessionStorage.removeItem('spbe_user_agreement_pending');
       setUser(userData);
       sessionStorage.setItem('spbe_user', JSON.stringify(userData));
@@ -204,7 +231,18 @@ export const AuthProvider = ({ children }) => {
       teams, setTeams, fetchTeams,
       ratings: [], setRatings: () => {}
     }}>
-      {children}
+      <>
+        {children}
+        <ActionModal
+          isOpen={Boolean(sessionExpiredMessage)}
+          onClose={handleSessionExpiredClose}
+          type="warning"
+          title="Sesi Login Berakhir"
+          message={`${sessionExpiredMessage} Data akun Anda tetap aman.`}
+          confirmText="Kembali ke Login"
+          cancelText=""
+        />
+      </>
     </AuthContext.Provider>
   );
 };

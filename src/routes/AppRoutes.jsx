@@ -116,7 +116,7 @@ export const AppRoutes = () => {
         <Route 
           path="track-ticket" 
           element={
-            <ProtectedRoute allowedRoles={['ADMIN', 'HELPDESK']}>
+            <ProtectedRoute allowedRoles={['ADMIN', 'HELPDESK', 'PEGAWAI', 'USER', 'MASYARAKAT']}>
               <TrackTicket />
             </ProtectedRoute>
           } 

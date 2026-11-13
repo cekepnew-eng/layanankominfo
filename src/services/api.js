@@ -15,9 +15,19 @@ const getHeaders = () => {
 const handleResponse = async (res) => {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
+    const replacedSession = res.status === 401
+      && /sesi login telah digantikan oleh login baru/i.test(data.message || '')
+      && !String(res.url || '').endsWith('/auth/logout');
     const invalidSession = res.status === 401
       || (res.status === 403 && data.message === 'Invalid or Expired Token');
-    if (invalidSession && !data.requiresPasswordChange) {
+    if (replacedSession) {
+      if (!sessionStorage.getItem('spbe_session_expired')) {
+        sessionStorage.setItem('spbe_session_expired', 'true');
+        window.dispatchEvent(new CustomEvent('spbe-session-expired', {
+          detail: { message: data.message }
+        }));
+      }
+    } else if (invalidSession && !data.requiresPasswordChange) {
       if (!window.location.pathname.startsWith('/auth/login')) {
         sessionStorage.removeItem('spbe_token');
         sessionStorage.removeItem('spbe_user');

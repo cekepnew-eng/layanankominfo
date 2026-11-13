@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
-import { Search, Ticket, Activity, CheckCircle2, Clock, AlertTriangle, FileText } from 'lucide-react';
+import { Search, Ticket, Activity, Clock, FileText } from 'lucide-react';
 import { api } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import { TruncatedText } from '../../components/TruncatedText';
 
 export const TrackTicket = () => {
+  const { user } = useAuth();
+  const roleKey = (user?.roles || [user?.role]).map(role => String(role).toUpperCase()).join(',');
   const [ticketNumber, setTicketNumber] = useState('');
   const [loading, setLoading] = useState(false);
   const [ticketData, setTicketData] = useState(null);
@@ -17,7 +20,14 @@ export const TrackTicket = () => {
     setError('');
     
     try {
-      const res = await api.getAdminTickets();
+      const roles = new Set(roleKey.split(','));
+      const res = roles.has('ADMIN')
+        ? await api.getAdminTickets()
+        : roles.has('HELPDESK')
+          ? await api.getHelpdeskTickets()
+          : roles.has('PEGAWAI')
+            ? await api.getEmployeeTickets()
+            : await api.getMyTickets();
       if (res.data) {
         const found = res.data.find(t => t.ticket_number === cleanNum);
         if (found) {
@@ -26,7 +36,6 @@ export const TrackTicket = () => {
             found.logs = histRes.data;
           }
           setTicketData(found);
-          sessionStorage.setItem('lastTrackedTicketNumber', cleanNum);
         } else {
           setError('Tiket tidak ditemukan.');
         }
@@ -38,14 +47,6 @@ export const TrackTicket = () => {
       setLoading(false);
     }
   };
-
-  React.useEffect(() => {
-    const saved = sessionStorage.getItem('lastTrackedTicketNumber');
-    if (saved) {
-      setTicketNumber(saved);
-      performSearch(saved);
-    }
-  }, []);
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -73,6 +74,7 @@ export const TrackTicket = () => {
               placeholder="Contoh: REQ-2026-0001" 
               value={ticketNumber}
               onChange={(e) => setTicketNumber(e.target.value)}
+              autoComplete="off"
               className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl font-bold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all shadow-sm"
               required
             />

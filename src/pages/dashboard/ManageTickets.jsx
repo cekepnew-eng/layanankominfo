@@ -920,8 +920,9 @@ export const TicketHistory = ({ mode = 'active' }) => {
     }
     return [
       { id: 'semua', label: 'Semua' },
-      { id: 'pending', label: 'Menunggu Verifikasi' },
-      { id: 'proses', label: 'Sedang Diproses' }
+      { id: 'verifikasi', label: 'Menunggu Verifikasi' },
+      { id: 'proses', label: 'Sedang Diproses' },
+      { id: 'pending', label: 'Pending' }
     ];
   };
 
@@ -993,8 +994,9 @@ export const TicketHistory = ({ mode = 'active' }) => {
 
   const getTabCount = (tabId) => {
     if (!user) return 0;
-    let base = getBaseTickets();
-    if (tabId === 'pending') return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status === 'Pending' || t.status_name === 'PENDING' || t.status_name === 'VERIFIED' || t.status_name === 'REJECTED').length;
+    const base = getBaseTickets();
+    if (tabId === 'verifikasi') return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status_name === 'PENDING' || t.status_name === 'VERIFIED').length;
+    if (tabId === 'pending') return base.filter(t => t.status === 'Pending' || t.status_name === 'REJECTED').length;
     if (tabId === 'proses') return base.filter(t => t.status === 'Diproses' || t.status_name === 'ASSIGNED' || t.status_name === 'IN_PROGRESS').length;
     if (tabId === 'selesai') return base.filter(t => (t.status || '').includes('Selesai') || t.status === 'Menunggu Konfirmasi User' || t.status_name === 'COMPLETED' || t.status_name === 'WAITING_USER_CONFIRMATION').length;
     return base.length;
@@ -1002,8 +1004,9 @@ export const TicketHistory = ({ mode = 'active' }) => {
 
   const getFilteredTickets = () => {
     if (!user) return [];
-    let base = getBaseTickets();
-    if (activeTab === 'pending') return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status === 'Pending' || t.status_name === 'PENDING' || t.status_name === 'VERIFIED' || t.status_name === 'REJECTED');
+    const base = getBaseTickets();
+    if (activeTab === 'verifikasi') return base.filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status_name === 'PENDING' || t.status_name === 'VERIFIED');
+    if (activeTab === 'pending') return base.filter(t => t.status === 'Pending' || t.status_name === 'REJECTED');
     if (activeTab === 'proses') return base.filter(t => t.status === 'Diproses' || t.status_name === 'ASSIGNED' || t.status_name === 'IN_PROGRESS');
     if (activeTab === 'selesai') return base.filter(t => (t.status || '').includes('Selesai') || t.status === 'Menunggu Konfirmasi User' || t.status_name === 'COMPLETED' || t.status_name === 'WAITING_USER_CONFIRMATION');
     return base;

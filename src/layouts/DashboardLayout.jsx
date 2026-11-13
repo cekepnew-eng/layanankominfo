@@ -371,10 +371,10 @@ export const DashboardLayout = () => {
     }
 
     if (role === 'PEGAWAI') {
-      return [home, history, ticketHistory, activityLogs, profile];
+      return [home, history, ticketHistory, activityLogs, trackTicket, profile];
     }
 
-    return [home, ...userLinks, history, ticketHistory, activityLogs, profile];
+    return [home, ...userLinks, history, ticketHistory, activityLogs, trackTicket, profile];
   };
 
   const menuLinks = getMenuLinks();

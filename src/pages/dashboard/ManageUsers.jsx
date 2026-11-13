@@ -359,7 +359,19 @@ export const ManageUsers = () => {
         onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
       });
     } catch (err) {
-      alert('Gagal menghapus pengguna: ' + err.message);
+      const hasRelatedDataError = /foreign key constraint|notifications_user_id_fk|violates.*constraint/i.test(err.message || '');
+      setModalConfig({
+        isOpen: true,
+        type: 'warning',
+        title: err.status === 409 || hasRelatedDataError
+          ? 'Pengguna Tidak Dapat Dihapus'
+          : 'Pengguna Gagal Dihapus',
+        message: hasRelatedDataError
+          ? 'Akun ini masih memiliki data yang terkait, seperti notifikasi atau riwayat tiket, sehingga belum dapat dihapus.'
+          : err.message || 'Terjadi kesalahan saat menghapus pengguna.',
+        confirmText: 'Mengerti',
+        cancelText: ''
+      });
     }
   };
 

@@ -234,6 +234,7 @@ exports.getMyTickets = async (req, res) => {
   try {
     const result = await db.query(`
       SELECT t.id, t.ticket_number, t.service_id, t.progress, t.priority, t.created_at, t.status_id as status_id,
+             (SELECT MAX(th.created_at) FROM ticket_histories th WHERE th.ticket_id = t.id) as last_activity_at,
              COALESCE(NULLIF(td.form_data->>'Nama Pemohon', ''), u.full_name) as pemohon,
              (CASE 
                WHEN td.form_data->>'Instansi / Asal Pemohon' IS NOT NULL AND TRIM(td.form_data->>'Instansi / Asal Pemohon') != '' 
@@ -280,7 +281,7 @@ exports.getMyTickets = async (req, res) => {
           )
         )
       )
-      ORDER BY t.created_at DESC
+      ORDER BY last_activity_at DESC NULLS LAST, t.created_at DESC
     `, [req.user.id]);
     const mappedRows = result.rows.map(t => ({
       ...t,
@@ -584,6 +585,7 @@ exports.getHelpdeskTickets = async (req, res) => {
   try {
     const result = await db.query(`
       SELECT t.id, t.ticket_number, t.service_id, t.progress, t.created_at, t.status_id as status_id,
+             (SELECT MAX(th.created_at) FROM ticket_histories th WHERE th.ticket_id = t.id) as last_activity_at,
              COALESCE(NULLIF(td.form_data->>'Nama Pemohon', ''), u.full_name) as pemohon, 
              (CASE 
                WHEN td.form_data->>'Instansi / Asal Pemohon' IS NOT NULL AND TRIM(td.form_data->>'Instansi / Asal Pemohon') != '' 
@@ -605,7 +607,7 @@ exports.getHelpdeskTickets = async (req, res) => {
       JOIN ticket_statuses st ON t.status_id = st.id
       LEFT JOIN ticket_details td ON td.ticket_id = t.id
       LEFT JOIN ticket_feedback tf ON tf.ticket_id = t.id
-      ORDER BY t.created_at DESC
+      ORDER BY last_activity_at DESC NULLS LAST, t.created_at DESC
     `);
     const mappedRows = result.rows.map(t => ({
       ...t,
@@ -707,6 +709,7 @@ exports.getEmployeeTickets = async (req, res) => {
   try {
     const result = await db.query(`
       SELECT DISTINCT ON (t.id) t.id, t.ticket_number, t.service_id, t.progress, t.created_at, t.status_id as status_id,
+             (SELECT MAX(th.created_at) FROM ticket_histories th WHERE th.ticket_id = t.id) as last_activity_at,
              tm.team_name as team, tm.team_name as team_name,
              COALESCE((
                SELECT json_agg(DISTINCT assigned_team.team_name)
@@ -768,7 +771,10 @@ exports.getEmployeeTickets = async (req, res) => {
                 : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Menunggu Konfirmasi User'
                   : t.status_name === 'COMPLETED' ? 'Selesai'
                     : t.status_name
-    }));
+    })).sort((a, b) => {
+      const activityDifference = new Date(b.last_activity_at || b.created_at) - new Date(a.last_activity_at || a.created_at);
+      return activityDifference || new Date(b.created_at) - new Date(a.created_at);
+    });
     res.json({ success: true, data: mappedRows });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error' });
@@ -861,6 +867,7 @@ exports.getAdminTickets = async (req, res) => {
   try {
     const result = await db.query(`
       SELECT t.id, t.ticket_number, t.service_id, t.progress, t.created_at, t.status_id as status_id,
+             (SELECT MAX(th.created_at) FROM ticket_histories th WHERE th.ticket_id = t.id) as last_activity_at,
              COALESCE(NULLIF(td.form_data->>'Nama Pemohon', ''), u.full_name) as pemohon, 
              (CASE 
                WHEN td.form_data->>'Instansi / Asal Pemohon' IS NOT NULL AND TRIM(td.form_data->>'Instansi / Asal Pemohon') != '' 
@@ -882,7 +889,7 @@ exports.getAdminTickets = async (req, res) => {
       JOIN ticket_statuses st ON t.status_id = st.id
       LEFT JOIN ticket_details td ON td.ticket_id = t.id
       LEFT JOIN ticket_feedback tf ON tf.ticket_id = t.id
-      ORDER BY t.created_at DESC
+      ORDER BY last_activity_at DESC NULLS LAST, t.created_at DESC
     `);
     const mappedRows = result.rows.map(t => ({
       ...t,
@@ -1027,16 +1034,67 @@ exports.setRatingLandingVisibility = async (req, res) => {
 exports.getHistory = async (req, res) => {
   try {
     const ticketId = req.params.id;
-    const userRoles = req.user?.roles || [req.user?.role];
-    const isStaff = userRoles.some(r => ['ADMIN', 'HELPDESK', 'PEGAWAI'].includes(r));
+    const userRoles = new Set(
+      ((Array.isArray(req.user?.roles) && req.user.roles.length) ? req.user.roles : [req.user?.role])
+        .filter(Boolean)
+        .map(role => String(role).toUpperCase())
+    );
+    const isAdmin = userRoles.has('ADMIN');
+    const isHelpdesk = userRoles.has('HELPDESK');
 
-    if (!isStaff) {
-      const checkOwner = await db.query('SELECT user_id FROM tickets WHERE id = $1', [ticketId]);
-      if (checkOwner.rows.length === 0) {
-        return res.status(404).json({ success: false, message: 'Tiket tidak ditemukan' });
+    if (!isAdmin && !isHelpdesk) {
+      let access;
+      if (userRoles.has('PEGAWAI')) {
+        const result = await db.query(`
+          WITH linked_users AS (
+            SELECT id FROM users
+            WHERE id = $2
+              OR ($3::text IS NOT NULL AND email = $3)
+              OR ($4::text IS NOT NULL AND nip = $4)
+          )
+          SELECT EXISTS (
+            SELECT 1
+            FROM ticket_assignments assignment
+            WHERE assignment.ticket_id = $1
+              AND (
+                assignment.assigned_to_user_id IN (SELECT id FROM linked_users)
+                OR assignment.team_id IN (
+                  SELECT team_id FROM team_members
+                  WHERE user_id IN (SELECT id FROM linked_users)
+                )
+              )
+            UNION
+            SELECT 1 FROM subtasks
+            WHERE ticket_id = $1 AND assigned_to IN (SELECT id FROM linked_users)
+          ) AS allowed
+        `, [ticketId, req.user.id, req.user.email || null, req.user.nip || null]);
+        access = result.rows[0]?.allowed;
+      } else {
+        const result = await db.query(`
+          SELECT ticket.user_id, owner.email AS owner_email, owner.nip AS owner_nip, details.form_data
+          FROM tickets ticket
+          JOIN users owner ON owner.id = ticket.user_id
+          LEFT JOIN ticket_details details ON details.ticket_id = ticket.id
+          WHERE ticket.id = $1
+        `, [ticketId]);
+        const ticket = result.rows[0];
+        if (!ticket) {
+          return res.status(404).json({ success: false, message: 'Tiket tidak ditemukan' });
+        }
+        const formData = ticket.form_data || {};
+        access = ticket.user_id === req.user.id
+          || (req.user.email && (
+            ticket.owner_email === req.user.email
+            || formData['Email Pemohon'] === req.user.email
+          ))
+          || (req.user.nip && (
+            ticket.owner_nip === req.user.nip
+            || formData.NIP === req.user.nip
+          ));
       }
-      if (checkOwner.rows[0].user_id !== req.user.id) {
-        return res.status(403).json({ success: false, message: 'Akses ditolak: Anda bukan pemilik tiket ini' });
+
+      if (!access) {
+        return res.status(403).json({ success: false, message: 'Akses ditolak: Anda tidak memiliki akses ke riwayat tiket ini.' });
       }
     }
 

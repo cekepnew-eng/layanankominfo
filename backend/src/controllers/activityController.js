@@ -59,7 +59,8 @@ exports.getActivityLogs = async (req, res) => {
   };
 
   if (isHelpdesk && !isAdmin) {
-    conditions.push(`activity_source = 'ticket' AND ticket_id IS NOT NULL`);
+    const userId = addParam(req.user.id);
+    conditions.push(`activity_source = 'ticket' AND ticket_id IS NOT NULL AND actor_id = ${userId}`);
   } else if (isEmployee && !isAdmin && !isHelpdesk) {
     const userId = addParam(req.user.id);
     conditions.push(`activity_source = 'ticket' AND ticket_id IN (
