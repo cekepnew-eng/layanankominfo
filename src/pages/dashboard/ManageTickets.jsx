@@ -153,20 +153,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
       }
 
       if (res && res.data) {
-        let rawTickets = res.data;
-        if (role === 'USER' || role === 'MASYARAKAT' || !['ADMIN', 'HELPDESK', 'PEGAWAI'].includes(role)) {
-          rawTickets = rawTickets.filter(t => {
-            const isHelpdeskTicket =
-              t.form_data?.submitted_by_helpdesk === true ||
-              t.form_data?.submitted_by_helpdesk === 'true' ||
-              String(t.pemohon || '').toLowerCase().includes('helpdesk') ||
-              String(t.form_data?.['Nama Pemohon'] || '').toLowerCase().includes('helpdesk') ||
-              String(t.opd || '').toLowerCase().includes('helpdesk') ||
-              String(t.form_data?.['Instansi / Asal Pemohon'] || '').toLowerCase().includes('helpdesk');
-            return !isHelpdeskTicket;
-          });
-        }
-        const mapped = rawTickets.map(t => {
+        const mapped = res.data.map(t => {
           const normalizedServiceName = String(t.service_name || t.service || '').trim().toLocaleLowerCase('id-ID');
           const configuredService = services.find(service =>
             [service.service_name, service.name].some(name => String(name || '').trim().toLocaleLowerCase('id-ID') === normalizedServiceName)

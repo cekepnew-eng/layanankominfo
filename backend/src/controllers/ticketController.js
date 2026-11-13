@@ -232,6 +232,11 @@ exports.createTicket = async (req, res) => {
 
 exports.getMyTickets = async (req, res) => {
   try {
+    const userRoles = (Array.isArray(req.user?.roles) && req.user.roles.length)
+      ? req.user.roles
+      : [req.user?.role];
+    const isOpdUser = userRoles.some(role => String(role).toUpperCase() === 'USER')
+      && !userRoles.some(role => String(role).toUpperCase() === 'MASYARAKAT');
     const result = await db.query(`
       SELECT t.id, t.ticket_number, t.service_id, t.progress, t.priority, t.created_at, t.status_id as status_id,
              (SELECT MAX(th.created_at) FROM ticket_histories th WHERE th.ticket_id = t.id) as last_activity_at,
@@ -273,16 +278,19 @@ exports.getMyTickets = async (req, res) => {
         )
         -- 2. ATAU tiket bantuan helpdesk yang memang ditujukan untuk akun user ini
         OR (
+          $2::boolean
+          AND
           (td.form_data->>'submitted_by_helpdesk' = 'true' OR td.form_data->>'submitted_by_helpdesk' = '1')
-          AND (
-            (t.user_id = $1 AND (td.form_data->>'helpdesk_user_id' IS NULL OR t.user_id != (td.form_data->>'helpdesk_user_id')::uuid))
-            OR (td.form_data->>'Email Pemohon' IS NOT NULL AND td.form_data->>'Email Pemohon' = (SELECT email FROM users WHERE id = $1))
-            OR (td.form_data->>'NIP' IS NOT NULL AND td.form_data->>'NIP' = (SELECT nip FROM users WHERE id = $1))
+          AND COALESCE(NULLIF(td.form_data->>'target_opd_user_id', ''), t.user_id::text) IN (
+            SELECT id::text FROM users
+            WHERE id = $1
+               OR (email IS NOT NULL AND email = (SELECT email FROM users WHERE id = $1))
+               OR (nip IS NOT NULL AND nip = (SELECT nip FROM users WHERE id = $1))
           )
         )
       )
       ORDER BY last_activity_at DESC NULLS LAST, t.created_at DESC
-    `, [req.user.id]);
+    `, [req.user.id, isOpdUser]);
     const mappedRows = result.rows.map(t => ({
       ...t,
       status: t.status_name === 'PENDING' ? 'Verifikasi'

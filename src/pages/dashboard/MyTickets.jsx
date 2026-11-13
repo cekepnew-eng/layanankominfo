@@ -139,21 +139,7 @@ export const MyTickets = () => {
       }
       
       if (res.data) {
-        let rawTickets = res.data;
-        const currentRole = String(user?.role || '').toUpperCase();
-        if (currentRole === 'USER' || currentRole === 'MASYARAKAT' || !['ADMIN', 'HELPDESK', 'PEGAWAI'].includes(currentRole)) {
-          rawTickets = rawTickets.filter(t => {
-            const isHelpdeskTicket = 
-              t.form_data?.submitted_by_helpdesk === true ||
-              t.form_data?.submitted_by_helpdesk === 'true' ||
-              String(t.pemohon || '').toLowerCase().includes('helpdesk') ||
-              String(t.form_data?.['Nama Pemohon'] || '').toLowerCase().includes('helpdesk') ||
-              String(t.opd || '').toLowerCase().includes('helpdesk') ||
-              String(t.form_data?.['Instansi / Asal Pemohon'] || '').toLowerCase().includes('helpdesk');
-            return !isHelpdeskTicket;
-          });
-        }
-        const mapped = rawTickets.map(t => ({
+        const mapped = res.data.map(t => ({
           ...t,
           status: t.status_name === 'PENDING' ? 'Pending'
                 : t.status_name === 'VERIFIED' ? 'Menunggu Validasi'

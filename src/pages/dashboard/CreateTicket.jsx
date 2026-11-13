@@ -36,17 +36,7 @@ export const CreateTicket = () => {
         }
         
         const tktRes = await api.getMyTickets();
-        const validTickets = (tktRes.data || []).filter(t => {
-          return !(
-            t?.form_data?.submitted_by_helpdesk === true ||
-            t?.form_data?.submitted_by_helpdesk === 'true' ||
-            String(t?.pemohon || '').toLowerCase().includes('helpdesk') ||
-            String(t?.form_data?.['Nama Pemohon'] || '').toLowerCase().includes('helpdesk') ||
-            String(t?.opd || '').toLowerCase().includes('helpdesk') ||
-            String(t?.form_data?.['Instansi / Asal Pemohon'] || '').toLowerCase().includes('helpdesk')
-          );
-        });
-        setTickets(validTickets);
+        setTickets(tktRes.data || []);
 
         let foundDraftSubService = null;
         for (let i = 0; i < localStorage.length; i++) {
@@ -240,19 +230,8 @@ export const CreateTicket = () => {
     return sid === 7 || sn === 'COMPLETED' || s === 'selesai & dinilai';
   };
 
-  const isFromHelpdesk = (t) => {
-    return Boolean(
-      t?.form_data?.submitted_by_helpdesk === true ||
-      t?.form_data?.submitted_by_helpdesk === 'true' ||
-      String(t?.pemohon || '').toLowerCase().includes('helpdesk') ||
-      String(t?.form_data?.['Nama Pemohon'] || '').toLowerCase().includes('helpdesk') ||
-      String(t?.opd || '').toLowerCase().includes('helpdesk') ||
-      String(t?.form_data?.['Instansi / Asal Pemohon'] || '').toLowerCase().includes('helpdesk')
-    );
-  };
-
-  const activeTicket = isRegularUser 
-    ? tickets.filter(t => !isFromHelpdesk(t)).find(t => !isTicketCompleted(t))
+  const activeTicket = isRegularUser
+    ? tickets.find(t => !isTicketCompleted(t))
     : null;
 
   const handleCompleteSkm = async (t) => {
@@ -389,8 +368,7 @@ export const CreateTicket = () => {
 
       api.getMyTickets().then(tktRes => {
         if (tktRes && tktRes.data) {
-          const valid = tktRes.data.filter(t => !isFromHelpdesk(t));
-          setTickets(valid);
+          setTickets(tktRes.data);
         }
       }).catch(() => {});
     } catch (err) {
