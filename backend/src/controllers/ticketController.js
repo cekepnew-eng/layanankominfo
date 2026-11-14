@@ -61,7 +61,7 @@ exports.createTicket = async (req, res) => {
                OR (nip IS NOT NULL AND nip = (SELECT nip FROM users WHERE id = $1))
           )
         ) 
-        AND t.status_id != 7
+        AND t.status_id NOT IN (7, 8)
         AND (td.form_data->>'submitted_by_helpdesk' IS NULL OR td.form_data->>'submitted_by_helpdesk' != 'true')
         AND (td.form_data->>'Nama Pemohon' IS NULL OR td.form_data->>'Nama Pemohon' NOT ILIKE '%via Helpdesk%')
       `, [req.user.id]);
@@ -89,9 +89,17 @@ exports.createTicket = async (req, res) => {
     }
 
     const srvRes = await client.query(
-      'SELECT verification_type, default_team_id, form_schema FROM services WHERE id = $1',
+      'SELECT status, verification_type, default_team_id, form_schema FROM services WHERE id = $1',
       [finalServiceId]
     );
+    if (!srvRes.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ success: false, message: 'Layanan tidak ditemukan.' });
+    }
+    if (String(srvRes.rows[0].status || '').trim().toLocaleLowerCase('id-ID') !== 'aktif') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ success: false, message: 'Layanan ini sedang dalam tahap pengembangan dan belum dapat diajukan.' });
+    }
     const uploadError = validateUploadPayload(form_data) || validateRequiredFileFields(srvRes.rows[0]?.form_schema, form_data);
     if (uploadError) {
       await client.query('ROLLBACK');
@@ -300,12 +308,59 @@ exports.getMyTickets = async (req, res) => {
               : t.status_name === 'IN_PROGRESS' ? 'Diproses'
                 : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Selesai'
                   : t.status_name === 'COMPLETED' ? 'Selesai'
+                    : t.status_name === 'CANCELLED' ? 'Dibatalkan'
                     : t.status_name
     }));
     res.json({ success: true, data: mappedRows, meta: { total: mappedRows.length } });
   } catch (err) {
     console.error('getMyTickets error:', err);
     res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.cancelTicket = async (req, res) => {
+  const { id } = req.params;
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+    const ticketRes = await client.query(`
+      SELECT t.id, t.user_id, t.status_id, t.ticket_number,
+             NOT EXISTS (
+               SELECT 1 FROM ticket_assignments ta WHERE ta.ticket_id = t.id
+             ) AS has_no_assignment
+      FROM tickets t
+      WHERE t.id = $1
+      FOR UPDATE OF t
+    `, [id]);
+
+    if (ticketRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, message: 'Tiket tidak ditemukan.' });
+    }
+
+    const ticket = ticketRes.rows[0];
+    if (String(ticket.user_id) !== String(req.user.id)) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ success: false, message: 'Anda bukan pemilik tiket ini.' });
+    }
+    if (![1, 2, 3].includes(Number(ticket.status_id)) || !ticket.has_no_assignment) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        success: false,
+        message: 'Tiket hanya bisa dibatalkan sebelum ditugaskan kepada Pegawai.'
+      });
+    }
+
+    await client.query('DELETE FROM tickets WHERE id = $1', [id]);
+
+    await client.query('COMMIT');
+    res.json({ success: true, message: `Tiket ${ticket.ticket_number} berhasil dihapus.` });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('cancelTicket error:', err);
+    res.status(500).json({ success: false, message: 'Gagal menghapus tiket.' });
+  } finally {
+    client.release();
   }
 };
 
@@ -327,7 +382,7 @@ exports.updateTicketData = async (req, res) => {
     }
 
     // Validasi kepemilikan tiket (IDOR Protection)
-    const ticketOwnerRes = await client.query('SELECT user_id FROM tickets WHERE id = $1', [actualTicketId]);
+    const ticketOwnerRes = await client.query('SELECT user_id, status_id FROM tickets WHERE id = $1 FOR UPDATE', [actualTicketId]);
     if (ticketOwnerRes.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ success: false, message: 'Tiket tidak ditemukan.' });
@@ -336,6 +391,11 @@ exports.updateTicketData = async (req, res) => {
     const ticketOwnerId = ticketOwnerRes.rows[0].user_id;
     const userRoles = (req.user.roles || [req.user.role] || []).map(r => String(r).toUpperCase());
     const isHelpdeskOrAdmin = userRoles.includes('HELPDESK') || userRoles.includes('ADMIN');
+
+    if (Number(ticketOwnerRes.rows[0].status_id) === 8) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ success: false, message: 'Tiket sudah dibatalkan oleh pemohon.' });
+    }
 
     if (ticketOwnerId !== req.user.id && !isHelpdeskOrAdmin) {
       await client.query('ROLLBACK');
@@ -626,6 +686,7 @@ exports.getHelpdeskTickets = async (req, res) => {
               : t.status_name === 'IN_PROGRESS' ? 'Diproses'
                 : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Selesai'
                   : t.status_name === 'COMPLETED' ? 'Selesai'
+                    : t.status_name === 'CANCELLED' ? 'Dibatalkan'
                     : t.status_name
     }));
     res.json({ success: true, data: mappedRows });
@@ -639,11 +700,16 @@ exports.verifyTicket = async (req, res) => {
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
-    const curRes = await client.query('SELECT status_id, user_id, ticket_number FROM tickets WHERE id = $1', [id]);
+    const curRes = await client.query('SELECT status_id, user_id, ticket_number FROM tickets WHERE id = $1 FOR UPDATE', [id]);
     if (curRes.rows.length === 0) throw new Error('Ticket not found');
     const oldStatus = curRes.rows[0].status_id;
     const ticketOwnerId = curRes.rows[0].user_id;
     const ticketNumber = curRes.rows[0].ticket_number;
+
+    if (Number(oldStatus) === 8) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ success: false, message: 'Tiket sudah dibatalkan oleh pemohon.' });
+    }
 
     await client.query('UPDATE tickets SET status_id = 2, updated_at = NOW() WHERE id = $1', [id]); // 2: VERIFIED
     await createHistory(client, id, req.user.id, oldStatus, 2, 'Diverifikasi oleh Helpdesk. Berkas dinyatakan lengkap dan valid. Menunggu penugasan tim kerja.');
@@ -667,9 +733,14 @@ exports.assignTicket = async (req, res) => {
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
-    const curRes = await client.query('SELECT status_id, user_id, ticket_number FROM tickets WHERE id = $1', [id]);
+    const curRes = await client.query('SELECT status_id, user_id, ticket_number FROM tickets WHERE id = $1 FOR UPDATE', [id]);
     if (curRes.rows.length === 0) throw new Error('Ticket not found');
     const oldStatus = curRes.rows[0].status_id;
+
+    if (Number(oldStatus) === 8) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ success: false, message: 'Tiket sudah dibatalkan oleh pemohon.' });
+    }
 
     await client.query('UPDATE tickets SET status_id = 4, updated_at = NOW() WHERE id = $1', [id]); // 4: ASSIGNED
     await client.query(`
@@ -778,6 +849,7 @@ exports.getEmployeeTickets = async (req, res) => {
               : t.status_name === 'IN_PROGRESS' ? 'Diproses'
                 : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Menunggu Konfirmasi User'
                   : t.status_name === 'COMPLETED' ? 'Selesai'
+                    : t.status_name === 'CANCELLED' ? 'Dibatalkan'
                     : t.status_name
     })).sort((a, b) => {
       const activityDifference = new Date(b.last_activity_at || b.created_at) - new Date(a.last_activity_at || a.created_at);
@@ -795,7 +867,7 @@ exports.updateProgress = async (req, res) => {
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
-    const uploadError = validateUploadPayload(bastFileBase64, { documentsOnly: true });
+    const uploadError = validateUploadPayload(bastFileBase64);
     if (uploadError) {
       await client.query('ROLLBACK');
       return res.status(400).json({ success: false, message: uploadError });
@@ -850,10 +922,19 @@ exports.updateProgress = async (req, res) => {
       `, [id, bastFileName, bastFileBase64]);
     }
 
-    if (numProgress === 100) {
-      const tRes = await client.query('SELECT user_id, ticket_number FROM tickets WHERE id = $1', [id]);
+    if (newStatus === 6 && oldStatus !== 6) {
+      const tRes = await client.query(`
+        SELECT t.user_id, t.ticket_number, td.form_data->>'helpdesk_user_id' as helpdesk_user_id
+        FROM tickets t
+        LEFT JOIN ticket_details td ON td.ticket_id = t.id
+        WHERE t.id = $1
+      `, [id]);
       if (tRes.rows.length > 0) {
-        await createNotification(client, tRes.rows[0].user_id, id, 'INFO', 'Pekerjaan Selesai', `Tiket ${tRes.rows[0].ticket_number} telah 100% dikerjakan. Silakan konfirmasi dan berikan rating.`);
+        const ticket = tRes.rows[0];
+        await createNotification(client, ticket.user_id, id, 'INFO', 'Pekerjaan Selesai', `Tiket ${ticket.ticket_number} telah 100% dikerjakan. Silakan konfirmasi dan berikan rating.`);
+        if (ticket.helpdesk_user_id && String(ticket.helpdesk_user_id) !== String(ticket.user_id)) {
+          await createNotification(client, ticket.helpdesk_user_id, id, 'INFO', 'Tiket Bantuan Selesai', `Tiket ${ticket.ticket_number} yang Anda ajukan untuk pemohon telah 100% dikerjakan dan menunggu konfirmasi OPD.`);
+        }
       }
     }
 
@@ -908,6 +989,7 @@ exports.getAdminTickets = async (req, res) => {
               : t.status_name === 'IN_PROGRESS' ? 'Diproses'
                 : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Selesai'
                   : t.status_name === 'COMPLETED' ? 'Selesai'
+                    : t.status_name === 'CANCELLED' ? 'Dibatalkan'
                     : t.status_name
     }));
     res.json({ success: true, data: mappedRows });
@@ -1213,11 +1295,16 @@ exports.rejectTicket = async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    const curRes = await client.query('SELECT status_id, user_id, ticket_number FROM tickets WHERE id = $1', [id]);
+    const curRes = await client.query('SELECT status_id, user_id, ticket_number FROM tickets WHERE id = $1 FOR UPDATE', [id]);
     if (curRes.rows.length === 0) throw new Error('Ticket not found');
     const oldStatus = curRes.rows[0].status_id;
     const ticketOwnerId = curRes.rows[0].user_id;
     const ticketNumber = curRes.rows[0].ticket_number;
+
+    if (Number(oldStatus) === 8) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ success: false, message: 'Tiket sudah dibatalkan oleh pemohon.' });
+    }
 
     // Status 3 is Rejected/Pending/Revision
     await client.query('UPDATE tickets SET status_id = 3, updated_at = NOW() WHERE id = $1', [id]);

@@ -92,6 +92,16 @@ const runAutoMigrations = async () => {
       handleMigrationError('ticket_attachments', err);
     }
 
+    try {
+      await pool.query(`
+        INSERT INTO ticket_statuses (id, name, description)
+        VALUES (8, 'CANCELLED', 'Dibatalkan oleh pemohon')
+        ON CONFLICT DO NOTHING;
+      `);
+    } catch (err) {
+      handleMigrationError('ticket_statuses.CANCELLED', err);
+    }
+
     // 4. CREATE TABLE subtasks IF NOT EXISTS (without DROP TABLE to preserve data!)
     try {
       await pool.query(`

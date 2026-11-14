@@ -128,9 +128,12 @@ export const ManageUsers = () => {
     setEditRolesVal(initialRoles);
 
     const initialAssignments = {};
-    if (u.team_id) {
-      initialAssignments[u.team_id] = true;
-    }
+    const assignedTeamIds = Array.isArray(u.team_ids)
+      ? u.team_ids
+      : (u.team_id ? [u.team_id] : []);
+    assignedTeamIds.forEach(teamId => {
+      initialAssignments[String(teamId)] = true;
+    });
     setEditTeamAssignments(initialAssignments);
   };
 
@@ -197,10 +200,6 @@ export const ManageUsers = () => {
       setMasyarakatFormError('Konfirmasi password tidak cocok.');
       return;
     }
-    if (newMasyarakatData.roleNames.includes('PEGAWAI') && newMasyarakatData.teamIds.length === 0) {
-      setMasyarakatFormError('Pilih minimal satu tim kerja untuk akun Pegawai.');
-      return;
-    }
     if (!newMasyarakatData.roleNames.includes('MASYARAKAT') && !newMasyarakatData.department.trim()) {
       setMasyarakatFormError('Nama instansi/perangkat daerah wajib diisi.');
       return;
@@ -265,25 +264,11 @@ export const ManageUsers = () => {
     }
 
     const assignedTeamIds = Object.keys(editTeamAssignments).filter(id => editTeamAssignments[id]);
-
-    if (finalRoles.includes('pegawai') && assignedTeamIds.length === 0) {
-      setModalConfig({
-        isOpen: true,
-        type: 'warning',
-        title: 'Penugasan Tim Belum Dipilih',
-        message: 'Pengguna dengan peran Pegawai wajib ditugaskan ke minimal satu Tim Kerja Pelaksana Teknis.',
-        confirmText: 'Pilih Tim',
-        cancelText: '',
-        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
-      });
-      return;
-    }
+    const teamIdsToSave = finalRoles.includes('pegawai') ? assignedTeamIds : [];
 
     const primaryRole = finalRoles[0] || (isMasyarakat ? 'masyarakat' : 'user');
-    const primaryTeamId = assignedTeamIds.length > 0 ? assignedTeamIds[0] : null;
-
     try {
-      await api.updateUserRole(editingUser.id, { roleNames: finalRoles, team_id: primaryTeamId });
+      await api.updateUserRole(editingUser.id, { roleNames: finalRoles, team_ids: teamIdsToSave });
       await fetchUsers(); // Refresh from DB
       if (fetchTeams) {
         await fetchTeams();
@@ -758,7 +743,7 @@ export const ManageUsers = () => {
 
               {editRolesVal.includes('pegawai') && (
                 <div className="space-y-2 pt-1 border-t border-slate-100">
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Penugasan Tim Kerja Pelaksana (Wajib)</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Penugasan Tim Kerja Pelaksana (Opsional)</label>
                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 space-y-2 max-h-40 overflow-y-auto">
                     {teams.map(t => {
                       const isAssigned = editTeamAssignments[t.id];
@@ -895,7 +880,7 @@ export const ManageUsers = () => {
               )}
               {newMasyarakatData.roleNames.includes('PEGAWAI') && (
                 <div>
-                  <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Penugasan Tim Kerja Pelaksana (Wajib)</label>
+                  <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Penugasan Tim Kerja Pelaksana (Opsional)</label>
                   <div className="max-h-40 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-3">
                     {teams.map(team => (
                       <label key={team.id} className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">

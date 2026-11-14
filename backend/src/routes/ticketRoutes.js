@@ -8,6 +8,7 @@ const { authenticateToken, authorizeRole } = require('../middleware/auth');
 router.post('/my/tickets', authenticateToken, authorizeRole(['USER', 'MASYARAKAT', 'HELPDESK', 'PEGAWAI', 'ADMIN']), ticketController.createTicket);
 router.get('/my/tickets', authenticateToken, authorizeRole(['USER', 'MASYARAKAT', 'HELPDESK', 'PEGAWAI', 'ADMIN']), ticketController.getMyTickets);
 router.patch('/my/tickets/:id', authenticateToken, authorizeRole(['USER', 'MASYARAKAT', 'ADMIN']), ticketController.updateTicketData);
+router.post('/my/tickets/:id/cancel', authenticateToken, authorizeRole(['USER', 'MASYARAKAT']), ticketController.cancelTicket);
 router.post('/my/tickets/:id/feedback', authenticateToken, authorizeRole(['USER', 'MASYARAKAT', 'HELPDESK', 'PEGAWAI', 'ADMIN']), ticketController.submitFeedback);
 router.post('/my/tickets/:id/dispute', authenticateToken, authorizeRole(['USER', 'MASYARAKAT', 'ADMIN']), ticketController.disputeTicket);
 

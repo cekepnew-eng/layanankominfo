@@ -316,7 +316,18 @@ export const ManageServices = () => {
 
       const form_schema = editFormSchema;
 
-      // 1. INSTANT OPTIMISTIC UI UPDATE (ZERO DELAY!)
+      await api.updateService(editingService.id, {
+        category_name: editCategory,
+        name: editName,
+        target_sla: formattedSla,
+        verification_type: verificationType,
+        status: editStatus,
+        sop_link: finalSop,
+        required_docs: finalReqDocs,
+        default_team_id: finalDefaultTeamId,
+        form_schema
+      });
+
       setServices(prev => prev.map(s => s.id === editingService.id ? {
         ...s,
         category: editCategory,
@@ -338,7 +349,6 @@ export const ManageServices = () => {
         form_schema
       } : s));
 
-      // Close modal immediately so UI is completely responsive
       setEditingService(null);
       setModalConfig({
         isOpen: true,
@@ -349,21 +359,8 @@ export const ManageServices = () => {
         cancelText: '',
         onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
       });
-        
-      await api.updateService(editingService.id, {
-        category_name: editCategory,
-        name: editName,
-        target_sla: formattedSla,
-        verification_type: verificationType,
-        status: editStatus,
-        sop_link: finalSop,
-        required_docs: finalReqDocs,
-        default_team_id: finalDefaultTeamId,
-        form_schema
-      });
     } catch (err) {
       alert('Gagal memperbarui layanan: ' + err.message);
-      await fetchServices();
     }
   };
 
@@ -1031,7 +1028,7 @@ export const ManageServices = () => {
                         </select>
                       ) : field.type === 'file' ? (
                         <div className="w-full flex items-center justify-between px-4 py-2.5 bg-white border border-dashed border-slate-350 rounded-xl text-sm text-slate-450 cursor-not-allowed">
-                          <span className="font-semibold text-slate-500">{field.label} (PDF, Maks 5MB)</span>
+                          <span className="font-semibold text-slate-500">{field.label} (PDF maks. 5 MB; JPG/PNG/WEBP maks. 2 MB)</span>
                           <span className="text-xs font-bold text-sky-600 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-100">Upload Dokumen</span>
                         </div>
                       ) : (

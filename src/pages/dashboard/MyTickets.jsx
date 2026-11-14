@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Star, AlertCircle, CheckCircle2, ChevronRight, Sparkles, Send, RefreshCw, Upload, AlertTriangle, Check, Clock } from 'lucide-react';
+import { FileText, Star, AlertCircle, CheckCircle2, ChevronRight, Sparkles, Send, RefreshCw, Upload, AlertTriangle, Check, Clock, XCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getCurrentLogTimeFormatted, formatLogDateDisplay } from '../../utils/dateUtils';
 import { TicketDetailModal } from '../../components/TicketDetailModal';
@@ -113,9 +113,10 @@ export const MyTickets = () => {
 
   const getFilteredTickets = () => {
     if (activeTab === 'Semua') return tickets;
-    if (activeTab === 'Pending') return tickets.filter(t => t.status_name === 'PENDING' || t.status_name === 'VERIFIED');
+    if (activeTab === 'Pending') return tickets.filter(t => ['PENDING', 'VERIFIED', 'REJECTED'].includes(t.status_name));
     if (activeTab === 'Proses') return tickets.filter(t => t.status_name === 'ASSIGNED' || t.status_name === 'IN_PROGRESS');
     if (activeTab === 'Selesai') return tickets.filter(t => t.status_name === 'WAITING_USER_CONFIRMATION' || t.status_name === 'COMPLETED');
+    if (activeTab === 'Dibatalkan') return tickets.filter(t => t.status_name === 'CANCELLED');
     return tickets;
   };
 
@@ -147,6 +148,7 @@ export const MyTickets = () => {
                 : t.status_name === 'IN_PROGRESS' ? 'Diproses'
                 : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Menunggu Konfirmasi'
                 : t.status_name === 'COMPLETED' ? 'Selesai'
+                : t.status_name === 'CANCELLED' ? 'Dibatalkan'
                 : t.status_name
         }));
         setTickets(mapped);
@@ -235,6 +237,7 @@ export const MyTickets = () => {
                 : t.status_name === 'IN_PROGRESS' ? 'Diproses'
                 : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Menunggu Konfirmasi'
                 : t.status_name === 'COMPLETED' ? 'Selesai'
+                : t.status_name === 'CANCELLED' ? 'Dibatalkan'
                 : t.status_name
         }));
       }
@@ -301,6 +304,48 @@ export const MyTickets = () => {
     }
   };
 
+  const canCancelTicket = (ticket) => {
+    const roles = [...(user?.roles || []), user?.role]
+      .filter(Boolean)
+      .map(role => String(role).toUpperCase());
+    return roles.some(role => ['USER', 'MASYARAKAT'].includes(role))
+      && ['PENDING', 'VERIFIED', 'REJECTED'].includes(ticket.status_name);
+  };
+
+  const handleCancelTicket = (ticket) => {
+    setModalConfig({
+      isOpen: true,
+      type: 'danger',
+      title: 'Batalkan dan Hapus Tiket?',
+      message: `Tiket ${ticket.ticket_number} akan dihapus permanen dari daftar dan riwayat, termasuk berkas terkait. Tindakan ini tidak dapat dibatalkan dan hanya bisa dilakukan sebelum tiket ditugaskan kepada Pegawai.`,
+      confirmText: 'Ya, Hapus Tiket',
+      cancelText: 'Kembali',
+      onConfirm: () => executeCancelTicket(ticket.id)
+    });
+  };
+
+  const executeCancelTicket = async (ticketId) => {
+    try {
+      await api.cancelTicket(ticketId);
+      setTickets(currentTickets => currentTickets.filter(ticket => ticket.id !== ticketId));
+      await fetchTickets(true);
+      setSelectedTicket(null);
+      setShowDetailModal(false);
+      setShowRefillModal(false);
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: 'Tiket Berhasil Dihapus',
+        message: 'Tiket dan data terkait sudah dihapus dari daftar pengajuan Anda.',
+        confirmText: 'Selesai',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
+    } catch (err) {
+      alert('Gagal menghapus tiket: ' + err.message);
+    }
+  };
+
   useEffect(() => {
     fetchTickets();
   }, []);
@@ -343,6 +388,7 @@ export const MyTickets = () => {
                 : t.status_name === 'IN_PROGRESS' ? 'Diproses'
                 : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Menunggu Konfirmasi'
                 : t.status_name === 'COMPLETED' ? 'Selesai'
+                : t.status_name === 'CANCELLED' ? 'Dibatalkan'
                 : t.status_name
         }));
       }
@@ -374,6 +420,7 @@ export const MyTickets = () => {
       case 'WAITING_USER_CONFIRMATION': return 'bg-rose-100 text-rose-700 border-rose-200';
       case 'COMPLETED': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
       case 'REJECTED': return 'bg-red-100 text-red-700 border-red-200';
+      case 'CANCELLED': return 'bg-slate-100 text-slate-600 border-slate-200';
       default: return 'bg-slate-100 text-slate-700 border-slate-200';
     }
   };
@@ -388,7 +435,7 @@ export const MyTickets = () => {
       </div>
 
       <div className="flex gap-2 border-b border-slate-200/50 overflow-x-auto pb-px">
-        {['Semua', 'Pending', 'Proses', 'Selesai'].map(tab => (
+        {['Semua', 'Pending', 'Proses', 'Selesai', 'Dibatalkan'].map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -447,13 +494,22 @@ export const MyTickets = () => {
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center justify-end gap-3">
                     {ticket.status_name === 'WAITING_USER_CONFIRMATION' && (
                       <button 
                         onClick={() => selectTicket(ticket)}
                         className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-xl transition-all flex items-center gap-2"
                       >
                         <CheckCircle2 className="w-4 h-4" /> Beri Penilaian
+                      </button>
+                    )}
+                    {canCancelTicket(ticket) && (
+                      <button
+                        type="button"
+                        onClick={() => handleCancelTicket(ticket)}
+                        className="px-4 py-2 border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-sm font-bold rounded-xl transition-all flex items-center gap-2"
+                      >
+                        <XCircle className="w-4 h-4" /> Batalkan
                       </button>
                     )}
                     <button 
@@ -491,7 +547,7 @@ export const MyTickets = () => {
                   rel="noreferrer"
                   className="text-xs font-bold text-emerald-600 hover:underline px-3 py-1.5 glass-card border border-white/60 rounded-xl hover:bg-white/80 transition-all shrink-0 shadow-sm w-full sm:w-auto text-center"
                 >
-                  Buka PDF BAST
+                  Buka lampiran
                 </a>
               </div>
             </div>

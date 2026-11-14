@@ -221,7 +221,8 @@ const runMigration = async () => {
       (4, 'ASSIGNED', 'Ditugaskan ke tim/pegawai'),
       (5, 'IN_PROGRESS', 'Sedang dikerjakan'),
       (6, 'WAITING_USER_CONFIRMATION', 'Pekerjaan selesai 100%, menunggu rating pemohon'),
-      (7, 'COMPLETED', 'Selesai dan sudah diberi rating')
+      (7, 'COMPLETED', 'Selesai dan sudah diberi rating'),
+      (8, 'CANCELLED', 'Dibatalkan oleh pemohon')
       ON CONFLICT (id) DO NOTHING;
       
       INSERT INTO service_categories (category_name) VALUES 

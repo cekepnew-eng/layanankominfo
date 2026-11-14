@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Users, User, Trash2, Edit2, X } from 'lucide-react';
+import { Plus, Users, User, Trash2, Edit2, X, Search } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ActionModal } from '../../components/ActionModal';
 import { api } from '../../services/api';
@@ -24,12 +24,16 @@ export const ManageTeams = () => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [teamName, setTeamName] = useState('');
   const [leader, setLeader] = useState('');
+  const [leaderSearchQuery, setLeaderSearchQuery] = useState('');
   const [selectedMembers, setSelectedMembers] = useState([]);
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
 
   const [editingTeam, setEditingTeam] = useState(null);
   const [editTeamName, setEditTeamName] = useState('');
   const [editLeader, setEditLeader] = useState('');
+  const [editLeaderSearchQuery, setEditLeaderSearchQuery] = useState('');
   const [editSelectedMembers, setEditSelectedMembers] = useState([]);
+  const [editMemberSearchQuery, setEditMemberSearchQuery] = useState('');
 
   useEffect(() => {
     if (editingTeam) {
@@ -60,8 +64,100 @@ export const ManageTeams = () => {
     return roleArr.some(r => ['PEGAWAI', 'ADMIN', 'HELPDESK'].includes(r));
   }) : [];
 
+  const filterPegawai = (query) => {
+    const normalizedQuery = query.trim().toLocaleLowerCase();
+    if (!normalizedQuery) return pegawaiList;
+    return pegawaiList.filter(p =>
+      `${p.name || ''} ${p.department || ''}`.toLocaleLowerCase().includes(normalizedQuery)
+    );
+  };
+
+  const renderMemberPicker = (query, selectedMembers, setQuery, setSelectedMembers) => {
+    const matches = filterPegawai(query);
+    return (
+      <>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Ketik nama atau instansi pegawai..."
+            autoComplete="off"
+            className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500"
+          />
+        </div>
+        {query.trim() && (
+          <div className="mt-1 max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+            {matches.map(p => {
+              const isSelected = selectedMembers.includes(p.name);
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  disabled={isSelected}
+                  onClick={() => {
+                    setSelectedMembers(current => current.includes(p.name) ? current : [...current, p.name]);
+                    setQuery('');
+                  }}
+                  className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm ${
+                    isSelected ? 'cursor-not-allowed opacity-50' : 'hover:bg-sky-50'
+                  }`}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate font-semibold text-slate-800">{p.name}</span>
+                    <span className="block truncate text-xs text-slate-400">{p.department}</span>
+                  </span>
+                  <span className="shrink-0 rounded-md bg-sky-50 px-2 py-1 text-[10px] font-bold text-sky-700">
+                    {isSelected ? 'Dipilih' : 'Pilih'}
+                  </span>
+                </button>
+              );
+            })}
+            {matches.length === 0 && (
+              <p className="px-3 py-2 text-xs text-slate-400">Pegawai tidak ditemukan.</p>
+            )}
+          </div>
+        )}
+        {pegawaiList.length === 0 && (
+          <p className="mt-2 text-xs text-slate-400 italic">Tidak ada data pegawai. Silakan daftarkan pegawai terlebih dahulu di Kelola User.</p>
+        )}
+        <div className="mt-3 flex max-h-32 flex-wrap gap-2 overflow-y-auto">
+          {selectedMembers.map((member, index) => (
+            <span key={`${member}-${index}`} className="inline-flex items-center gap-1.5 rounded-lg border border-sky-100 bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-800">
+              {member}
+              <button
+                type="button"
+                aria-label={`Hapus ${member} dari pilihan anggota`}
+                onClick={() => setSelectedMembers(current => current.filter(name => name !== member))}
+                className="rounded-full text-sky-500 hover:bg-sky-100 hover:text-rose-600"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </span>
+          ))}
+          {selectedMembers.length === 0 && pegawaiList.length > 0 && (
+            <p className="text-xs text-slate-400 italic">Belum ada anggota yang dipilih.</p>
+          )}
+        </div>
+      </>
+    );
+  };
+
   const handleAddTeam = async (e) => {
     e.preventDefault();
+    if (!leader) {
+      setModalConfig({
+        isOpen: true,
+        type: 'warning',
+        title: 'Ketua Tim Belum Dipilih',
+        message: 'Pilih ketua tim dari hasil pencarian pegawai.',
+        confirmText: 'Pilih Ketua Tim',
+        cancelText: '',
+        onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+      });
+      return;
+    }
     if (selectedMembers.length === 0) {
       setModalConfig({
         isOpen: true,
@@ -107,7 +203,9 @@ export const ManageTeams = () => {
     setEditingTeam(team);
     setEditTeamName(team.name || '');
     setEditLeader(team.leader || '');
+    setEditLeaderSearchQuery(team.leader || '');
     setEditSelectedMembers(team.members || []);
+    setEditMemberSearchQuery('');
   };
 
   const handleSaveEdit = async () => {
@@ -193,7 +291,9 @@ export const ManageTeams = () => {
             if (!showAddForm) {
               setTeamName('');
               setLeader('');
+              setLeaderSearchQuery('');
               setSelectedMembers([]);
+              setMemberSearchQuery('');
             }
           }}
           className="flex items-center gap-2 px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-base font-bold transition-all shadow-sm"
@@ -221,49 +321,52 @@ export const ManageTeams = () => {
             
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Ketua Tim / Koordinator</label>
-              <select
-                required
-                value={leader}
-                onChange={(e) => setLeader(e.target.value)}
-                className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500"
-              >
-                <option value="">-- Pilih Ketua Tim --</option>
-                {pegawaiList.map(p => (
-                  <option key={p.id} value={p.name}>{p.name}</option>
-                ))}
-              </select>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  required
+                  value={leaderSearchQuery}
+                  onChange={(e) => {
+                    setLeader('');
+                    setLeaderSearchQuery(e.target.value);
+                  }}
+                  placeholder="Cari nama ketua tim..."
+                  autoComplete="off"
+                  className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500"
+                />
+              </div>
+              {!leader && leaderSearchQuery.trim() && (
+                <div className="mt-1 max-h-40 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                  {filterPegawai(leaderSearchQuery).map(p => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setLeader(p.name);
+                        setLeaderSearchQuery(p.name);
+                      }}
+                      className="block w-full px-3 py-2 text-left text-sm hover:bg-sky-50"
+                    >
+                      <span className="flex items-center justify-between gap-3">
+                        <span className="min-w-0">
+                          <span className="block truncate font-semibold text-slate-800">{p.name}</span>
+                          <span className="block truncate text-xs text-slate-400">{p.department}</span>
+                        </span>
+                        <span className="shrink-0 rounded-md bg-sky-50 px-2 py-1 text-[10px] font-bold text-sky-700">Pilih</span>
+                      </span>
+                    </button>
+                  ))}
+                  {filterPegawai(leaderSearchQuery).length === 0 && (
+                    <p className="px-3 py-2 text-xs text-slate-400">Pegawai tidak ditemukan.</p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Anggota Pegawai</label>
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80 space-y-2 max-h-48 overflow-y-auto">
-                {pegawaiList.map(p => {
-                  const isChecked = selectedMembers.includes(p.name);
-                  return (
-                    <div key={p.id} className="flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        id={`add-member-${p.id}`}
-                        checked={isChecked}
-                        onChange={() => {
-                          if (isChecked) {
-                            setSelectedMembers(selectedMembers.filter(m => m !== p.name));
-                          } else {
-                            setSelectedMembers([...selectedMembers, p.name]);
-                          }
-                        }}
-                        className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
-                      />
-                      <label htmlFor={`add-member-${p.id}`} className="text-xs font-bold text-slate-700 cursor-pointer select-none">
-                        {p.name} <span className="text-[10px] text-slate-400 font-medium">({p.department})</span>
-                      </label>
-                    </div>
-                  );
-                })}
-                {pegawaiList.length === 0 && (
-                  <p className="text-xs text-slate-450 italic">Tidak ada data pegawai. Silakan daftarkan pegawai terlebih dahulu di Kelola User.</p>
-                )}
-              </div>
+              {renderMemberPicker(memberSearchQuery, selectedMembers, setMemberSearchQuery, setSelectedMembers)}
             </div>
           </div>
           <button
@@ -361,46 +464,52 @@ export const ManageTeams = () => {
 
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Ketua Tim / Koordinator</label>
-                <select
-                  required
-                  value={editLeader}
-                  onChange={(e) => setEditLeader(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm sm:text-base font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
-                >
-                  <option value="">-- Pilih Ketua Tim --</option>
-                  {pegawaiList.map(p => (
-                    <option key={p.id} value={p.name}>{p.name}</option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    required
+                    value={editLeaderSearchQuery}
+                    onChange={(e) => {
+                      setEditLeader('');
+                      setEditLeaderSearchQuery(e.target.value);
+                    }}
+                    placeholder="Cari nama ketua tim..."
+                    autoComplete="off"
+                    className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm sm:text-base font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                  />
+                </div>
+                {!editLeader && editLeaderSearchQuery.trim() && (
+                  <div className="mt-1 max-h-40 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                    {filterPegawai(editLeaderSearchQuery).map(p => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          setEditLeader(p.name);
+                          setEditLeaderSearchQuery(p.name);
+                        }}
+                        className="block w-full px-3 py-2 text-left text-sm hover:bg-sky-50"
+                      >
+                        <span className="flex items-center justify-between gap-3">
+                          <span className="min-w-0">
+                            <span className="block truncate font-semibold text-slate-800">{p.name}</span>
+                            <span className="block truncate text-xs text-slate-400">{p.department}</span>
+                          </span>
+                          <span className="shrink-0 rounded-md bg-sky-50 px-2 py-1 text-[10px] font-bold text-sky-700">Pilih</span>
+                        </span>
+                      </button>
+                    ))}
+                    {filterPegawai(editLeaderSearchQuery).length === 0 && (
+                      <p className="px-3 py-2 text-xs text-slate-400">Pegawai tidak ditemukan.</p>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Anggota Pegawai</label>
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2.5 max-h-48 overflow-y-auto">
-                  {pegawaiList.map(p => {
-                    const isChecked = editSelectedMembers.includes(p.name);
-                    return (
-                      <div key={p.id} className="flex items-center gap-2.5">
-                        <input
-                          type="checkbox"
-                          id={`edit-member-${p.id}`}
-                          checked={isChecked}
-                          onChange={() => {
-                            if (isChecked) {
-                              setEditSelectedMembers(editSelectedMembers.filter(m => m !== p.name));
-                            } else {
-                              setEditSelectedMembers([...editSelectedMembers, p.name]);
-                            }
-                          }}
-                          className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
-                        />
-                        <label htmlFor={`edit-member-${p.id}`} className="text-xs sm:text-sm font-bold text-slate-700 cursor-pointer select-none">
-                          {p.name} <span className="text-xs text-slate-400 font-medium">({p.department})</span>
-                        </label>
-                      </div>
-                    );
-                  })}
-                </div>
+                {renderMemberPicker(editMemberSearchQuery, editSelectedMembers, setEditMemberSearchQuery, setEditSelectedMembers)}
               </div>
             </div>
 

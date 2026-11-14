@@ -287,7 +287,15 @@ export const TicketHistory = ({ mode = 'active' }) => {
       }
 
       if (mode === 'active') {
-        if (found.status === 'Verifikasi' || found.status === 'Pending' || found.status === 'Menunggu Validasi') {
+        const statusName = String(found.status_name || '').toUpperCase();
+        if (
+          statusName === 'PENDING' ||
+          statusName === 'VERIFIED' ||
+          found.status === 'Verifikasi' ||
+          found.status === 'Menunggu Validasi'
+        ) {
+          setActiveTab('verifikasi');
+        } else if (statusName === 'REJECTED' || found.status === 'Pending') {
           setActiveTab('pending');
         } else if (found.status === 'Diproses') {
           setActiveTab('proses');
@@ -1602,14 +1610,14 @@ export const TicketHistory = ({ mode = 'active' }) => {
                       <div className="flex gap-2 text-sky-700">
                         <Upload className="w-4 h-4 shrink-0 mt-0.5" />
                         <div className="text-xs space-y-1">
-                          <p className="font-bold">Unggah Dokumen Pendukung (Opsional, maks. 5 MB)</p>
-                          <p className="text-slate-600 leading-relaxed">Opsional: Unggah berkas Berita Acara Serah Terima jika ada.</p>
+                          <p className="font-bold">Unggah Lampiran Penyelesaian (Opsional)</p>
+                          <p className="text-slate-600 leading-relaxed">Unggah PDF (maks. 5 MB) atau foto JPG, PNG, WEBP (maks. 2 MB) jika diperlukan.</p>
                         </div>
                       </div>
                       <input
                         type="file"
                         ref={bastInputRef}
-                        accept=".pdf,application/pdf"
+                        accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
                         onChange={handleBastFileChange}
                         className="hidden"
                       />
@@ -1617,7 +1625,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800 overflow-hidden">
                           <div className="flex items-center gap-2 min-w-0 flex-1 w-full overflow-hidden">
                             <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
-                            <span className="truncate block min-w-0">{fileName} ({bastFileSize || 'Valid PDF'})</span>
+                            <span className="truncate block min-w-0">{fileName} ({bastFileSize || 'Lampiran siap'})</span>
                           </div>
                           <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
                             <a
@@ -1626,7 +1634,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
                               rel="noopener noreferrer"
                               className="px-2.5 py-1 bg-white border border-emerald-300 text-emerald-700 rounded-lg hover:bg-emerald-100 transition-all w-full sm:w-auto text-center"
                             >
-                              Lihat PDF
+                              Lihat file
                             </a>
                             <button
                               type="button"
@@ -1651,7 +1659,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
                           className="w-full py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
                         >
                           <Upload className="w-3.5 h-3.5 text-sky-600" />
-                          <span>Pilih Dokumen Pendukung (.PDF) - Opsional</span>
+                          <span>Pilih PDF atau gambar - Opsional</span>
                         </button>
                       )}
                     </div>

@@ -109,6 +109,12 @@ export const FieldEditor = ({ field, onChange, onDelete, level = 0 }) => {
           />
         </div>
 
+        {field.type === 'file' && (
+          <p className="text-[11px] font-medium text-sky-700">
+            Pemohon dapat mengunggah PDF (maks. 5 MB) atau JPG, PNG, WEBP (maks. 2 MB).
+          </p>
+        )}
+
         {field.type === 'select' && (
           <div className="pl-4 py-2 border-l-2 border-slate-100 space-y-2 mt-2">
             <p className="text-xs font-bold text-slate-500">Pilihan Dropdown:</p>

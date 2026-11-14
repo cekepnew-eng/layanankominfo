@@ -430,8 +430,8 @@ export const TaskList = () => {
                     <div className="flex gap-2 text-sky-700">
                       <Upload className="w-4 h-4 shrink-0 mt-0.5" />
                       <div className="text-xs space-y-1">
-                        <p className="font-bold">Unggah Berkas BAST (Opsional, maks. 5 MB)</p>
-                        <p className="text-slate-600 leading-relaxed">Unggah file dokumen resmi Berita Acara Serah Terima (PDF) agar pemohon dapat melihat dokumen dan memberi penilaian SKM.</p>
+                        <p className="font-bold">Unggah Lampiran Penyelesaian (Opsional)</p>
+                        <p className="text-slate-600 leading-relaxed">Unggah PDF (maks. 5 MB) atau foto JPG, PNG, WEBP (maks. 2 MB) agar pemohon dapat melihat lampiran dan memberi penilaian SKM.</p>
                       </div>
                     </div>
 
@@ -439,7 +439,7 @@ export const TaskList = () => {
                       type="file"
                       ref={bastInputRef}
                       onChange={handleBastFileChange}
-                      accept=".pdf,application/pdf"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
                       className="hidden"
                     />
 
@@ -477,7 +477,7 @@ export const TaskList = () => {
                         className="w-full flex items-center justify-center gap-2 py-3 bg-white hover:bg-slate-50 border-2 border-dashed border-sky-300 text-sky-700 rounded-xl text-xs font-bold transition-all shadow-sm"
                       >
                         <Upload className="w-4 h-4 text-sky-600" />
-                        <span>Pilih File Dokumen BAST (PDF)</span>
+                        <span>Pilih PDF atau gambar</span>
                       </button>
                     )}
                   </div>

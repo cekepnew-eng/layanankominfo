@@ -10,10 +10,17 @@ import { ActionModal } from '../../components/ActionModal';
 import { parseFileValue } from '../../utils/fileUtils';
 import { validateUploadFile } from '../../utils/fileValidation';
 
+const isServiceActive = (service) => {
+  const status = String(service?.status || '').trim().toLocaleLowerCase('id-ID');
+  return status ? status === 'aktif' : service?.is_active === true;
+};
+
 export const CreateTicket = () => {
   const { user } = useAuth();
   const [services, setServices] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [servicesLoaded, setServicesLoaded] = useState(false);
+  const [serviceCatalogError, setServiceCatalogError] = useState(false);
   const [tickets, setTickets] = useState([]);
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
@@ -21,10 +28,12 @@ export const CreateTicket = () => {
 
   useEffect(() => {
     const load = async () => {
+      let serviceCatalogLoaded = false;
       try {
         const svcRes = await api.getPublicServices();
         const mappedServices = (svcRes.data || []).map(s => ({
           ...s,
+          status: s.status || (s.is_active ? 'Aktif' : 'Tahap Pengembangan'),
           requiredDocs: s.required_docs || s.requiredDocs,
           sop: s.sop_link || s.sop
         }));
@@ -32,8 +41,12 @@ export const CreateTicket = () => {
         
         let cats = svcRes.categories || [];
         if (cats.length > 0) {
-          setCategories(cats);
+          setCategories(cats.filter(cat => mappedServices.some(service =>
+            service.category === cat.name && isServiceActive(service)
+          )));
         }
+        serviceCatalogLoaded = true;
+        setServicesLoaded(true);
         
         const tktRes = await api.getMyTickets();
         setTickets(tktRes.data || []);
@@ -48,18 +61,24 @@ export const CreateTicket = () => {
         }
         
         if (foundDraftSubService) {
-          setSelectedSubService(foundDraftSubService);
           const srv = mappedServices.find(s => s.name === foundDraftSubService);
-          if (srv && srv.category) {
-             const cat = cats.find(c => c.name === srv.category);
-             if (cat) setSelectedCategory(cat);
-             else setSelectedCategory({ name: srv.category });
+          if (isServiceActive(srv)) {
+            setSelectedSubService(foundDraftSubService);
+            if (srv.category) {
+              const cat = cats.find(c => c.name === srv.category);
+              if (cat) setSelectedCategory(cat);
+              else setSelectedCategory({ name: srv.category });
+            }
+            setStep(3);
           }
-          setStep(3);
         }
 
       } catch (e) {
         console.error(e);
+        if (!serviceCatalogLoaded) {
+          setServiceCatalogError(true);
+          setServicesLoaded(true);
+        }
       }
     };
     load();
@@ -97,7 +116,6 @@ export const CreateTicket = () => {
   }, []);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [createdTicketId, setCreatedTicketId] = useState('');
-  const [inactiveCategoryNotice, setInactiveCategoryNotice] = useState('');
 
   // Draft Feature: Load draft when sub-service is selected
   useEffect(() => {
@@ -256,12 +274,13 @@ export const CreateTicket = () => {
 
   const isCategoryActive = (catName) => {
     const catServices = services.filter(s => s.category === catName);
-    return catServices.some(s => s.status === 'Aktif');
+    return catServices.some(isServiceActive);
   };
+  const availableCategories = categories.filter(cat => isCategoryActive(cat.name));
 
   const getSubServicesForCategory = (cat) => {
     if (!cat) return [];
-    return services.filter(s => s.category === cat.name).map(s => s.name);
+    return services.filter(s => s.category === cat.name && isServiceActive(s)).map(s => s.name);
   };
 
   const handleSelectCategory = (cat) => {
@@ -302,8 +321,8 @@ export const CreateTicket = () => {
     const actualServiceName = selectedSubService;
     const serviceObj = (services || []).find(s => s.name === actualServiceName);
     
-    if (!serviceObj) {
-      alert(`Error: Layanan terkait '${selectedSubService}' tidak ditemukan di database. Pastikan database Anda mutakhir.`);
+    if (!serviceObj || !isServiceActive(serviceObj)) {
+      alert(`Layanan '${selectedSubService}' sedang tidak tersedia untuk pengajuan.`);
       setIsSubmitting(false);
       return;
     }
@@ -500,44 +519,38 @@ export const CreateTicket = () => {
         <div className="space-y-4">
           <h3 className="font-extrabold text-slate-800 text-lg">Langkah 1: Pilih Kategori Layanan SPBE</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {categories.map((cat) => {
-              const catServices = services.filter(s => s.category === cat.name);
-              const activeCount = catServices.filter(s => s.status === 'Aktif').length;
-              const active = activeCount > 0;
+            {!servicesLoaded ? (
+              <p className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center text-sm font-semibold text-slate-500">
+                Memuat katalog layanan...
+              </p>
+            ) : serviceCatalogError ? (
+              <p className="md:col-span-2 rounded-2xl border border-rose-200 bg-rose-50 p-6 text-center text-sm font-semibold text-rose-700">
+                Katalog layanan belum dapat dimuat. Silakan coba beberapa saat lagi.
+              </p>
+            ) : availableCategories.length === 0 ? (
+              <p className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center text-sm font-semibold text-slate-500">
+                Belum ada layanan yang tersedia untuk diajukan saat ini.
+              </p>
+            ) : availableCategories.map((cat) => {
+              const activeCount = services.filter(s => s.category === cat.name && isServiceActive(s)).length;
               return (
                 <div
                   key={cat.id}
-                  onClick={() => {
-                    if (active) {
-                      handleSelectCategory(cat);
-                    } else {
-                      setInactiveCategoryNotice(cat.name);
-                    }
-                  }}
-                  className={`bg-white p-6 rounded-2xl border border-slate-200 shadow-sm transition-all flex justify-between items-center group ${
-                    active 
-                      ? 'hover:border-sky-500 hover:shadow-md cursor-pointer' 
-                      : 'opacity-65 cursor-not-allowed bg-slate-50'
-                  }`}
+                  onClick={() => handleSelectCategory(cat)}
+                  className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm transition-all flex justify-between items-center group hover:border-sky-500 hover:shadow-md cursor-pointer"
                 >
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className={`font-bold text-base transition-all ${active ? 'text-slate-800 group-hover:text-sky-600' : 'text-slate-550'}`}>{cat.name}</h4>
-                      {!active ? (
-                        <span className="px-2.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[10px] font-bold uppercase tracking-wider">
-                          Tahap Pengembangan
-                        </span>
-                      ) : (
-                        <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[10px] font-bold uppercase tracking-wider">
-                          Aktif
-                        </span>
-                      )}
+                      <h4 className="font-bold text-base text-slate-800 transition-all group-hover:text-sky-600">{cat.name}</h4>
+                      <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                        Aktif
+                      </span>
                     </div>
                     <p className="text-sm text-slate-400">
-                      {`${catServices.length} Layanan Terhubung (${activeCount} Aktif)`}
+                      {`${activeCount} Layanan Tersedia`}
                     </p>
                   </div>
-                  {active && <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-sky-600 transition-all" />}
+                  <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-sky-600 transition-all" />
                 </div>
               );
             })}
@@ -602,7 +615,6 @@ export const CreateTicket = () => {
                   {filtered.map((sub, idx) => {
                     const actualServiceName = sub;
                     const srv = (services || []).find(s => s.name === actualServiceName);
-                    const isActive = srv ? srv.status === 'Aktif' : true;
                     const desc = srv ? (srv.description || `Permohonan terkait ${sub}`) : `Permohonan terkait ${sub}`;
                     const isSelected = selectedSubService === sub;
 
@@ -650,11 +662,6 @@ export const CreateTicket = () => {
                                     <Clock className="w-3 h-3 text-slate-400" />
                                     Target SLA: {srv.sla || srv.target_sla || '1-3 Hari'}
                                   </span>
-                                  {!isActive && (
-                                    <span className="font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-100">
-                                      Tahap Pengembangan
-                                    </span>
-                                  )}
                                 </p>
                               )}
                             </div>
@@ -1222,16 +1229,6 @@ export const CreateTicket = () => {
         }}
       />
 
-      <ActionModal
-        isOpen={!!inactiveCategoryNotice}
-        onClose={() => setInactiveCategoryNotice('')}
-        type="warning"
-        title="Layanan Tahap Pengembangan"
-        message={`Kategori layanan "${inactiveCategoryNotice}" saat ini masih dalam proses standardisasi teknis dan belum dibuka untuk pengajuan umum.`}
-        confirmText="Mengerti"
-        cancelText=""
-        onConfirm={() => setInactiveCategoryNotice('')}
-      />
     </div>
   );
 };

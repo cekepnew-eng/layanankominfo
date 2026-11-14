@@ -82,11 +82,14 @@ exports.getAllUsers = async (req, res) => {
              u.password_auth_source,
              u.profile_image, u.profile_image_source,
              COALESCE(tm.team_name, 'Dinas Komunikasi dan Informatika') as team,
+             COALESCE(tm.team_ids, ARRAY[]::INTEGER[]) as team_ids,
              legacy_role.name as legacy_role
       FROM users u
       LEFT JOIN roles legacy_role ON legacy_role.id = u.role_id
       LEFT JOIN (
-        SELECT tm.user_id, STRING_AGG(teams.team_name, ', ') as team_name
+        SELECT tm.user_id,
+               STRING_AGG(teams.team_name, ', ') as team_name,
+               ARRAY_AGG(teams.id ORDER BY teams.team_name) as team_ids
         FROM team_members tm
         JOIN teams ON teams.id = tm.team_id
         GROUP BY tm.user_id
@@ -132,15 +135,33 @@ exports.getAllUsers = async (req, res) => {
 exports.updateUserRole = async (req, res) => {
   const { id } = req.params;
   const { roleNames, team_id } = req.body;
+  const shouldUpdateTeams = Array.isArray(req.body?.team_ids) || team_id !== undefined;
+  const rawTeamIds = Array.isArray(req.body?.team_ids)
+    ? req.body.team_ids
+    : team_id === undefined || team_id === null || team_id === ''
+      ? []
+      : [team_id];
+  const teamIds = [...new Set(rawTeamIds.map(Number))];
+
+  if (shouldUpdateTeams && teamIds.some(teamId => !Number.isInteger(teamId) || teamId <= 0)) {
+    return res.status(400).json({ success: false, message: 'Penugasan tim kerja tidak valid.' });
+  }
 
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
 
-    if (team_id !== undefined) {
+    if (shouldUpdateTeams) {
+      if (teamIds.length > 0) {
+        const teamRes = await client.query('SELECT id FROM teams WHERE id = ANY($1::int[])', [teamIds]);
+        if (teamRes.rows.length !== teamIds.length) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ success: false, message: 'Tim kerja yang dipilih tidak ditemukan.' });
+        }
+      }
       await client.query('DELETE FROM team_members WHERE user_id = $1', [id]);
-      if (team_id) {
-        await client.query('INSERT INTO team_members (user_id, team_id) VALUES ($1, $2)', [id, team_id]);
+      for (const teamId of teamIds) {
+        await client.query('INSERT INTO team_members (user_id, team_id) VALUES ($1, $2)', [id, teamId]);
       }
     }
 
@@ -189,7 +210,7 @@ exports.updateUserRole = async (req, res) => {
     await recordRequestActivity(client, req, {
       activityType: 'user_updated',
       description: `Admin memperbarui role atau penugasan pengguna ${targetUser.rows[0]?.full_name || id}.`,
-      metadata: { targetUserId: id, roles: roleNames, teamId: team_id ?? null }
+      metadata: { targetUserId: id, roles: roleNames, teamIds: shouldUpdateTeams ? teamIds : undefined }
     });
     await client.query('COMMIT');
     res.json({ success: true, message: 'User updated' });
@@ -378,8 +399,8 @@ exports.createManualUser = async (req, res) => {
   if (!roleNames.includes('MASYARAKAT') && (!department || department.length > 255)) {
     return res.status(400).json({ success: false, message: 'Instansi/perangkat daerah wajib diisi dan maksimal 255 karakter.' });
   }
-  if (roleNames.includes('PEGAWAI') && (teamIds.length === 0 || teamIds.some(id => !Number.isInteger(id) || id <= 0))) {
-    return res.status(400).json({ success: false, message: 'Minimal satu tim kerja wajib dipilih untuk role Pegawai.' });
+  if (teamIds.some(id => !Number.isInteger(id) || id <= 0)) {
+    return res.status(400).json({ success: false, message: 'Tim kerja yang dipilih tidak valid.' });
   }
   if (!roleNames.includes('PEGAWAI') && teamIds.length > 0) {
     return res.status(400).json({ success: false, message: 'Tim kerja hanya dapat ditetapkan untuk role Pegawai.' });

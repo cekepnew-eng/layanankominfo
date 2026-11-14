@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
 import {
@@ -225,6 +225,7 @@ const isTicketForTeam = (tk, teamName) => {
 };
 
 export const Overview = () => {
+  const navigate = useNavigate();
   const { user, services } = useAuth();
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -237,6 +238,13 @@ export const Overview = () => {
   const [statSort, setStatSort] = useState('desc');
   const [statChartType, setStatChartType] = useState('vertical');
   const [activeHoveredBar, setActiveHoveredBar] = useState(null);
+
+  const navigateToTicket = (ticket) => {
+    const ticketId = ticket?.uuid || ticket?.ticket_number || ticket?.id;
+    if (ticketId) {
+      navigate(`/dashboard/history?ticket=${encodeURIComponent(ticketId)}`);
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -1036,7 +1044,16 @@ export const Overview = () => {
                 }
                 return queue.map((t, index) => (
                   <tr key={t.id || index} className="hover:bg-slate-50 transition-all">
-                    <td className="px-6 py-4 font-bold text-slate-850">{t.ticket_number || t.id}</td>
+                    <td className="px-6 py-4 font-bold text-slate-850">
+                      <button
+                        type="button"
+                        onClick={() => navigateToTicket(t)}
+                        className="cursor-pointer text-left hover:text-sky-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 rounded"
+                        aria-label={`Lihat tiket ${t.ticket_number || t.id}`}
+                      >
+                        {t.ticket_number || t.id}
+                      </button>
+                    </td>
                     <td className="px-6 py-4 truncate max-w-xs">{t.pemohon || t.department || 'Masyarakat'}</td>
                     <td className="px-6 py-4 truncate max-w-xs">{t.service_name || t.service || 'Layanan SPBE'}</td>
                     <td className="px-6 py-4 font-semibold text-slate-600">
@@ -1152,7 +1169,16 @@ export const Overview = () => {
                   }
                   return queue.map((t, index) => (
                     <tr key={t.id || index} className="hover:bg-slate-50 transition-all">
-                      <td className="px-6 py-4 font-bold text-slate-850">{t.ticket_number || t.id}</td>
+                      <td className="px-6 py-4 font-bold text-slate-850">
+                        <button
+                          type="button"
+                          onClick={() => navigateToTicket(t)}
+                          className="cursor-pointer text-left hover:text-sky-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 rounded"
+                          aria-label={`Lihat tiket ${t.ticket_number || t.id}`}
+                        >
+                          {t.ticket_number || t.id}
+                        </button>
+                      </td>
                       <td className="px-6 py-4">{(t.opd || t.department || 'Masyarakat').split(' Kota ')[0]}</td>
                       <td className="px-6 py-4">{t.service_name || t.service || 'Layanan SPBE'}</td>
                       <td className="px-6 py-4">{t.title || t.requestType || '-'}</td>
@@ -1174,19 +1200,25 @@ export const Overview = () => {
 
     // Auto-detect team names if user.teams is empty or placeholder
     const detectedTicketTeams = Array.from(new Set(
-      pegawaiTickets.map(tk => tk.team || tk.team_name || getTicketTeam(tk)).filter(Boolean)
+      pegawaiTickets
+        .map(tk => tk.team || tk.team_name)
+        .filter(name => typeof name === 'string' && name.trim() && !isGenericTeam(name))
+        .map(name => name.trim())
     ));
 
     const configuredUserTeams = Array.isArray(user?.teams)
       ? Array.from(new Map(user.teams
-        .filter(name => typeof name === 'string' && name.trim() && name.trim().toLowerCase() !== 'belum ada tim kerja')
+        .filter(name => typeof name === 'string' && name.trim() && !isGenericTeam(name))
         .map(name => [name.trim().toLowerCase(), name.trim()])).values())
+      : [];
+    const fallbackUserTeam = typeof user?.team_name === 'string' && !isGenericTeam(user.team_name)
+      ? [user.team_name.trim()]
       : [];
     const userTeamsList = configuredUserTeams.length > 0
       ? configuredUserTeams
       : (detectedTicketTeams.length > 0
         ? detectedTicketTeams
-        : (user?.team_name ? [user.team_name] : ['Tim Pelaksana Teknis']));
+        : fallbackUserTeam);
 
     const activeTasks = pegawaiTickets.filter(t => {
       const s = (t.status || '').toLowerCase();
@@ -1248,7 +1280,11 @@ export const Overview = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
-            {(() => {
+            {myTeams.length === 0 ? (
+              <p className="md:col-span-2 lg:col-span-3 p-5 rounded-2xl bg-white/40 border border-white/60 text-sm font-semibold text-slate-500">
+                Belum ada tim kerja yang ditugaskan ke akun Anda.
+              </p>
+            ) : (() => {
               const allTeamCounts = myTeams.map((t) => activeTasks.filter(tk => isTicketForTeam(tk, t.name)).length);
               return myTeams.map((t, idx) => {
                 const teamActiveTasks = allTeamCounts[idx];
@@ -1329,7 +1365,12 @@ export const Overview = () => {
             <h3 className="font-extrabold text-base text-slate-800 uppercase tracking-wider">Tugas Dengan Prioritas Utama (SLA Terbatas)</h3>
             <div className="space-y-3">
               {priorityTask ? (
-                <div className="p-5 bg-amber-50/50 border border-amber-200/50 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6 hover:bg-amber-50 transition-all">
+                <button
+                  type="button"
+                  onClick={() => navigateToTicket(priorityTask)}
+                  className="w-full cursor-pointer text-left p-5 bg-amber-50/50 border border-amber-200/50 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6 hover:bg-amber-50 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                  aria-label={`Lihat tiket ${priorityTask.ticket_number || priorityTask.id}`}
+                >
                   <div className="space-y-1.5">
                     <span className="inline-block text-sm font-bold bg-amber-100 text-amber-700 px-2.5 py-0.5 rounded uppercase tracking-wider">
                       Prioritas SLA: Sisa {priorityTask.remainingDays !== undefined ? priorityTask.remainingDays : 7} Hari (SLA Standar: {priorityTask.slaDuration || 7} Hari)
@@ -1342,7 +1383,7 @@ export const Overview = () => {
                   <div className="flex items-center gap-2 self-stretch md:self-auto">
                     <span className="inline-block px-2.5 py-1 rounded bg-amber-100 text-amber-800 text-xs font-bold uppercase tracking-wider">Sedang Diproses</span>
                   </div>
-                </div>
+                </button>
               ) : (
                 <div className="p-8 bg-slate-50 border border-slate-200 rounded-2xl text-center text-slate-400 font-bold">
                   Tidak ada tugas aktif dalam pengerjaan saat ini.
@@ -1420,7 +1461,12 @@ export const Overview = () => {
           </div>
           <div className="space-y-6 text-left">
             <>
-              <div className="flex items-start gap-4 hover:bg-slate-50/50 p-2.5 rounded-xl transition-all">
+              <button
+                type="button"
+                onClick={() => navigateToTicket(userInProgressTicket)}
+                className="w-full cursor-pointer flex items-start gap-4 text-left hover:bg-slate-50/50 p-2.5 rounded-xl transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                aria-label={`Lihat tiket ${userInProgressTicket.ticket_number || userInProgressTicket.id}`}
+              >
                 <div className={`w-3.5 h-3.5 rounded-full mt-1.5 border-2 border-white ring-2 ${userInProgressTicket.status === 'Pending' ? 'bg-amber-500 ring-amber-100' : 'bg-sky-500 ring-sky-100'
                   }`}></div>
                 <div className="space-y-1">
@@ -1445,7 +1491,7 @@ export const Overview = () => {
                         : `Pekerjaan teknis sedang berjalan | SLA Standar: ${userInProgressTicket.slaDuration} (Sisa ${userInProgressTicket.remainingDays !== undefined ? userInProgressTicket.remainingDays : 7} Hari)`}
                   </p>
                 </div>
-              </div>
+              </button>
             </>
           </div>
         </div>}

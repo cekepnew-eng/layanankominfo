@@ -404,6 +404,13 @@ export const api = {
     const res = await fetch(`${BASE_URL}/my/tickets`, { headers: getHeaders() });
     return handleResponse(res);
   },
+  cancelTicket: async (ticketId) => {
+    const res = await fetch(`${BASE_URL}/my/tickets/${ticketId}/cancel`, {
+      method: 'POST',
+      headers: getHeaders()
+    });
+    return handleResponse(res);
+  },
   submitFeedback: async (ticketId, payload) => {
     const res = await fetch(`${BASE_URL}/my/tickets/${ticketId}/feedback`, {
       method: 'POST',

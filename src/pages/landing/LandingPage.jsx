@@ -29,6 +29,7 @@ export const LandingPage = () => {
   const [activeFaqId, setActiveFaqId] = useState(null);
   const [dbCategories, setDbCategories] = useState([]);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
+  const [catalogError, setCatalogError] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [publicStats, setPublicStats] = useState(null);
 
@@ -78,20 +79,23 @@ export const LandingPage = () => {
       isLoading = true;
       try {
         const res = await api.getPublicServices();
-        setPublicStats(res?.stats || null);
         const catalog = res?.categories || [];
         const items = res?.data || [];
+        const activeItems = items.filter((service) =>
+          String(service.status || '').trim().toLocaleLowerCase('id-ID') === 'aktif'
+        );
 
         const categoryMap = {};
         catalog.forEach((cat) => {
+          const fallbackCategory = fallbackCategories.find((fallback) => fallback.title === cat.name);
           categoryMap[cat.name] = {
             id: cat.id,
             title: cat.name,
-            desc: 'Layanan teknis dan pelayanan digital untuk kebutuhan OPD Pemerintah Kota Bogor.',
-            icon: [
+            desc: fallbackCategory?.desc || 'Layanan teknis dan pelayanan digital untuk kebutuhan OPD Pemerintah Kota Bogor.',
+            icon: fallbackCategory?.icon || [
               Cpu, Globe, Shield, FileText, BarChart2, Database, Megaphone, GraduationCap
             ][(cat.id - 1) % 8],
-            color: [
+            color: fallbackCategory?.color || [
               'text-blue-600 bg-blue-50 border-blue-100',
               'text-emerald-600 bg-emerald-50 border-emerald-100',
               'text-rose-600 bg-rose-50 border-rose-100',
@@ -101,7 +105,7 @@ export const LandingPage = () => {
               'text-violet-600 bg-violet-50 border-violet-100',
               'text-slate-700 bg-slate-100 border-slate-200'
             ][(cat.id - 1) % 8],
-            services: (items || [])
+            services: activeItems
               .filter((s) => (s.category || s.category_name) === cat.name)
               .map((s) => ({
                 name: s.name || s.service_name,
@@ -114,9 +118,22 @@ export const LandingPage = () => {
 
         const mapped = Object.values(categoryMap).filter((cat) => cat.services.length > 0);
         setDbCategories(mapped);
+        setPublicStats({
+          ...(res?.stats || {}),
+          topCategories: (res?.stats?.topCategories || []).filter((item) =>
+            mapped.some((category) => category.title === item.name)
+          ),
+          totalSubServices: activeItems.length,
+          totalCategories: mapped.length
+        });
+        setCatalogError(false);
         setCatalogLoaded(true);
       } catch (error) {
         console.error('Gagal memuat katalog layanan dari backend:', error);
+        setDbCategories([]);
+        setCatalogError(true);
+        setCatalogLoaded(true);
+        setCatalogLoaded(true);
       } finally {
         isLoading = false;
       }
@@ -286,7 +303,7 @@ export const LandingPage = () => {
     }
   ];
 
-  const categories = catalogLoaded ? dbCategories : fallbackCategories;
+  const categories = catalogLoaded ? dbCategories : [];
 
   const filteredCategories = categories.filter(cat => {
     if (!searchQuery) return true;
@@ -566,7 +583,19 @@ export const LandingPage = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredCategories.map((cat) => {
+          {!catalogLoaded ? (
+            <p className="md:col-span-2 lg:col-span-3 xl:col-span-4 rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm font-semibold text-slate-500">
+              Memuat katalog layanan...
+            </p>
+          ) : catalogError ? (
+            <p className="md:col-span-2 lg:col-span-3 xl:col-span-4 rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm font-semibold text-slate-500">
+              Katalog layanan belum dapat dimuat. Silakan coba beberapa saat lagi.
+            </p>
+          ) : filteredCategories.length === 0 ? (
+            <p className="md:col-span-2 lg:col-span-3 xl:col-span-4 rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm font-semibold text-slate-500">
+              Belum ada layanan aktif yang tersedia saat ini.
+            </p>
+          ) : filteredCategories.map((cat) => {
             const Icon = cat.icon;
             return (
               <div 

@@ -340,7 +340,7 @@ export const TicketDetailModal = ({ isOpen, onClose, ticket, onBagiTugas }) => {
                     className="flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs shrink-0 w-full sm:w-auto text-center"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
-                    <span>Buka BAST PDF</span>
+                    <span>Buka lampiran</span>
                   </a>
                 </div>
               )}
