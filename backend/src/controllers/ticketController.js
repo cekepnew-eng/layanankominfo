@@ -343,22 +343,30 @@ exports.cancelTicket = async (req, res) => {
       await client.query('ROLLBACK');
       return res.status(403).json({ success: false, message: 'Anda bukan pemilik tiket ini.' });
     }
-    if (![1, 2, 3].includes(Number(ticket.status_id)) || !ticket.has_no_assignment) {
+    if (![1, 3].includes(Number(ticket.status_id)) || !ticket.has_no_assignment) {
       await client.query('ROLLBACK');
       return res.status(409).json({
         success: false,
-        message: 'Tiket hanya bisa dibatalkan sebelum ditugaskan kepada Pegawai.'
+        message: 'Tiket hanya bisa dibatalkan sebelum disetujui Helpdesk.'
       });
     }
 
     await client.query('DELETE FROM tickets WHERE id = $1', [id]);
+    await recordRequestActivity(client, req, {
+      activityType: 'ticket_cancelled',
+      description: `Tiket ${ticket.ticket_number} dibatalkan oleh pemohon sebelum disetujui Helpdesk.`,
+      metadata: {
+        ticketNumber: ticket.ticket_number,
+        previousStatusId: Number(ticket.status_id)
+      }
+    });
 
     await client.query('COMMIT');
-    res.json({ success: true, message: `Tiket ${ticket.ticket_number} berhasil dihapus.` });
+    res.json({ success: true, message: `Tiket ${ticket.ticket_number} berhasil dibatalkan.` });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('cancelTicket error:', err);
-    res.status(500).json({ success: false, message: 'Gagal menghapus tiket.' });
+    res.status(500).json({ success: false, message: 'Gagal membatalkan tiket.' });
   } finally {
     client.release();
   }

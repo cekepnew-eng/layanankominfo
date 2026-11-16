@@ -7,6 +7,7 @@ const ACTIVITY_TYPES = [
   ['login', 'Login'],
   ['logout', 'Logout'],
   ['ticket_created', 'Tiket dibuat'],
+  ['ticket_cancelled', 'Tiket dibatalkan'],
   ['ticket_status_changed', 'Status tiket berubah'],
   ['ticket_assignment', 'Penugasan tiket'],
   ['ticket_progress_updated', 'Progres tiket diperbarui'],

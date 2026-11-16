@@ -75,13 +75,19 @@ exports.getActivityLogs = async (req, res) => {
     )`);
   } else if (isOpd && !isAdmin && !isHelpdesk && !isEmployee) {
     const userId = addParam(req.user.id);
-    conditions.push(`activity_source = 'ticket' AND ticket_id IN (
-      SELECT ticket.id FROM tickets ticket WHERE ticket.user_id = ${userId}
+    conditions.push(`(
+      (activity_source = 'ticket' AND ticket_id IN (
+        SELECT ticket.id FROM tickets ticket WHERE ticket.user_id = ${userId}
+      ))
+      OR (activity_type = 'ticket_cancelled' AND actor_id = ${userId})
     )`);
   } else if (isCommunity && !isAdmin && !isHelpdesk && !isEmployee && !isOpd) {
     const userId = addParam(req.user.id);
-    conditions.push(`activity_source = 'ticket' AND ticket_id IN (
-      SELECT ticket.id FROM tickets ticket WHERE ticket.user_id = ${userId}
+    conditions.push(`(
+      (activity_source = 'ticket' AND ticket_id IN (
+        SELECT ticket.id FROM tickets ticket WHERE ticket.user_id = ${userId}
+      ))
+      OR (activity_type = 'ticket_cancelled' AND actor_id = ${userId})
     )`);
   }
 
@@ -114,6 +120,7 @@ exports.getActivityLogs = async (req, res) => {
           COALESCE(NULLIF(actor_roles.names, ''), 'UNKNOWN') AS actor_role,
           CASE
             WHEN history.old_status_id IS NULL THEN 'ticket_created'
+            WHEN history.log_description ILIKE '%dibatalkan oleh pemohon%' THEN 'ticket_cancelled'
             WHEN history.log_description ILIKE '%ditugaskan%' OR history.log_description ILIKE '%penugasan%'
               THEN 'ticket_assignment'
             WHEN history.log_description ILIKE '%progres%' OR history.log_description ILIKE '%subtask%'
@@ -150,10 +157,14 @@ exports.getActivityLogs = async (req, res) => {
           log.activity_type,
           log.description,
           log.ticket_id,
-          ticket.ticket_number,
+          COALESCE(ticket.ticket_number, log.metadata->>'ticketNumber') AS ticket_number,
           log.metadata,
           log.created_at,
-          CASE WHEN log.ticket_id IS NULL THEN 'system' ELSE 'ticket' END AS activity_source
+          CASE
+            WHEN log.activity_type = 'ticket_cancelled' THEN 'ticket'
+            WHEN log.ticket_id IS NULL THEN 'system'
+            ELSE 'ticket'
+          END AS activity_source
         FROM activity_logs log
         LEFT JOIN tickets ticket ON ticket.id = log.ticket_id
       )

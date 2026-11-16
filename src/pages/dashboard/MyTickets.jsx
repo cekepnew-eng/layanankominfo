@@ -309,7 +309,7 @@ export const MyTickets = () => {
       .filter(Boolean)
       .map(role => String(role).toUpperCase());
     return roles.some(role => ['USER', 'MASYARAKAT'].includes(role))
-      && ['PENDING', 'VERIFIED', 'REJECTED'].includes(ticket.status_name);
+      && ['PENDING', 'REJECTED'].includes(ticket.status_name);
   };
 
   const handleCancelTicket = (ticket) => {
@@ -317,8 +317,8 @@ export const MyTickets = () => {
       isOpen: true,
       type: 'danger',
       title: 'Batalkan dan Hapus Tiket?',
-      message: `Tiket ${ticket.ticket_number} akan dihapus permanen dari daftar dan riwayat, termasuk berkas terkait. Tindakan ini tidak dapat dibatalkan dan hanya bisa dilakukan sebelum tiket ditugaskan kepada Pegawai.`,
-      confirmText: 'Ya, Hapus Tiket',
+      message: `Tiket ${ticket.ticket_number} hanya bisa dibatalkan sebelum disetujui Helpdesk. Pembatalan tidak dapat diurungkan.`,
+      confirmText: 'Ya, Batalkan',
       cancelText: 'Kembali',
       onConfirm: () => executeCancelTicket(ticket.id)
     });
@@ -335,14 +335,14 @@ export const MyTickets = () => {
       setModalConfig({
         isOpen: true,
         type: 'success',
-        title: 'Tiket Berhasil Dihapus',
-        message: 'Tiket dan data terkait sudah dihapus dari daftar pengajuan Anda.',
+        title: 'Tiket Berhasil Dibatalkan',
+        message: 'Tiket sudah dihapus. Aktivitas pembatalan tercatat di Log Activity.',
         confirmText: 'Selesai',
         cancelText: '',
         onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
       });
     } catch (err) {
-      alert('Gagal menghapus tiket: ' + err.message);
+      alert('Gagal membatalkan tiket: ' + err.message);
     }
   };
 

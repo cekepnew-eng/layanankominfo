@@ -25,6 +25,8 @@ export const CreateTicket = () => {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [selectedCategory, setSelectedCategory] = useState(null);
+  const [categorySearchInput, setCategorySearchInput] = useState('');
+  const [categorySearchQuery, setCategorySearchQuery] = useState('');
 
   useEffect(() => {
     const load = async () => {
@@ -283,10 +285,17 @@ export const CreateTicket = () => {
     return services.filter(s => s.category === cat.name && isServiceActive(s)).map(s => s.name);
   };
 
+  const filteredCategories = availableCategories.filter(cat =>
+    cat.name.toLocaleLowerCase('id-ID').includes(categorySearchQuery.toLocaleLowerCase('id-ID')) ||
+    getSubServicesForCategory(cat).some(sub => sub.toLocaleLowerCase('id-ID').includes(categorySearchQuery.toLocaleLowerCase('id-ID')))
+  );
+
   const handleSelectCategory = (cat) => {
     setSelectedCategory(cat);
-    setSubSearchQuery('');
     const availableSubs = getSubServicesForCategory(cat);
+    const categoryQuery = categorySearchQuery.trim().toLocaleLowerCase('id-ID');
+    const matchingSubs = availableSubs.filter(sub => sub.toLocaleLowerCase('id-ID').includes(categoryQuery));
+    setSubSearchQuery(categoryQuery && matchingSubs.length > 0 ? categorySearchQuery : '');
     setSelectedSubService(availableSubs[0] || cat.name);
     setStep(2);
   };
@@ -517,7 +526,32 @@ export const CreateTicket = () => {
 
       {step === 1 && (
         <div className="space-y-4">
-          <h3 className="font-extrabold text-slate-800 text-lg">Langkah 1: Pilih Kategori Layanan SPBE</h3>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <h3 className="font-extrabold text-slate-800 text-lg">Langkah 1: Pilih Kategori Layanan SPBE</h3>
+            <form
+              className="flex w-full sm:max-w-md gap-2"
+              onSubmit={event => {
+                event.preventDefault();
+                setCategorySearchQuery(categorySearchInput.trim());
+              }}
+            >
+              <input
+                type="search"
+                value={categorySearchInput}
+                onChange={event => setCategorySearchInput(event.target.value)}
+                placeholder="Cari kategori atau sub-layanan"
+                aria-label="Cari kategori atau sub-layanan SPBE"
+                className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+              />
+              <button
+                type="submit"
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-sky-600 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-sky-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
+              >
+                <Search className="h-4 w-4" />
+                <span>Cari</span>
+              </button>
+            </form>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {!servicesLoaded ? (
               <p className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center text-sm font-semibold text-slate-500">
@@ -531,7 +565,11 @@ export const CreateTicket = () => {
               <p className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center text-sm font-semibold text-slate-500">
                 Belum ada layanan yang tersedia untuk diajukan saat ini.
               </p>
-            ) : availableCategories.map((cat) => {
+            ) : filteredCategories.length === 0 ? (
+              <p className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center text-sm font-semibold text-slate-500">
+                Tidak ada kategori atau sub-layanan yang cocok dengan "{categorySearchQuery}".
+              </p>
+            ) : filteredCategories.map((cat) => {
               const activeCount = services.filter(s => s.category === cat.name && isServiceActive(s)).length;
               return (
                 <div

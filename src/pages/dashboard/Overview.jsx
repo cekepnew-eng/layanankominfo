@@ -14,6 +14,7 @@ import {
   Activity,
   PlusCircle,
   BarChart3,
+  Search,
   SlidersHorizontal,
   TrendingUp,
   ArrowUpDown,
@@ -233,6 +234,8 @@ export const Overview = () => {
   const [adminTeams, setAdminTeams] = useState([]);
   const [adminServicesCount, setAdminServicesCount] = useState(0);
   const [adminServices, setAdminServices] = useState([]);
+  const [ticketSearchInput, setTicketSearchInput] = useState('');
+  const [ticketSearchQuery, setTicketSearchQuery] = useState('');
   const [statDateRange, setStatDateRange] = useState(getInitialStatDateRange);
   const [selectedStatPreset, setSelectedStatPreset] = useState(null);
   const [statSort, setStatSort] = useState('desc');
@@ -1043,16 +1046,24 @@ export const Overview = () => {
                   );
                 }
                 return queue.map((t, index) => (
-                  <tr key={t.id || index} className="hover:bg-slate-50 transition-all">
+                  <tr
+                    key={t.id || index}
+                    onClick={() => navigateToTicket(t)}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        navigateToTicket(t);
+                      }
+                    }}
+                    role="link"
+                    tabIndex={0}
+                    aria-label={`Buka tiket ${t.ticket_number || t.id}`}
+                    className="cursor-pointer transition-all hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-500"
+                  >
                     <td className="px-6 py-4 font-bold text-slate-850">
-                      <button
-                        type="button"
-                        onClick={() => navigateToTicket(t)}
-                        className="cursor-pointer text-left hover:text-sky-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 rounded"
-                        aria-label={`Lihat tiket ${t.ticket_number || t.id}`}
-                      >
+                      <span className="hover:text-sky-700 hover:underline">
                         {t.ticket_number || t.id}
-                      </button>
+                      </span>
                     </td>
                     <td className="px-6 py-4 truncate max-w-xs">{t.pemohon || t.department || 'Masyarakat'}</td>
                     <td className="px-6 py-4 truncate max-w-xs">{t.service_name || t.service || 'Layanan SPBE'}</td>
@@ -1140,9 +1151,31 @@ export const Overview = () => {
         </div>
 
         <div className="md:col-span-12 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
             <h3 className="font-extrabold text-base text-slate-800 uppercase tracking-wider">Antrean Validasi Utama</h3>
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping"></span>
+            <form
+              className="flex w-full sm:max-w-md gap-2"
+              onSubmit={event => {
+                event.preventDefault();
+                setTicketSearchQuery(ticketSearchInput.trim());
+              }}
+            >
+              <input
+                type="search"
+                value={ticketSearchInput}
+                onChange={event => setTicketSearchInput(event.target.value)}
+                placeholder="Cari ID, OPD, layanan, atau kebutuhan"
+                aria-label="Cari tiket di antrean validasi"
+                className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+              />
+              <button
+                type="submit"
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-sky-600 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-sky-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
+              >
+                <Search className="h-4 w-4" />
+                <span>Cari</span>
+              </button>
+            </form>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200">
@@ -1157,27 +1190,53 @@ export const Overview = () => {
               </thead>
               <tbody className="divide-y divide-slate-100 text-base text-slate-650">
                 {(() => {
-                  const queue = (tickets || []).filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status_name === 'PENDING' || t.status_name === 'VERIFIED');
+                  const searchTerm = ticketSearchQuery.toLocaleLowerCase('id-ID');
+                  const queue = (tickets || [])
+                    .filter(t => t.status === 'Verifikasi' || t.status === 'Menunggu Validasi' || t.status_name === 'PENDING' || t.status_name === 'VERIFIED')
+                    .filter(t => {
+                      if (!searchTerm) return true;
+                      const searchableValues = [
+                        t.ticket_number,
+                        t.id,
+                        t.opd,
+                        t.department,
+                        t.service_name,
+                        t.service,
+                        t.title,
+                        t.requestType
+                      ];
+                      return searchableValues.some(value => String(value || '').toLocaleLowerCase('id-ID').includes(searchTerm));
+                    });
                   if (queue.length === 0) {
                     return (
                       <tr>
                         <td colSpan="5" className="px-6 py-8 text-center text-slate-500 font-bold">
-                          Tidak ada antrean tiket yang menunggu verifikasi saat ini.
+                          {ticketSearchQuery
+                            ? `Tidak ada tiket yang cocok dengan "${ticketSearchQuery}".`
+                            : 'Tidak ada antrean tiket yang menunggu verifikasi saat ini.'}
                         </td>
                       </tr>
                     );
                   }
                   return queue.map((t, index) => (
-                    <tr key={t.id || index} className="hover:bg-slate-50 transition-all">
+                    <tr
+                      key={t.id || index}
+                      onClick={() => navigateToTicket(t)}
+                      onKeyDown={event => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          navigateToTicket(t);
+                        }
+                      }}
+                      role="link"
+                      tabIndex={0}
+                      aria-label={`Buka tiket ${t.ticket_number || t.id}`}
+                      className="cursor-pointer transition-all hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-500"
+                    >
                       <td className="px-6 py-4 font-bold text-slate-850">
-                        <button
-                          type="button"
-                          onClick={() => navigateToTicket(t)}
-                          className="cursor-pointer text-left hover:text-sky-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 rounded"
-                          aria-label={`Lihat tiket ${t.ticket_number || t.id}`}
-                        >
+                        <span className="hover:text-sky-700 hover:underline">
                           {t.ticket_number || t.id}
-                        </button>
+                        </span>
                       </td>
                       <td className="px-6 py-4">{(t.opd || t.department || 'Masyarakat').split(' Kota ')[0]}</td>
                       <td className="px-6 py-4">{t.service_name || t.service || 'Layanan SPBE'}</td>

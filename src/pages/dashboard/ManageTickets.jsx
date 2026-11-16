@@ -577,6 +577,57 @@ export const TicketHistory = ({ mode = 'active' }) => {
 
   const closeModal = () => setModalConfig(prev => ({ ...prev, isOpen: false }));
 
+  const canCancelTicket = (ticket) => {
+    const roles = [...(user?.roles || []), user?.role]
+      .filter(Boolean)
+      .map(role => String(role).toUpperCase());
+    return roles.some(role => ['USER', 'MASYARAKAT'].includes(role))
+      && ['PENDING', 'REJECTED'].includes(String(ticket?.status_name || '').toUpperCase());
+  };
+
+  const executeCancelTicket = async (ticket) => {
+    try {
+      await api.cancelTicket(ticket.uuid || ticket.id);
+      await loadTickets(true);
+      handleClearSelectedTicket();
+      setModalConfig({
+        isOpen: true,
+        type: 'success',
+        title: 'Tiket Berhasil Dibatalkan',
+        message: `Tiket ${ticket.ticket_number || ticket.id} sudah dihapus. Aktivitas pembatalan tercatat di Log Activity.`,
+        confirmText: 'Tutup',
+        cancelText: '',
+        onConfirm: closeModal
+      });
+    } catch (err) {
+      console.error('Failed to cancel ticket:', err);
+      setModalConfig({
+        isOpen: true,
+        type: 'warning',
+        title: 'Gagal Membatalkan Tiket',
+        message: err.message || 'Tiket tidak dapat dibatalkan. Silakan coba lagi.',
+        confirmText: 'Tutup',
+        cancelText: '',
+        onConfirm: closeModal
+      });
+    }
+  };
+
+  const handleCancelTicket = (ticket) => {
+    setModalConfig({
+      isOpen: true,
+      type: 'danger',
+      title: 'Batalkan Tiket?',
+      message: `Tiket ${ticket.ticket_number || ticket.id} hanya bisa dibatalkan sebelum disetujui Helpdesk. Pembatalan tidak dapat diurungkan.`,
+      confirmText: 'Ya, Batalkan',
+      cancelText: 'Kembali',
+      onConfirm: () => {
+        closeModal();
+        executeCancelTicket(ticket);
+      }
+    });
+  };
+
   const [bastFileBase64, setBastFileBase64] = useState('');
 
   const handleBastFileChange = (e) => {
@@ -983,7 +1034,12 @@ export const TicketHistory = ({ mode = 'active' }) => {
     return tickets.filter(t => {
       const s = t.status || '';
       const sn = t.status_name || '';
-      return !s.includes('Selesai') && s !== 'Menunggu Konfirmasi User' && sn !== 'COMPLETED' && sn !== 'WAITING_USER_CONFIRMATION';
+      return !s.includes('Selesai') &&
+        s !== 'Menunggu Konfirmasi User' &&
+        s !== 'Dibatalkan' &&
+        sn !== 'COMPLETED' &&
+        sn !== 'WAITING_USER_CONFIRMATION' &&
+        sn !== 'CANCELLED';
     });
   };
 
@@ -1159,6 +1215,19 @@ export const TicketHistory = ({ mode = 'active' }) => {
                         <Eye className="w-4 h-4" />
                         <span>Detail</span>
                       </button>
+                      {canCancelTicket(t) && (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleCancelTicket(t);
+                          }}
+                          className="flex items-center gap-1.5 px-4 py-2 border border-rose-200 bg-rose-50 text-rose-700 rounded-lg text-sm font-bold transition-all hover:bg-rose-100 justify-center self-stretch md:self-auto cursor-pointer"
+                        >
+                          <XCircle className="w-4 h-4" />
+                          <span>Batalkan</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

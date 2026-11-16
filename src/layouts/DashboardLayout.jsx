@@ -371,7 +371,7 @@ export const DashboardLayout = () => {
     }
 
     if (role === 'PEGAWAI') {
-      return [home, history, ticketHistory, activityLogs, trackTicket, profile];
+      return [home, userLinks[0], history, ticketHistory, activityLogs, trackTicket, profile];
     }
 
     return [home, ...userLinks, history, ticketHistory, activityLogs, trackTicket, profile];
