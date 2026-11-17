@@ -513,7 +513,15 @@ exports.createMasyarakatUserManual = exports.createManualUser;
 
 exports.getOpdUsers = async (req, res) => {
   try {
-    const { search } = req.query;
+    const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+    const searchTnd = req.query.searchTnd === 'true';
+    if (req.query.search !== undefined && typeof req.query.search !== 'string') {
+      return res.status(400).json({ success: false, message: 'Kata kunci pencarian tidak valid.' });
+    }
+    if (searchTnd && search.length < 3) {
+      return res.status(400).json({ success: false, message: 'Masukkan minimal 3 karakter untuk mencari akun TND.' });
+    }
+
     let query = `
       SELECT u.id, u.email, u.nip, u.full_name as name, u.phone_number as phone, u.department,
              u.profile_image, u.profile_image_source,
@@ -529,8 +537,8 @@ exports.getOpdUsers = async (req, res) => {
     `;
     const params = [];
 
-    if (search && search.trim()) {
-      params.push(`%${search.trim()}%`);
+    if (search) {
+      params.push(`%${search}%`);
       query += ` AND (u.full_name ILIKE $${params.length} OR u.email ILIKE $${params.length} OR u.department ILIKE $${params.length} OR (u.nip IS NOT NULL AND u.nip ILIKE $${params.length}))`;
     }
 
@@ -542,8 +550,119 @@ exports.getOpdUsers = async (req, res) => {
     `;
 
     const result = await db.pool.query(query, params);
-    res.json({ success: true, data: result.rows });
+    const localUsers = result.rows;
+    let tndUsers = [];
+
+    if (searchTnd) {
+      const endpoint = process.env.TND_FIND_USER_URL;
+      if (!endpoint) {
+        return res.status(503).json({
+          success: false,
+          message: 'Pencarian akun TND belum dikonfigurasi di backend/.env.',
+          data: localUsers
+        });
+      }
+
+      let lookupUrl;
+      try {
+        lookupUrl = new URL(endpoint);
+        if (lookupUrl.protocol !== 'https:') {
+          throw new Error('TND_FIND_USER_URL harus menggunakan HTTPS.');
+        }
+        lookupUrl.searchParams.set('username', search);
+      } catch (error) {
+        console.error('Invalid TND_FIND_USER_URL:', error.message);
+        return res.status(500).json({
+          success: false,
+          message: 'Konfigurasi URL pencarian akun TND tidak valid.',
+          data: localUsers
+        });
+      }
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      let response;
+      try {
+        response = await fetch(lookupUrl.toString(), {
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json'
+          },
+          signal: controller.signal
+        });
+      } catch (error) {
+        console.error('TND user search request failed:', error.message);
+        return res.status(502).json({
+          success: false,
+          message: 'Layanan pencarian akun TND tidak dapat dihubungi.',
+          data: localUsers
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      if (response.status !== 404 && !response.ok) {
+        console.error('TND user search returned HTTP status:', response.status);
+        return res.status(502).json({
+          success: false,
+          message: 'Layanan pencarian akun TND mengembalikan kesalahan.',
+          data: localUsers
+        });
+      }
+
+      if (response.status !== 404) {
+        let payload;
+        try {
+          payload = await response.json();
+        } catch (error) {
+          console.error('TND user search returned invalid JSON:', error.message);
+          return res.status(502).json({
+            success: false,
+            message: 'Respons layanan pencarian akun TND tidak valid.',
+            data: localUsers
+          });
+        }
+
+        const records = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload?.data?.users)
+              ? payload.data.users
+              : [payload?.data?.user || payload?.user || payload?.data || payload?.result || payload];
+
+        tndUsers = records
+          .filter(record => record && typeof record === 'object')
+          .map(record => {
+            const user = record.user || record;
+            const email = user.email || user.username || '';
+            const nip = user.nip || user.nik || '';
+            const name = user.full_name || user.nama_lengkap || user.nama || user.name || email || nip;
+            const department = user.department || user.nama_pd || user.unit_kerja || user.opd_name || '';
+            if (!name && !email && !nip) return null;
+
+            return {
+              email: String(email),
+              nip: String(nip),
+              name: String(name),
+              department: String(department),
+              source: 'TND'
+            };
+          })
+          .filter(Boolean);
+      }
+    }
+
+    const localEmails = new Set(localUsers.map(user => String(user.email || '').toLowerCase()).filter(Boolean));
+    const localNips = new Set(localUsers.map(user => String(user.nip || '').toLowerCase()).filter(Boolean));
+    const newTndUsers = tndUsers.filter(user =>
+      (!user.email || !localEmails.has(user.email.toLowerCase()))
+      && (!user.nip || !localNips.has(user.nip.toLowerCase()))
+    );
+
+    res.json({ success: true, data: [...localUsers, ...newTndUsers] });
   } catch (error) {
+    console.error('getOpdUsers error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

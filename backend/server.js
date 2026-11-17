@@ -8,7 +8,14 @@ const db = require('./src/config/database');
 const PORT = Number(process.env.PORT) || 5000;
 const HOST = process.env.HOST || '0.0.0.0';
 
-db.ready.then(() => {
+db.ready.then(async () => {
+  try {
+    const { seedApplicationForms } = require('./seed_application_forms');
+    await seedApplicationForms();
+  } catch (error) {
+    console.error('[Seeder] Formulir Aplikasi tidak berhasil disinkronkan:', error);
+  }
+
   app.listen(PORT, HOST, () => {
     console.log(`Final Architecture Server is running on ${HOST}:${PORT}`);
 
