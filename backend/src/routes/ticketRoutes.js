@@ -5,7 +5,7 @@ const userController = require('../controllers/userController');
 const { authenticateToken, authorizeRole } = require('../middleware/auth');
 
 // USER & ALL ROLES (Untuk pembuatan tiket)
-router.post('/my/tickets', authenticateToken, authorizeRole(['USER', 'MASYARAKAT', 'HELPDESK', 'PEGAWAI', 'ADMIN']), ticketController.createTicket);
+router.post('/my/tickets', authenticateToken, authorizeRole(['USER', 'MASYARAKAT', 'HELPDESK', 'ADMIN']), ticketController.createTicket);
 router.get('/my/tickets', authenticateToken, authorizeRole(['USER', 'MASYARAKAT', 'HELPDESK', 'PEGAWAI', 'ADMIN']), ticketController.getMyTickets);
 router.patch('/my/tickets/:id', authenticateToken, authorizeRole(['USER', 'MASYARAKAT', 'ADMIN']), ticketController.updateTicketData);
 router.post('/my/tickets/:id/cancel', authenticateToken, authorizeRole(['USER', 'MASYARAKAT']), ticketController.cancelTicket);

@@ -264,7 +264,11 @@ export const LandingPage = () => {
   const handleApplyClick = () => {
     setIsDrawerOpen(false);
     if (user) {
-      navigate('/dashboard/user/create-ticket');
+      if (String(user.role || '').toUpperCase() === 'PEGAWAI') {
+        navigate('/dashboard');
+      } else {
+        navigate('/dashboard/user/create-ticket');
+      }
     } else {
       navigate('/auth/login');
     }
@@ -423,7 +427,11 @@ export const LandingPage = () => {
             <button
               onClick={() => {
                 if (user) {
-                  navigate('/dashboard/user/create-ticket');
+                  if (String(user.role || '').toUpperCase() === 'PEGAWAI') {
+                    navigate('/dashboard');
+                  } else {
+                    navigate('/dashboard/user/create-ticket');
+                  }
                 } else {
                   navigate('/auth/login');
                 }
