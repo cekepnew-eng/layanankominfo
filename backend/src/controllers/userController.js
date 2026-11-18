@@ -747,44 +747,55 @@ exports.getOpdUsers = async (req, res) => {
         });
       }
 
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
-      let response;
-      let payload;
-      try {
-        response = await fetch(lookupUrl.toString(), {
-          headers: { Accept: 'application/json' },
-          signal: controller.signal
-        });
-        if (response.status !== 404 && response.ok) {
-          try {
-            payload = await response.json();
-          } catch (error) {
-            console.error('TND user search returned invalid JSON:', error.message);
-            return res.status(502).json({
-              success: false,
-              message: controller.signal.aborted
-                ? 'Pencarian akun TND melewati batas waktu.'
-                : 'Respons layanan pencarian akun TND tidak valid.',
-              data: localUsers
-            });
-          }
+      const searchCandidates = [search];
+      if (search.includes('@')) {
+        const usernameCandidate = search.split('@')[0].trim();
+        if (usernameCandidate && usernameCandidate !== search) {
+          searchCandidates.push(usernameCandidate);
         }
-      } catch (error) {
-        const networkErrorCode = error.cause?.code || error.code || error.name;
-        console.error('TND user search request failed:', networkErrorCode, error.message);
-        return res.status(502).json({
-          success: false,
-          message: controller.signal.aborted
-            ? 'Pencarian akun TND melewati batas waktu.'
-            : `Layanan pencarian akun TND tidak dapat dihubungi (${networkErrorCode}).`,
-          data: localUsers
-        });
-      } finally {
-        clearTimeout(timeout);
       }
 
-      if (response.status !== 404 && !response.ok) {
+      let response = null;
+      let payload = null;
+      for (const candidate of searchCandidates) {
+        const candidateUrl = new URL(endpoint);
+        candidateUrl.searchParams.set('username', candidate);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        try {
+          response = await fetch(candidateUrl.toString(), {
+            headers: { Accept: 'application/json' },
+            signal: controller.signal
+          });
+          if (response.status !== 404 && response.ok) {
+            try {
+              payload = await response.json();
+            } catch (error) {
+              console.error('TND user search returned invalid JSON:', error.message);
+              return res.status(502).json({
+                success: false,
+                message: 'Respons layanan pencarian akun TND tidak valid.',
+                data: localUsers
+              });
+            }
+            break;
+          }
+        } catch (error) {
+          const networkErrorCode = error.cause?.code || error.code || error.name;
+          console.error('TND user search request failed:', networkErrorCode, error.message);
+          return res.status(502).json({
+            success: false,
+            message: controller.signal.aborted
+              ? 'Pencarian akun TND melewati batas waktu.'
+              : `Layanan pencarian akun TND tidak dapat dihubungi (${networkErrorCode}).`,
+            data: localUsers
+          });
+        } finally {
+          clearTimeout(timeout);
+        }
+      }
+
+      if (response && response.status !== 404 && !response.ok) {
         console.error('TND user search returned HTTP status:', response.status);
         return res.status(502).json({
           success: false,
@@ -793,7 +804,7 @@ exports.getOpdUsers = async (req, res) => {
         });
       }
 
-      if (response.status !== 404) {
+      if (payload) {
         const records = Array.isArray(payload)
           ? payload
           : Array.isArray(payload?.data)
@@ -809,14 +820,35 @@ exports.getOpdUsers = async (req, res) => {
             const profile = user.profile || user.data || record.profile || record.data || {};
             const sources = [user, profile, record];
             const email = getTndField(sources, ['email', 'username', 'user_email']);
-            const nip = getTndField(sources, ['nip', 'nik', 'nomor_induk_pegawai']);
-            const name = getTndField(sources, ['full_name', 'fullname', 'nama_lengkap', 'nama', 'name']) || email || nip;
+            const rawUsername = getTndField(sources, ['username', 'user_name']);
+            const username = String(rawUsername || (String(email).includes('@') ? email : '')).trim();
+            const rawNip = getTndField(sources, ['nip', 'nik', 'nomor_induk_pegawai']);
+            const nip = ['-', '0', 'null', ''].includes(String(rawNip).trim().toLowerCase())
+              ? ''
+              : String(rawNip).trim();
+            const baseName = getTndField(sources, ['full_name', 'fullname', 'nama_lengkap', 'nama', 'name']) || '';
+            const gelarDepan = getTndField(sources, ['gelar_depan', 'gelarDepan', 'degree_prefix', 'title_prefix']);
+            const gelarBelakang = getTndField(sources, ['gelar_belakang', 'gelarBelakang', 'degree_suffix', 'title_suffix', 'gelar']);
+            const name = [
+              gelarDepan,
+              baseName || email || nip
+            ].filter(value => String(value || '').trim()).join(' ').trim()
+              + (gelarBelakang && baseName
+                ? `, ${String(gelarBelakang).replace(/^[,.\s]+|[.\s]+$/g, '')}`
+                : '');
             const department = getTndField(sources, ['department', 'nama_pd', 'unit_kerja', 'opd_name', 'nama_instansi']);
             const jabatan = getTndField(sources, [
               'jabatan',
               'nama_jabatan',
               'jabatan_nama',
               'jabatan_pegawai',
+              'nama_posisi',
+              'nama_pangkat',
+              'pangkat',
+              'golongan',
+              'eselon',
+              'jabatan_aparatur',
+              'nama_jabatan_aparatur',
               'position',
               'position_name',
               'job_title',
@@ -826,6 +858,7 @@ exports.getOpdUsers = async (req, res) => {
 
             return {
               email: String(email),
+              username: username,
               nip: String(nip),
               name: String(name),
               department: String(department),
@@ -848,7 +881,13 @@ exports.getOpdUsers = async (req, res) => {
     const enrichedLocalUsers = localUsers.map(user => {
       const tndUser = tndByEmail.get(String(user.email || '').toLowerCase())
         || tndByNip.get(String(user.nip || '').toLowerCase());
-      return tndUser ? { ...user, jabatan: tndUser.jabatan || '' } : user;
+      return tndUser ? {
+        ...user,
+        name: tndUser.name || user.name,
+        nip: tndUser.nip || user.nip,
+        department: tndUser.department || user.department,
+        jabatan: tndUser.jabatan || user.jabatan || ''
+      } : user;
     });
     const newTndUsers = tndUsers.filter(user =>
       (!user.email || !localEmails.has(user.email.toLowerCase()))

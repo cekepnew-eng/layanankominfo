@@ -94,8 +94,8 @@ const runAutoMigrations = async () => {
 
     try {
       await pool.query(`
-        INSERT INTO ticket_statuses (id, name, description)
-        VALUES (8, 'CANCELLED', 'Dibatalkan oleh pemohon')
+        INSERT INTO ticket_statuses (id, name)
+        VALUES (8, 'CANCELLED')
         ON CONFLICT DO NOTHING;
       `);
     } catch (err) {

@@ -166,22 +166,14 @@ export const TicketRecap = () => {
           searchTnd: isSignatoryTndSearchRequested,
           signal: controller.signal
         });
-        const users = (Array.isArray(response.data) ? response.data : []).filter(user =>
-          user.source === 'TND' ||
-          String(user.role || '').toUpperCase() === 'PEGAWAI' ||
-          (Array.isArray(user.roles) && user.roles.some(role => String(role).toUpperCase() === 'PEGAWAI'))
-        );
+        const users = Array.isArray(response.data) ? response.data : [];
         if (active) {
           setSignatoryUsers(users);
         }
       } catch (error) {
         if (active) {
           const fallbackUsers = Array.isArray(error.data?.data) ? error.data.data : [];
-          setSignatoryUsers(fallbackUsers.filter(user =>
-            user.source === 'TND' ||
-            String(user.role || '').toUpperCase() === 'PEGAWAI' ||
-            (Array.isArray(user.roles) && user.roles.some(role => String(role).toUpperCase() === 'PEGAWAI'))
-          ));
+          setSignatoryUsers(fallbackUsers);
           setSignatoryError(controller.signal.aborted
             ? 'Pencarian pegawai melewati batas waktu. Silakan coba lagi.'
             : error.message || 'Gagal mencari data pegawai.');
@@ -393,7 +385,8 @@ export const TicketRecap = () => {
     const name = user.name || user.full_name || '';
     const nip = String(user.nip || '');
     const jabatan = String(user.jabatan || user.position || user.job_title || '');
-    return !query || [name, nip, jabatan].some(value =>
+    const username = String(user.username || user.email || '');
+    return !query || [name, nip, jabatan, username].some(value =>
       String(value).toLocaleLowerCase('id-ID').includes(query)
     );
   });
@@ -556,11 +549,11 @@ export const TicketRecap = () => {
           <form
             onSubmit={event => {
               event.preventDefault();
-              if (!selectedSignatory?.name || !selectedSignatory?.nip || !selectedSignatory?.jabatan) return;
+              if (!selectedSignatory?.name) return;
               exportPdf({
                 name: selectedSignatory.name,
-                nip: selectedSignatory.nip,
-                position: selectedSignatory.jabatan
+                nip: selectedSignatory.nip || '-',
+                position: selectedSignatory.jabatan || '-'
               });
               setIsSignatoryDialogOpen(false);
             }}
@@ -613,17 +606,17 @@ export const TicketRecap = () => {
                       value={signatorySearchQuery}
                       onChange={event => {
                         setSignatorySearchQuery(event.target.value);
-                        setIsSignatoryTndSearchRequested(false);
+                        setIsSignatoryTndSearchRequested(event.target.value.trim().length >= 3);
                         setIsSignatorySearchOpen(true);
                         setSignatoryError('');
                       }}
                       onFocus={() => setIsSignatorySearchOpen(true)}
-                      placeholder="Ketik nama, NIP, atau jabatan"
+                      placeholder="Ketik nama, username/email, NIP, atau jabatan"
                       className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm font-medium normal-case tracking-normal text-slate-800 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500"
                     />
                   </div>
                   <span className="block text-[11px] font-medium normal-case tracking-normal text-slate-500">
-                    Cari nama atau NIP akun. Pencarian TND tersedia setelah minimal 3 karakter.
+                    Cari nama, username/email, atau NIP akun. Pencarian TND otomatis dimulai dari 3 karakter.
                   </span>
                 </label>
 
@@ -640,11 +633,12 @@ export const TicketRecap = () => {
                       const name = user.name || user.full_name || '';
                       const nip = String(user.nip || '');
                       const jabatan = String(user.jabatan || user.position || user.job_title || '');
+                      const username = String(user.username || user.email || '');
                       return (
                         <button
                           key={user.id || `${user.source}-${user.email || nip}`}
                           type="button"
-                          disabled={!name || !nip}
+                          disabled={!name}
                           onClick={() => {
                             setSelectedSignatory({ name, nip, jabatan });
                             setIsSignatorySearchOpen(false);
@@ -658,9 +652,10 @@ export const TicketRecap = () => {
                               {user.source === 'TND' && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">TND</span>}
                             </span>
                             <span className="mt-1 block truncate text-xs font-medium text-slate-500">Jabatan: {jabatan || 'Tidak tersedia dari API'}</span>
+                            {username && <span className="mt-0.5 block truncate text-xs font-medium text-slate-400">{username}</span>}
                           </span>
                           <span className="shrink-0 rounded-lg bg-sky-50 px-2.5 py-1.5 text-xs font-bold text-sky-700">
-                            {name && nip ? 'Pilih' : 'Data kurang'}
+                            {name ? 'Pilih' : 'Data kurang'}
                           </span>
                         </button>
                       );
@@ -694,21 +689,41 @@ export const TicketRecap = () => {
               </div>
             )}
 
-            {selectedSignatory && !selectedSignatory.jabatan && (
-              <label className="block space-y-1.5 text-xs font-bold uppercase tracking-wide text-slate-600">
-                Jabatan
-                <input
-                  required
-                  value={selectedSignatory.jabatan || ''}
-                  onChange={event => setSelectedSignatory(current => ({
-                    ...current,
-                    jabatan: event.target.value
-                  }))}
-                  maxLength={150}
-                  placeholder="Jabatan belum tersedia dari API, isi jabatan pegawai"
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold normal-case tracking-normal text-slate-800 placeholder:font-normal"
-                />
-              </label>
+            {selectedSignatory && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block space-y-1.5 text-xs font-bold uppercase tracking-wide text-slate-600">
+                  NIP
+                  <input
+                    value={selectedSignatory.nip || ''}
+                    onChange={event => {
+                      const value = event.target.value;
+                      setSelectedSignatory(current => ({
+                        ...current,
+                        nip: value
+                      }));
+                    }}
+                    maxLength={50}
+                    placeholder="Isi NIP pegawai"
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold normal-case tracking-normal text-slate-800 placeholder:font-normal"
+                  />
+                </label>
+                <label className="block space-y-1.5 text-xs font-bold uppercase tracking-wide text-slate-600">
+                  Jabatan
+                  <input
+                    value={selectedSignatory.jabatan || ''}
+                    onChange={event => {
+                      const value = event.target.value;
+                      setSelectedSignatory(current => ({
+                        ...current,
+                        jabatan: value
+                      }));
+                    }}
+                    maxLength={150}
+                    placeholder="Isi jabatan pegawai"
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold normal-case tracking-normal text-slate-800 placeholder:font-normal"
+                  />
+                </label>
+              </div>
             )}
 
             <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
@@ -721,7 +736,7 @@ export const TicketRecap = () => {
               </button>
               <button
                 type="submit"
-                disabled={signatoryLoading || Boolean(signatoryError) || !selectedSignatory?.name || !selectedSignatory?.nip || !selectedSignatory?.jabatan}
+                disabled={signatoryLoading || !selectedSignatory?.name}
                 className="rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Export PDF
