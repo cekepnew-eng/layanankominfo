@@ -50,6 +50,7 @@ const runMigration = async () => {
         password_hash VARCHAR(255) NOT NULL,
         full_name VARCHAR(255) NOT NULL,
         phone_number VARCHAR(50),
+        jabatan VARCHAR(255),
         role_id INT REFERENCES roles(id),
         team_id INT REFERENCES teams(id),
         is_active BOOLEAN DEFAULT true,

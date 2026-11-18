@@ -770,7 +770,15 @@ export const TicketHistory = ({ mode = 'active' }) => {
 
   const executeUpdateProgress = async (ticketId) => {
     if (pegawaiAction === 'reject' && !progressNote.trim()) {
-      alert('Catatan tambahan wajib diisi ketika mengembalikan tiket ke pemohon.');
+      setModalConfig({
+        isOpen: true,
+        type: 'warning',
+        title: 'Catatan Penolakan Wajib Diisi',
+        message: 'Catatan tambahan wajib diisi ketika mengembalikan tiket ke pemohon.',
+        confirmText: 'Mengerti',
+        cancelText: '',
+        onConfirm: closeModal
+      });
       return;
     }
 

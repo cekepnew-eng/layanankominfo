@@ -7,6 +7,7 @@ const createRegistrationController = require('./registrationController');
 const createPasswordResetController = require('./passwordResetController');
 const createProfileController = require('./profileController');
 const { getTndProfileImage } = require('../utils/tndProfileImage');
+const { getTndField } = require('../utils/tndField');
 const { recordActivity } = require('../utils/activityLogger');
 const { incrementUserSessionVersion } = require('../utils/userSession');
 
@@ -440,6 +441,10 @@ exports.login = async (req, res) => {
           const tndEmail = tndUser.email || (loginIdentifier.includes('@') ? loginIdentifier : null);
           const fullName = tndUser.nama || tndData?.data?.nama_lengkap || tndUser.name || loginIdentifier;
           const department = tndUser.nama_pd || tndUser.unit_kerja || tndData?.data?.opd_name || 'Dinas Kota Bogor';
+          const jabatan = String(getTndField(
+            [tndUser, tndUser.profile, tndData?.data, tndData],
+            ['jabatan', 'nama_jabatan', 'jabatan_nama', 'jabatan_pegawai', 'position', 'position_name', 'job_title', 'title']
+          ) || '').trim();
           const phone = tndUser.no_hp || tndUser.no_telepon || user?.phone_number || '0000000000';
           const tndProfileImage = getTndProfileImage(tndUser, tndData, ssoUrl);
 
@@ -489,11 +494,12 @@ exports.login = async (req, res) => {
             await db.query(
               `UPDATE users
                SET email = $1, nip = $2, full_name = $3, department = $4, phone_number = $5,
+                   jabatan = COALESCE($6, jabatan),
                    password_auth_source = 'TND',
-                   profile_image = $6,
-                   profile_image_source = CASE WHEN $6::text IS NOT NULL THEN 'TND' ELSE 'NONE' END
-               WHERE id = $7`,
-              [finalEmail, finalNip, fullName, department, phone, tndProfileImage, user.id]
+                   profile_image = $7,
+                   profile_image_source = CASE WHEN $7::text IS NOT NULL THEN 'TND' ELSE 'NONE' END
+               WHERE id = $8`,
+              [finalEmail, finalNip, fullName, department, phone, jabatan || null, tndProfileImage, user.id]
             );
 
             user.email = finalEmail;
@@ -501,6 +507,7 @@ exports.login = async (req, res) => {
             user.full_name = fullName;
             user.department = department;
             user.phone_number = phone;
+            user.jabatan = jabatan || user.jabatan || '';
             user.profile_image = tndProfileImage;
             user.profile_image_source = tndProfileImage ? 'TND' : 'NONE';
           } else {
@@ -523,13 +530,13 @@ exports.login = async (req, res) => {
               await client.query('BEGIN');
               const insertRes = await client.query(
                 `INSERT INTO users (
-                   email, nip, password_hash, full_name, phone_number, department, profile_image, profile_image_source,
+                   email, nip, password_hash, full_name, phone_number, department, jabatan, profile_image, profile_image_source,
                    password_changed_at, password_auth_source
                  )
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $7::text IS NOT NULL THEN 'TND' ELSE NULL END,
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CASE WHEN $8::text IS NOT NULL THEN 'TND' ELSE NULL END,
                          CURRENT_TIMESTAMP, 'TND')
                  RETURNING *`,
-                [finalEmail, finalNip, passwordPlaceholderHash, fullName, phone, department, tndProfileImage]
+                [finalEmail, finalNip, passwordPlaceholderHash, fullName, phone, department, jabatan || null, tndProfileImage]
               );
               user = insertRes.rows[0];
 
@@ -637,7 +644,7 @@ exports.login = async (req, res) => {
           token,
           passwordChangeRequired,
           user: {
-            id: user.id, email: user.email, nip: user.nip, name: user.full_name, role: primaryRole,
+            id: user.id, email: user.email, nip: user.nip, name: user.full_name, role: primaryRole, jabatan: user.jabatan,
             roles: user.roles, department: user.department, profile_image: user.profile_image,
             profile_image_source: user.profile_image_source, profileImage: user.profile_image,
             profileImageSource: user.profile_image_source, teams: await getUserTeams(user.id),
@@ -715,6 +722,7 @@ exports.login = async (req, res) => {
           role: primaryRole,
           roles: user.roles,
           department: user.department,
+          jabatan: user.jabatan,
           profile_image: user.profile_image,
           profile_image_source: user.profile_image_source,
           profileImage: user.profile_image,

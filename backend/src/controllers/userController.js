@@ -1,6 +1,7 @@
 const db = require('../config/database');
 const bcrypt = require('bcryptjs');
 const { getTndProfileImage } = require('../utils/tndProfileImage');
+const { getTndField } = require('../utils/tndField');
 const { getPasswordPolicyFailures } = require('../utils/passwordPolicy');
 const { recordRequestActivity } = require('../utils/activityLogger');
 
@@ -57,6 +58,9 @@ async function authenticateTndUser(identifier, password) {
     nip,
     full_name: String(fullName).trim(),
     department: String(department).trim(),
+    jabatan: String(getTndField([user, user.profile, payload?.data], [
+      'jabatan', 'nama_jabatan', 'jabatan_nama', 'jabatan_pegawai', 'position', 'position_name', 'job_title', 'title'
+    ]) || '').trim(),
     phone_number: user.no_hp || user.no_telepon || '0000000000',
     profile_image: profileImage,
     profile_image_source: 'TND'
@@ -129,6 +133,10 @@ exports.createOpdUserFromTnd = async (req, res) => {
     const nip = String(profileRecord.nip || profileRecord.nik || '').trim();
     const fullName = String(profileRecord.full_name || profileRecord.nama_lengkap || profileRecord.nama || profileRecord.name || '').trim();
     const department = String(profileRecord.department || profileRecord.nama_pd || profileRecord.unit_kerja || profileRecord.opd_name || '').trim();
+    const jabatan = String(getTndField(
+      [profileRecord, profileRecord.profile, profileRecord.data],
+      ['jabatan', 'nama_jabatan', 'jabatan_nama', 'jabatan_pegawai', 'position', 'position_name', 'job_title', 'title']
+    ) || '').trim();
     if (!fullName || (!email && !nip)) {
       return res.status(422).json({ success: false, message: 'Data identitas OPD dari TND tidak lengkap.' });
     }
@@ -138,7 +146,7 @@ exports.createOpdUserFromTnd = async (req, res) => {
       await client.query('BEGIN');
 
       const existingResult = await client.query(
-        `SELECT id, email, nip, full_name, department, profile_image, profile_image_source
+        `SELECT id, email, nip, full_name, department, jabatan, profile_image, profile_image_source
          FROM users
          WHERE ($1::text <> '' AND LOWER(email) = LOWER($1))
             OR ($2::text <> '' AND nip = $2)
@@ -147,8 +155,12 @@ exports.createOpdUserFromTnd = async (req, res) => {
       );
 
       if (existingResult.rows.length > 0) {
-        await client.query('COMMIT');
         const existing = existingResult.rows[0];
+        const resolvedJabatan = jabatan || existing.jabatan || '';
+        if (jabatan && jabatan !== existing.jabatan) {
+          await client.query('UPDATE users SET jabatan = $1 WHERE id = $2', [jabatan, existing.id]);
+        }
+        await client.query('COMMIT');
         return res.json({
           success: true,
           created: false,
@@ -159,6 +171,7 @@ exports.createOpdUserFromTnd = async (req, res) => {
             nip: existing.nip,
             name: existing.full_name,
             department: existing.department,
+            jabatan: resolvedJabatan,
             source: 'WEB'
           }
         });
@@ -177,12 +190,12 @@ exports.createOpdUserFromTnd = async (req, res) => {
       const profileImage = getTndProfileImage(profileRecord, payload || {}, profileImageBase);
       const userResult = await client.query(
         `INSERT INTO users (
-           email, nip, password_hash, full_name, department, profile_image, profile_image_source,
+           email, nip, password_hash, full_name, department, jabatan, profile_image, profile_image_source,
            is_active, is_two_factor_enabled, two_factor_secret, backup_codes, password_changed_at, password_auth_source
          )
-         VALUES ($1, $2, $3, $4, $5, $6, 'TND', true, false, NULL, '[]'::jsonb, CURRENT_TIMESTAMP, 'TND')
-         RETURNING id, email, nip, full_name, department`,
-        [finalEmail, nip || null, placeholderHash, fullName, department, profileImage]
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'TND', true, false, NULL, '[]'::jsonb, CURRENT_TIMESTAMP, 'TND')
+         RETURNING id, email, nip, full_name, department, jabatan`,
+        [finalEmail, nip || null, placeholderHash, fullName, department, jabatan || null, profileImage]
       );
       const user = userResult.rows[0];
 
@@ -207,6 +220,7 @@ exports.createOpdUserFromTnd = async (req, res) => {
           nip: user.nip,
           name: user.full_name,
           department: user.department,
+          jabatan: user.jabatan || '',
           source: 'WEB'
         }
       });
@@ -232,7 +246,7 @@ exports.createOpdUserFromTnd = async (req, res) => {
 exports.getAllUsers = async (req, res) => {
   try {
     const result = await db.pool.query(`
-      SELECT u.id, u.email, u.nip, u.full_name as name, u.phone_number as phone, u.department, u.created_at,
+      SELECT u.id, u.email, u.nip, u.full_name as name, u.phone_number as phone, u.department, u.jabatan, u.created_at,
              u.password_auth_source,
              u.profile_image, u.profile_image_source,
              COALESCE(tm.team_name, 'Dinas Komunikasi dan Informatika') as team,
@@ -475,12 +489,12 @@ exports.createUserManual = async (req, res) => {
       const hashedPassword = await bcrypt.hash(password, 10);
       const userRes = await client.query(
         `INSERT INTO users (
-         email, nip, password_hash, full_name, phone_number, department, profile_image, profile_image_source,
+         email, nip, password_hash, full_name, phone_number, department, jabatan, profile_image, profile_image_source,
          is_active, is_two_factor_enabled, two_factor_secret, backup_codes, password_changed_at, password_auth_source
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, false, NULL, '[]'::jsonb, CURRENT_TIMESTAMP, 'TND')
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, false, NULL, '[]'::jsonb, CURRENT_TIMESTAMP, 'TND')
        RETURNING id`,
-        [profile.email, profile.nip, hashedPassword, profile.full_name, profile.phone_number, profile.department, profile.profile_image, profile.profile_image_source]
+        [profile.email, profile.nip, hashedPassword, profile.full_name, profile.phone_number, profile.department, profile.jabatan || null, profile.profile_image, profile.profile_image_source]
       );
       const userId = userRes.rows[0].id;
 
@@ -677,7 +691,7 @@ exports.getOpdUsers = async (req, res) => {
     }
 
     let query = `
-      SELECT u.id, u.email, u.nip, u.full_name as name, u.phone_number as phone, u.department,
+      SELECT u.id, u.email, u.nip, u.full_name as name, u.phone_number as phone, u.department, u.jabatan,
              u.profile_image, u.profile_image_source,
              COALESCE(array_agg(r.name), ARRAY[]::varchar[]) as roles
       FROM users u
@@ -693,11 +707,11 @@ exports.getOpdUsers = async (req, res) => {
 
     if (search) {
       params.push(`%${search}%`);
-      query += ` AND (u.full_name ILIKE $${params.length} OR u.email ILIKE $${params.length} OR u.department ILIKE $${params.length} OR (u.nip IS NOT NULL AND u.nip ILIKE $${params.length}))`;
+      query += ` AND (u.full_name ILIKE $${params.length} OR u.email ILIKE $${params.length} OR u.department ILIKE $${params.length} OR (u.nip IS NOT NULL AND u.nip ILIKE $${params.length}) OR (u.jabatan IS NOT NULL AND u.jabatan ILIKE $${params.length}))`;
     }
 
     query += `
-      GROUP BY u.id, u.email, u.nip, u.full_name, u.phone_number, u.department,
+      GROUP BY u.id, u.email, u.nip, u.full_name, u.phone_number, u.department, u.jabatan,
                u.profile_image, u.profile_image_source
       ORDER BY u.department ASC, u.full_name ASC
       LIMIT 100
@@ -736,19 +750,34 @@ exports.getOpdUsers = async (req, res) => {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 8000);
       let response;
+      let payload;
       try {
         response = await fetch(lookupUrl.toString(), {
-          headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json'
-          },
+          headers: { Accept: 'application/json' },
           signal: controller.signal
         });
+        if (response.status !== 404 && response.ok) {
+          try {
+            payload = await response.json();
+          } catch (error) {
+            console.error('TND user search returned invalid JSON:', error.message);
+            return res.status(502).json({
+              success: false,
+              message: controller.signal.aborted
+                ? 'Pencarian akun TND melewati batas waktu.'
+                : 'Respons layanan pencarian akun TND tidak valid.',
+              data: localUsers
+            });
+          }
+        }
       } catch (error) {
-        console.error('TND user search request failed:', error.message);
+        const networkErrorCode = error.cause?.code || error.code || error.name;
+        console.error('TND user search request failed:', networkErrorCode, error.message);
         return res.status(502).json({
           success: false,
-          message: 'Layanan pencarian akun TND tidak dapat dihubungi.',
+          message: controller.signal.aborted
+            ? 'Pencarian akun TND melewati batas waktu.'
+            : `Layanan pencarian akun TND tidak dapat dihubungi (${networkErrorCode}).`,
           data: localUsers
         });
       } finally {
@@ -765,18 +794,6 @@ exports.getOpdUsers = async (req, res) => {
       }
 
       if (response.status !== 404) {
-        let payload;
-        try {
-          payload = await response.json();
-        } catch (error) {
-          console.error('TND user search returned invalid JSON:', error.message);
-          return res.status(502).json({
-            success: false,
-            message: 'Respons layanan pencarian akun TND tidak valid.',
-            data: localUsers
-          });
-        }
-
         const records = Array.isArray(payload)
           ? payload
           : Array.isArray(payload?.data)
@@ -789,10 +806,22 @@ exports.getOpdUsers = async (req, res) => {
           .filter(record => record && typeof record === 'object')
           .map(record => {
             const user = record.user || record;
-            const email = user.email || user.username || '';
-            const nip = user.nip || user.nik || '';
-            const name = user.full_name || user.nama_lengkap || user.nama || user.name || email || nip;
-            const department = user.department || user.nama_pd || user.unit_kerja || user.opd_name || '';
+            const profile = user.profile || user.data || record.profile || record.data || {};
+            const sources = [user, profile, record];
+            const email = getTndField(sources, ['email', 'username', 'user_email']);
+            const nip = getTndField(sources, ['nip', 'nik', 'nomor_induk_pegawai']);
+            const name = getTndField(sources, ['full_name', 'fullname', 'nama_lengkap', 'nama', 'name']) || email || nip;
+            const department = getTndField(sources, ['department', 'nama_pd', 'unit_kerja', 'opd_name', 'nama_instansi']);
+            const jabatan = getTndField(sources, [
+              'jabatan',
+              'nama_jabatan',
+              'jabatan_nama',
+              'jabatan_pegawai',
+              'position',
+              'position_name',
+              'job_title',
+              'title'
+            ]);
             if (!name && !email && !nip) return null;
 
             return {
@@ -800,6 +829,7 @@ exports.getOpdUsers = async (req, res) => {
               nip: String(nip),
               name: String(name),
               department: String(department),
+              jabatan: String(jabatan),
               source: 'TND'
             };
           })
@@ -809,12 +839,23 @@ exports.getOpdUsers = async (req, res) => {
 
     const localEmails = new Set(localUsers.map(user => String(user.email || '').toLowerCase()).filter(Boolean));
     const localNips = new Set(localUsers.map(user => String(user.nip || '').toLowerCase()).filter(Boolean));
+    const tndByEmail = new Map(tndUsers
+      .filter(user => user.email)
+      .map(user => [user.email.toLowerCase(), user]));
+    const tndByNip = new Map(tndUsers
+      .filter(user => user.nip)
+      .map(user => [String(user.nip).toLowerCase(), user]));
+    const enrichedLocalUsers = localUsers.map(user => {
+      const tndUser = tndByEmail.get(String(user.email || '').toLowerCase())
+        || tndByNip.get(String(user.nip || '').toLowerCase());
+      return tndUser ? { ...user, jabatan: tndUser.jabatan || '' } : user;
+    });
     const newTndUsers = tndUsers.filter(user =>
       (!user.email || !localEmails.has(user.email.toLowerCase()))
       && (!user.nip || !localNips.has(user.nip.toLowerCase()))
     );
 
-    res.json({ success: true, data: [...localUsers, ...newTndUsers] });
+    res.json({ success: true, data: [...enrichedLocalUsers, ...newTndUsers] });
   } catch (error) {
     console.error('getOpdUsers error:', error);
     res.status(500).json({ success: false, message: error.message });

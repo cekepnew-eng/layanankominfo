@@ -1029,7 +1029,8 @@ export const CreateTicket = () => {
                                           email: opd.email,
                                           nip: opd.nip,
                                           name: opd.name,
-                                          department: opd.department
+                                          department: opd.department,
+                                          jabatan: opd.jabatan
                                         }
                                       );
                                       const createdUser = res.user;

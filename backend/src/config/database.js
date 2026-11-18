@@ -125,6 +125,7 @@ const runAutoMigrations = async () => {
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS previous_password_hash VARCHAR(255);');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMP;');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS nip VARCHAR(50);');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS jabatan VARCHAR(255);');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image TEXT;');
       await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_source VARCHAR(20);");
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0;');

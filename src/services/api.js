@@ -89,7 +89,10 @@ export const api = {
     if (options.searchTnd) params.set('searchTnd', 'true');
     const query = params.toString();
     const q = query ? `?${query}` : '';
-    const res = await fetch(`${BASE_URL}/opd-users${q}`, { headers: getHeaders() });
+    const res = await fetch(`${BASE_URL}/opd-users${q}`, {
+      headers: getHeaders(),
+      signal: options.signal
+    });
     return handleResponse(res);
   },
   createOpdUserFromTnd: async (identifier, profile) => {
