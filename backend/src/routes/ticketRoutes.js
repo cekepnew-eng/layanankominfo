@@ -14,6 +14,7 @@ router.post('/my/tickets/:id/dispute', authenticateToken, authorizeRole(['USER',
 
 // HELPDESK
 router.get('/opd-users', authenticateToken, authorizeRole(['HELPDESK', 'ADMIN']), userController.getOpdUsers);
+router.post('/opd-users/create-from-tnd', authenticateToken, authorizeRole(['HELPDESK', 'ADMIN']), userController.createOpdUserFromTnd);
 router.get('/helpdesk/tickets', authenticateToken, authorizeRole(['HELPDESK', 'ADMIN']), ticketController.getHelpdeskTickets);
 router.patch('/helpdesk/tickets/:id/verify', authenticateToken, authorizeRole(['HELPDESK', 'ADMIN']), ticketController.verifyTicket);
 router.patch('/helpdesk/tickets/:id/assign', authenticateToken, authorizeRole(['HELPDESK', 'ADMIN']), ticketController.assignTicket);

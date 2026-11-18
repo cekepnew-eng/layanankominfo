@@ -75,6 +75,160 @@ exports.verifyTndManualUser = async (req, res) => {
   }
 };
 
+exports.createOpdUserFromTnd = async (req, res) => {
+  const identifier = typeof req.body?.identifier === 'string' ? req.body.identifier.trim() : '';
+  const profileFromRequest = req.body?.profile && typeof req.body.profile === 'object'
+    ? req.body.profile
+    : null;
+  if (!identifier && !profileFromRequest) {
+    return res.status(400).json({ success: false, message: 'NIP/NIK/Gmail OPD wajib diisi.' });
+  }
+
+  try {
+    let profileRecord = profileFromRequest;
+    let payload = null;
+    let lookupUrl = null;
+
+    if (!profileRecord) {
+      const endpoint = process.env.TND_FIND_USER_URL;
+      if (!endpoint) {
+        return res.status(503).json({ success: false, message: 'Pencarian akun TND belum dikonfigurasi.' });
+      }
+      lookupUrl = new URL(endpoint);
+      if (lookupUrl.protocol !== 'https:') {
+        return res.status(500).json({ success: false, message: 'Konfigurasi URL pencarian TND tidak valid.' });
+      }
+      lookupUrl.searchParams.set('username', identifier);
+      const response = await fetch(lookupUrl.toString(), {
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(8000)
+      });
+      if (response.status === 404) {
+        return res.status(404).json({ success: false, message: 'Akun OPD tidak ditemukan di TND.' });
+      }
+      if (!response.ok) {
+        return res.status(502).json({ success: false, message: 'Layanan pencarian akun TND mengembalikan kesalahan.' });
+      }
+      payload = await response.json().catch(() => null);
+      const records = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.data)
+          ? payload.data
+          : Array.isArray(payload?.data?.users)
+            ? payload.data.users
+            : [payload?.data?.user || payload?.user || payload?.data || payload?.result || payload];
+      profileRecord = records.find(record => record && typeof record === 'object')?.user
+        || records.find(record => record && typeof record === 'object');
+    }
+
+    if (!profileRecord) {
+      return res.status(404).json({ success: false, message: 'Akun OPD tidak ditemukan di TND.' });
+    }
+
+    const email = String(profileRecord.email || profileRecord.username || '').trim().toLowerCase();
+    const nip = String(profileRecord.nip || profileRecord.nik || '').trim();
+    const fullName = String(profileRecord.full_name || profileRecord.nama_lengkap || profileRecord.nama || profileRecord.name || '').trim();
+    const department = String(profileRecord.department || profileRecord.nama_pd || profileRecord.unit_kerja || profileRecord.opd_name || '').trim();
+    if (!fullName || (!email && !nip)) {
+      return res.status(422).json({ success: false, message: 'Data identitas OPD dari TND tidak lengkap.' });
+    }
+
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const existingResult = await client.query(
+        `SELECT id, email, nip, full_name, department, profile_image, profile_image_source
+         FROM users
+         WHERE ($1::text <> '' AND LOWER(email) = LOWER($1))
+            OR ($2::text <> '' AND nip = $2)
+         LIMIT 1`,
+        [email, nip]
+      );
+
+      if (existingResult.rows.length > 0) {
+        await client.query('COMMIT');
+        const existing = existingResult.rows[0];
+        return res.json({
+          success: true,
+          created: false,
+          message: 'Akun OPD sudah terdaftar dan tiket akan terhubung ke akun tersebut.',
+          user: {
+            id: existing.id,
+            email: existing.email,
+            nip: existing.nip,
+            name: existing.full_name,
+            department: existing.department,
+            source: 'WEB'
+          }
+        });
+      }
+
+      const roleResult = await client.query("SELECT id FROM roles WHERE name = 'USER'");
+      if (roleResult.rows.length === 0) {
+        throw new Error('Role USER belum tersedia.');
+      }
+
+      const placeholderHash = await bcrypt.hash(require('crypto').randomBytes(32).toString('hex'), 10);
+      const finalEmail = email || `${nip}@kotabogor.go.id`;
+      const profileImageBase = lookupUrl
+        ? lookupUrl.toString()
+        : (process.env.SSO_API_URL || 'https://tnd.kotabogor.go.id/api-baru/api/v1/login');
+      const profileImage = getTndProfileImage(profileRecord, payload || {}, profileImageBase);
+      const userResult = await client.query(
+        `INSERT INTO users (
+           email, nip, password_hash, full_name, department, profile_image, profile_image_source,
+           is_active, is_two_factor_enabled, two_factor_secret, backup_codes, password_changed_at, password_auth_source
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, 'TND', true, false, NULL, '[]'::jsonb, CURRENT_TIMESTAMP, 'TND')
+         RETURNING id, email, nip, full_name, department`,
+        [finalEmail, nip || null, placeholderHash, fullName, department, profileImage]
+      );
+      const user = userResult.rows[0];
+
+      await client.query(
+        'INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)',
+        [user.id, roleResult.rows[0].id]
+      );
+      await recordRequestActivity(client, req, {
+        activityType: 'user_created',
+        description: `Helpdesk membuat akun OPD ${fullName} dari data TND.`,
+        metadata: { targetUserId: user.id, roles: ['USER'], source: 'TND' }
+      });
+      await client.query('COMMIT');
+
+      return res.status(201).json({
+        success: true,
+        created: true,
+        message: 'Akun OPD berhasil dibuat otomatis dari TND.',
+        user: {
+          id: user.id,
+          email: user.email,
+          nip: user.nip,
+          name: user.full_name,
+          department: user.department,
+          source: 'WEB'
+        }
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      if (error.code === '23505') {
+        return res.status(409).json({ success: false, message: 'Email atau NIP OPD sudah terdaftar.' });
+      }
+      console.error('createOpdUserFromTnd error:', error);
+      return res.status(500).json({ success: false, message: 'Gagal membuat akun OPD otomatis.' });
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      return res.status(504).json({ success: false, message: 'Pencarian akun TND melewati batas waktu.' });
+    }
+    console.error('createOpdUserFromTnd lookup error:', error);
+    return res.status(500).json({ success: false, message: 'Gagal memproses data akun TND.' });
+  }
+};
+
 exports.getAllUsers = async (req, res) => {
   try {
     const result = await db.pool.query(`

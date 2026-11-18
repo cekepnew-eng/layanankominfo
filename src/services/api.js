@@ -92,6 +92,14 @@ export const api = {
     const res = await fetch(`${BASE_URL}/opd-users${q}`, { headers: getHeaders() });
     return handleResponse(res);
   },
+  createOpdUserFromTnd: async (identifier, profile) => {
+    const res = await fetch(`${BASE_URL}/opd-users/create-from-tnd`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ identifier, profile })
+    });
+    return handleResponse(res);
+  },
   getUsers: async () => {
     const res = await fetch(`${BASE_URL}/admin/users`, { headers: getHeaders() });
     return handleResponse(res);

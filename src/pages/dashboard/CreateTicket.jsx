@@ -106,6 +106,7 @@ export const CreateTicket = () => {
   const [opdSearchLoading, setOpdSearchLoading] = useState(false);
   const [opdSearchError, setOpdSearchError] = useState('');
   const [isOpdSearchOpen, setIsOpdSearchOpen] = useState(false);
+  const [creatingOpdUser, setCreatingOpdUser] = useState(false);
   const opdSearchRef = useRef(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
@@ -353,7 +354,7 @@ export const CreateTicket = () => {
     if (isHelpdesk) {
       finalFormData['submitted_by_helpdesk'] = true;
       if (selectedOpdUser) {
-        if (selectedOpdUser.id && selectedOpdUser.source !== 'TND') {
+        if (selectedOpdUser.id) {
           targetUserIdPayload = selectedOpdUser.id;
           finalFormData['target_opd_user_id'] = selectedOpdUser.id;
         }
@@ -1017,7 +1018,37 @@ export const CreateTicket = () => {
                             return matches.map((opd) => (
                               <div
                                 key={opd.id || `${opd.source}-${opd.email || opd.nip}`}
-                                onClick={() => {
+                                onClick={async () => {
+                                  if (opd.source === 'TND') {
+                                    setCreatingOpdUser(true);
+                                    setOpdSearchError('');
+                                    try {
+                                      const res = await api.createOpdUserFromTnd(
+                                        opd.email || opd.nip || opd.name,
+                                        {
+                                          email: opd.email,
+                                          nip: opd.nip,
+                                          name: opd.name,
+                                          department: opd.department
+                                        }
+                                      );
+                                      const createdUser = res.user;
+                                      if (!createdUser) throw new Error('Data akun OPD tidak diterima dari server.');
+                                      setSelectedOpdUser(createdUser);
+                                      setFormData(prev => ({ ...prev, 'Nama Pemohon': createdUser.name }));
+                                      setHelpdeskInstansi(createdUser.department || opd.department || '');
+                                      setOpdSearchQuery('');
+                                      setIsTndSearchRequested(false);
+                                      setIsOpdSearchOpen(false);
+                                    } catch (error) {
+                                      setOpdSearchError(error.message || 'Gagal membuat akun OPD dari TND.');
+                                      setIsOpdSearchOpen(true);
+                                    } finally {
+                                      setCreatingOpdUser(false);
+                                    }
+                                    return;
+                                  }
+
                                   setSelectedOpdUser(opd);
                                   setFormData(prev => ({ ...prev, 'Nama Pemohon': opd.name }));
                                   setHelpdeskInstansi(opd.department || '');
@@ -1046,7 +1077,7 @@ export const CreateTicket = () => {
                                   </p>
                                 </div>
                                 <span className="text-xs font-bold text-sky-600 bg-sky-50 px-2 py-1 rounded group-hover:bg-sky-600 group-hover:text-white transition-all shrink-0">
-                                  Pilih
+                                  {creatingOpdUser && opd.source === 'TND' ? 'Memproses...' : opd.source === 'TND' ? 'Buat Akun & Pilih' : 'Pilih'}
                                 </span>
                               </div>
                             ));
@@ -1104,7 +1135,7 @@ export const CreateTicket = () => {
                     <span className="font-extrabold text-emerald-900 block">Akun OPD Terpilih: {selectedOpdUser.name}</span>
                     {selectedOpdUser.source === 'TND' ? (
                       <p className="text-emerald-800 leading-relaxed">
-                        Akun ditemukan di TND, tetapi belum terdaftar di web. Tiket akan tercatat atas nama Helpdesk dan belum muncul di riwayat akun pemohon.
+                        Akun diproses dari data TND. Pastikan akun sudah ditambahkan dan terhubung sebelum tiket disimpan.
                       </p>
                     ) : (
                       <p className="text-emerald-800 leading-relaxed">
