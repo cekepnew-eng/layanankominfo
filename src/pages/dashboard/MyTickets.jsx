@@ -143,6 +143,7 @@ export const MyTickets = () => {
         const mapped = res.data.map(t => ({
           ...t,
           status: t.status_name === 'PENDING' ? 'Pending'
+                : t.status_name === 'REJECTED' ? 'Pending'
                 : t.status_name === 'VERIFIED' ? 'Menunggu Validasi'
                 : t.status_name === 'ASSIGNED' ? 'Diproses'
                 : t.status_name === 'IN_PROGRESS' ? 'Diproses'
@@ -232,6 +233,7 @@ export const MyTickets = () => {
         mapped = res.data.map(t => ({
           ...t,
           status: t.status_name === 'PENDING' ? 'Pending'
+                : t.status_name === 'REJECTED' ? 'Pending'
                 : t.status_name === 'VERIFIED' ? 'Menunggu Validasi'
                 : t.status_name === 'ASSIGNED' ? 'Diproses'
                 : t.status_name === 'IN_PROGRESS' ? 'Diproses'
@@ -309,15 +311,23 @@ export const MyTickets = () => {
       .filter(Boolean)
       .map(role => String(role).toUpperCase());
     return roles.some(role => ['USER', 'MASYARAKAT'].includes(role))
-      && ['PENDING', 'REJECTED'].includes(ticket.status_name);
+      && ticket.status_name === 'PENDING';
+  };
+
+  const canRefillTicket = (ticket) => {
+    const roles = [...(user?.roles || []), user?.role]
+      .filter(Boolean)
+      .map(role => String(role).toUpperCase());
+    return roles.some(role => ['USER', 'MASYARAKAT'].includes(role))
+      && ['REJECTED', 'CANCELLED'].includes(ticket.status_name);
   };
 
   const handleCancelTicket = (ticket) => {
     setModalConfig({
       isOpen: true,
       type: 'danger',
-      title: 'Batalkan dan Hapus Tiket?',
-      message: `Tiket ${ticket.ticket_number} hanya bisa dibatalkan sebelum disetujui Helpdesk. Pembatalan tidak dapat diurungkan.`,
+      title: 'Batalkan Tiket?',
+      message: `Tiket ${ticket.ticket_number} hanya bisa dibatalkan sebelum disetujui Helpdesk. Tiket tetap tersimpan dan bisa diisi ulang nanti.`,
       confirmText: 'Ya, Batalkan',
       cancelText: 'Kembali',
       onConfirm: () => executeCancelTicket(ticket.id)
@@ -327,16 +337,16 @@ export const MyTickets = () => {
   const executeCancelTicket = async (ticketId) => {
     try {
       await api.cancelTicket(ticketId);
-      setTickets(currentTickets => currentTickets.filter(ticket => ticket.id !== ticketId));
       await fetchTickets(true);
+      setActiveTab('Pending');
       setSelectedTicket(null);
       setShowDetailModal(false);
       setShowRefillModal(false);
       setModalConfig({
         isOpen: true,
         type: 'success',
-        title: 'Tiket Berhasil Dibatalkan',
-        message: 'Tiket sudah dihapus. Aktivitas pembatalan tercatat di Log Activity.',
+        title: 'Tiket Dikembalikan ke Pending',
+        message: 'Tiket tidak dihapus. Silakan isi ulang formulir melalui tombol Isi Ulang agar pengajuan dikirim kembali ke Helpdesk.',
         confirmText: 'Selesai',
         cancelText: '',
         onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
@@ -383,6 +393,7 @@ export const MyTickets = () => {
         mapped = res.data.map(t => ({
           ...t,
           status: t.status_name === 'PENDING' ? 'Pending'
+                : t.status_name === 'REJECTED' ? 'Pending'
                 : t.status_name === 'VERIFIED' ? 'Menunggu Validasi'
                 : t.status_name === 'ASSIGNED' ? 'Diproses'
                 : t.status_name === 'IN_PROGRESS' ? 'Diproses'
@@ -424,6 +435,10 @@ export const MyTickets = () => {
       default: return 'bg-slate-100 text-slate-700 border-slate-200';
     }
   };
+
+  const cancellationLog = selectedTicket?.logs?.find(log =>
+    String(log.log_description || log.text || '').toLowerCase().includes('dibatalkan oleh pemohon')
+  );
 
   if (loading) return <div className="p-8 text-slate-500 font-bold">Loading tiket saya...</div>;
 
@@ -512,6 +527,18 @@ export const MyTickets = () => {
                         <XCircle className="w-4 h-4" /> Batalkan
                       </button>
                     )}
+                    {canRefillTicket(ticket) && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await selectTicket(ticket);
+                          setShowRefillModal(true);
+                        }}
+                        className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-sm font-bold rounded-xl transition-all flex items-center gap-2"
+                      >
+                        <RefreshCw className="w-4 h-4" /> Isi Ulang
+                      </button>
+                    )}
                     <button 
                       onClick={() => {
                         selectTicket(ticket);
@@ -575,15 +602,21 @@ export const MyTickets = () => {
                   <div className="flex gap-2.5 text-slate-800">
                     <AlertCircle className="w-5 h-5 shrink-0 text-amber-500 mt-0.5" />
                     <div className="text-sm">
-                      <p className="font-extrabold text-slate-900 text-base">Permohonan Memerlukan Perbaikan / Klarifikasi</p>
+                      <p className="font-extrabold text-slate-900 text-base">
+                        {cancellationLog ? 'Tiket Dikembalikan ke Pending' : 'Permohonan Memerlukan Perbaikan / Klarifikasi'}
+                      </p>
                       <p className="mt-1 text-slate-500 leading-relaxed font-semibold text-xs">
-                        Helpdesk telah menangguhkan permohonan Anda. Silakan isi ulang seluruh formulir permohonan dan sertakan catatan perbaikan jika diperlukan.
+                        {cancellationLog
+                          ? 'Tiket tidak dihapus. Silakan isi ulang formulir permohonan agar pengajuan dikirim kembali ke Helpdesk.'
+                          : 'Helpdesk telah menangguhkan permohonan Anda. Silakan isi ulang seluruh formulir permohonan dan sertakan catatan perbaikan jika diperlukan.'}
                       </p>
                       {selectedTicket.logs && selectedTicket.logs.length > 0 && (
                         <div className="mt-2.5 p-3 glass-card rounded-2xl border border-white/60 text-xs shadow-sm">
-                          <span className="font-bold text-slate-500 uppercase tracking-wider block mb-1">Catatan dari Helpdesk:</span>
+                          <span className="font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                            {cancellationLog ? 'Catatan Pembatalan:' : 'Catatan dari Helpdesk:'}
+                          </span>
                           <p className="text-slate-700 italic font-medium">
-                            "{selectedTicket.logs.find(l => (l.log_description && (l.log_description.toLowerCase().includes('helpdesk') || l.log_description.toLowerCase().includes('ditangguhkan') || l.log_description.toLowerCase().includes('alasan:'))))?.log_description || selectedTicket.logs[selectedTicket.logs.length - 1]?.log_description}"
+                            "{cancellationLog?.log_description || selectedTicket.logs.find(l => (l.log_description && (l.log_description.toLowerCase().includes('helpdesk') || l.log_description.toLowerCase().includes('ditangguhkan') || l.log_description.toLowerCase().includes('alasan:'))))?.log_description || selectedTicket.logs[selectedTicket.logs.length - 1]?.log_description}"
                           </p>
                         </div>
                       )}
@@ -596,7 +629,7 @@ export const MyTickets = () => {
                     className="w-full py-3 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md shadow-sky-500/10 flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <RefreshCw className="w-4 h-4" />
-                    <span>Isi Ulang Formulir & Kirim Perbaikan</span>
+                    <span>{cancellationLog ? 'Isi Ulang Formulir & Kirim Kembali' : 'Isi Ulang Formulir & Kirim Perbaikan'}</span>
                   </button>
                 </div>
               )}
@@ -732,19 +765,18 @@ export const MyTickets = () => {
 
       <RefillTicketModal
         isOpen={showRefillModal}
-        onClose={() => setShowRefillModal(false)}
+        onClose={() => {
+          setShowRefillModal(false);
+          setSelectedTicket(null);
+        }}
         ticket={selectedTicket}
         onSave={async (updatedTicket) => {
-          try {
-            const formDataPayload = updatedTicket.form_data || selectedTicket?.form_data || {};
-            const logMessage = updatedTicket.logs?.[0]?.text || 'Pemohon telah memperbarui dan melengkapi formulir dokumen pengajuan. Tiket dikirim kembali untuk diverifikasi ulang.';
+          const formDataPayload = updatedTicket.form_data || selectedTicket?.form_data || {};
+          const logMessage = updatedTicket.logs?.[0]?.text || 'Pemohon telah memperbarui dan melengkapi formulir dokumen pengajuan. Tiket dikirim kembali untuk diverifikasi ulang.';
 
-            await api.updateTicketData(updatedTicket.uuid || updatedTicket.id, formDataPayload, logMessage, updatedTicket.files, updatedTicket.fileUrl);
-            await fetchTickets();
-          } catch (err) {
-            console.error(err);
-            alert('Gagal mengirim perbaikan form.');
-          }
+          await api.updateTicketData(updatedTicket.uuid || updatedTicket.id, formDataPayload, logMessage, updatedTicket.files, updatedTicket.fileUrl);
+          await fetchTickets();
+          setActiveTab('Pending');
         }}
       />
 

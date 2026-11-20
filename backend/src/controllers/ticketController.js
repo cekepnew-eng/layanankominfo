@@ -343,7 +343,7 @@ exports.cancelTicket = async (req, res) => {
       await client.query('ROLLBACK');
       return res.status(403).json({ success: false, message: 'Anda bukan pemilik tiket ini.' });
     }
-    if (![1, 3].includes(Number(ticket.status_id)) || !ticket.has_no_assignment) {
+    if (Number(ticket.status_id) !== 1 || !ticket.has_no_assignment) {
       await client.query('ROLLBACK');
       return res.status(409).json({
         success: false,
@@ -351,10 +351,15 @@ exports.cancelTicket = async (req, res) => {
       });
     }
 
-    await client.query('DELETE FROM tickets WHERE id = $1', [id]);
+    const historyText = `Tiket ${ticket.ticket_number} dibatalkan oleh pemohon sebelum disetujui Helpdesk.`;
+    await client.query(
+      'UPDATE tickets SET status_id = 3, updated_at = NOW() WHERE id = $1',
+      [id]
+    );
+    await createHistory(client, id, req.user.id, Number(ticket.status_id), 3, historyText);
     await recordRequestActivity(client, req, {
       activityType: 'ticket_cancelled',
-      description: `Tiket ${ticket.ticket_number} dibatalkan oleh pemohon sebelum disetujui Helpdesk.`,
+      description: historyText,
       metadata: {
         ticketNumber: ticket.ticket_number,
         previousStatusId: Number(ticket.status_id)
@@ -362,7 +367,10 @@ exports.cancelTicket = async (req, res) => {
     });
 
     await client.query('COMMIT');
-    res.json({ success: true, message: `Tiket ${ticket.ticket_number} berhasil dibatalkan.` });
+    res.json({
+      success: true,
+      message: `Tiket ${ticket.ticket_number} dikembalikan ke Pending. Silakan isi ulang formulir.`
+    });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('cancelTicket error:', err);
@@ -400,14 +408,15 @@ exports.updateTicketData = async (req, res) => {
     const userRoles = (req.user.roles || [req.user.role] || []).map(r => String(r).toUpperCase());
     const isHelpdeskOrAdmin = userRoles.includes('HELPDESK') || userRoles.includes('ADMIN');
 
-    if (Number(ticketOwnerRes.rows[0].status_id) === 8) {
-      await client.query('ROLLBACK');
-      return res.status(409).json({ success: false, message: 'Tiket sudah dibatalkan oleh pemohon.' });
-    }
-
-    if (ticketOwnerId !== req.user.id && !isHelpdeskOrAdmin) {
+    if (String(ticketOwnerId) !== String(req.user.id) && !isHelpdeskOrAdmin) {
       await client.query('ROLLBACK');
       return res.status(403).json({ success: false, message: 'Akses ditolak: Anda bukan pemilik tiket ini.' });
+    }
+
+    const oldStatusId = Number(ticketOwnerRes.rows[0].status_id);
+    if (oldStatusId === 8 && String(ticketOwnerId) !== String(req.user.id)) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ success: false, message: 'Hanya pemilik tiket yang dapat mengajukan ulang tiket yang dibatalkan.' });
     }
 
     const serviceSchemaRes = await client.query(
@@ -460,7 +469,7 @@ exports.updateTicketData = async (req, res) => {
     `, [actualTicketId]);
 
     // Insert history
-    await createHistory(client, actualTicketId, req.user.id, 3, newStatusId, finalLogMessage);
+    await createHistory(client, actualTicketId, req.user.id, oldStatusId, newStatusId, finalLogMessage);
 
     // Notify relevant parties
     if (assignRes.rows.length > 0 && assignRes.rows[0].assigned_to_user_id) {

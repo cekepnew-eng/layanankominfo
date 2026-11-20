@@ -9,13 +9,12 @@ import { validateUploadFile } from '../utils/fileValidation';
 
 export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
   const { services } = useAuth();
-  if (!isOpen || !ticket) return null;
 
-  const subServiceName = (ticket.requestType && ticket.requestType !== 'Baru') ? ticket.requestType : (ticket.service || '');
+  const subServiceName = (ticket?.requestType && ticket.requestType !== 'Baru') ? ticket.requestType : (ticket?.service || '');
   const srv = (services || []).find(s => s.name === subServiceName);
-  const reqDocs = srv?.requiredDocs || ticket.required_docs || ticket.requiredDocs || 'Surat Permohonan Resmi OPD, KAK / Dokumen Pendukung';
-  const sopFile = srv?.sop || ticket.sop || 'sop-layanan.pdf';
-  const slaText = srv?.sla || (ticket.slaDuration ? `${ticket.slaDuration} Hari` : '7 Hari');
+  const reqDocs = srv?.requiredDocs || ticket?.required_docs || ticket?.requiredDocs || 'Surat Permohonan Resmi OPD, KAK / Dokumen Pendukung';
+  const sopFile = srv?.sop || ticket?.sop || 'sop-layanan.pdf';
+  const slaText = srv?.sla || (ticket?.slaDuration ? `${ticket.slaDuration} Hari` : '7 Hari');
 
   let globalSchema = srv?.form_schema || [];
   if (typeof globalSchema === 'string') {
@@ -45,6 +44,8 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
   const [showSopModal, setShowSopModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   useEffect(() => {
     if (ticket) {
@@ -52,13 +53,27 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
     }
   }, [ticket]);
 
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, [isOpen]);
+
+  if (!isOpen || !ticket) return null;
+
   const handlePreSubmit = (e) => {
     e.preventDefault();
     setShowConfirmModal(true);
   };
 
-  const handleConfirmSubmit = () => {
+  const handleConfirmSubmit = async () => {
+    if (isSubmitting) return;
     setShowConfirmModal(false);
+    setSubmitError('');
 
     const logMessage = `Pemohon telah memperbaiki dan mengajukan ulang formulir permohonan ke Helpdesk.`;
 
@@ -80,8 +95,15 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
       ]
     };
 
-    onSave(updatedTicket);
-    setShowSuccessModal(true);
+    setIsSubmitting(true);
+    try {
+      await onSave(updatedTicket);
+      setShowSuccessModal(true);
+    } catch (error) {
+      setSubmitError(error.message || 'Gagal mengirim formulir. Silakan coba lagi.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleFinishSuccess = () => {
@@ -92,20 +114,15 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
   const rejectedSubtasks = ticket?.subtasks?.filter(s => s.status === 'REJECTED') || [];
   const rejectedFieldLabels = rejectedSubtasks.map(s => s.task_name?.startsWith('Asesmen ') ? s.task_name.substring(8) : s.task_name);
 
-  const pendingLog = ticket.logs?.find(l => 
-    l.text.toLowerCase().includes('helpdesk') || 
-    l.text.toLowerCase().includes('ditangguhkan') || 
-    l.text.toLowerCase().includes('alasan:')
-  ) || ticket.logs?.[0];
-
-  React.useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = '';
-      document.documentElement.style.overflow = '';
-    };
-  }, []);
+  const pendingLog = ticket.logs?.find(l => {
+    const text = l.text || l.log_description || '';
+    return text.toLowerCase().includes('helpdesk') ||
+      text.toLowerCase().includes('ditangguhkan') ||
+      text.toLowerCase().includes('alasan:');
+  }) || ticket.logs?.[0];
+  const isCancelledRefill = ticket.status_name === 'CANCELLED' || ticket.logs?.some(log =>
+    String(log.log_description || log.text || '').toLowerCase().includes('dibatalkan oleh pemohon')
+  );
 
   return (
     <div 
@@ -144,10 +161,10 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs space-y-1">
               <div className="flex items-center gap-1.5 text-slate-700 font-bold uppercase tracking-wider">
                 <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
-                <span>Catatan Penangguhan dari Helpdesk:</span>
+                <span>{isCancelledRefill ? 'Catatan Pembatalan:' : 'Catatan Penangguhan dari Helpdesk:'}</span>
               </div>
               <p className="text-slate-600 italic font-medium leading-relaxed pl-5.5">
-                "{pendingLog.text}"
+                "{pendingLog.text || pendingLog.log_description || ''}"
               </p>
             </div>
           )}
@@ -365,6 +382,11 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
               Kirim Permohonan
             </button>
           </div>
+          {submitError && (
+            <p role="alert" className="text-sm font-semibold text-rose-700">
+              {submitError}
+            </p>
+          )}
         </form>
 
         <SopModal
@@ -379,9 +401,11 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
           isOpen={showConfirmModal}
           onClose={() => setShowConfirmModal(false)}
           type="confirm"
-          title="Konfirmasi Pengajuan Perbaikan"
-          message="Apakah seluruh berkas dan rincian formulir perbaikan sudah lengkap dan sesuai untuk diajukan kembali ke Helpdesk?"
-          confirmText="Ya, Ajukan Perbaikan"
+          title={isCancelledRefill ? 'Konfirmasi Pengajuan Ulang' : 'Konfirmasi Pengajuan Perbaikan'}
+          message={isCancelledRefill
+            ? 'Apakah seluruh berkas dan rincian formulir sudah lengkap dan sesuai untuk diajukan kembali ke Helpdesk?'
+            : 'Apakah seluruh berkas dan rincian formulir perbaikan sudah lengkap dan sesuai untuk diajukan kembali ke Helpdesk?'}
+          confirmText={isCancelledRefill ? 'Ya, Ajukan Ulang' : 'Ya, Ajukan Perbaikan'}
           cancelText="Periksa Kembali"
           onConfirm={handleConfirmSubmit}
         />
@@ -390,8 +414,10 @@ export const RefillTicketModal = ({ isOpen, onClose, ticket, onSave }) => {
           isOpen={showSuccessModal}
           onClose={handleFinishSuccess}
           type="success"
-          title="Perbaikan Berhasil Diajukan"
-          message="Formulir permohonan berhasil diperbarui dan dialihkan kembali ke Helpdesk. Status tiket kini berada pada tahap Verifikasi."
+          title={isCancelledRefill ? 'Pengajuan Ulang Berhasil Dikirim' : 'Perbaikan Berhasil Diajukan'}
+          message={isCancelledRefill
+            ? 'Formulir berhasil diperbarui dan tiket kembali ke Helpdesk untuk diverifikasi.'
+            : 'Formulir permohonan berhasil diperbarui dan dialihkan kembali ke Helpdesk. Status tiket kini berada pada tahap Verifikasi.'}
           confirmText="Selesai & Kembali"
           onConfirm={handleFinishSuccess}
         />

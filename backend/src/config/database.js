@@ -102,6 +102,23 @@ const runAutoMigrations = async () => {
       handleMigrationError('ticket_statuses.CANCELLED', err);
     }
 
+    try {
+      await pool.query(`
+        WITH reopened_tickets AS (
+          UPDATE tickets
+          SET status_id = 3, updated_at = NOW()
+          WHERE status_id = 8
+          RETURNING id
+        )
+        UPDATE ticket_histories
+        SET new_status_id = 3
+        WHERE new_status_id = 8
+          AND ticket_id IN (SELECT id FROM reopened_tickets);
+      `);
+    } catch (err) {
+      handleMigrationError('reopen_cancelled_tickets', err);
+    }
+
     // 4. CREATE TABLE subtasks IF NOT EXISTS (without DROP TABLE to preserve data!)
     try {
       await pool.query(`

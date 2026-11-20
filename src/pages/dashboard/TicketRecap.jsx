@@ -21,6 +21,7 @@ const parseDateInput = (value) => {
 
 const getTicketStatus = (ticket) => {
   const status = String(ticket.status_name || '').toUpperCase();
+  if (status === 'CANCELLED' || Number(ticket.status_id) === 8) return 'Dibatalkan';
   if (status === 'REJECTED' || Number(ticket.status_id) === 3) return 'Ditolak';
   if (['COMPLETED', 'WAITING_USER_CONFIRMATION'].includes(status) || Number(ticket.status_id) === 7 || Number(ticket.status_id) === 6) {
     return 'Selesai';
@@ -134,7 +135,7 @@ export const TicketRecap = () => {
   const summary = useMemo(() => filteredTickets.reduce((result, ticket) => {
     result[getTicketStatus(ticket)] += 1;
     return result;
-  }, { Ditolak: 0, Selesai: 0, Diproses: 0 }), [filteredTickets]);
+  }, { Dibatalkan: 0, Ditolak: 0, Selesai: 0, Diproses: 0 }), [filteredTickets]);
 
   const formatDate = (date) => date?.toLocaleDateString('id-ID', {
     day: '2-digit',
@@ -382,12 +383,13 @@ export const TicketRecap = () => {
 
       const cards = [
         { label: 'TOTAL TIKET', count: filteredTickets.length, color: [40, 116, 184], fill: [248, 251, 255] },
+        { label: 'DIBATALKAN', count: summary.Dibatalkan, color: [100, 116, 139], fill: [248, 250, 252] },
         { label: 'DITOLAK', count: summary.Ditolak, color: [217, 83, 79], fill: [255, 250, 250] },
         { label: 'SELESAI', count: summary.Selesai, color: [26, 155, 114], fill: [247, 252, 250] },
         { label: 'DIPROSES', count: summary.Diproses, color: [217, 154, 34], fill: [255, 253, 247] }
       ];
       const cardGap = 3;
-      const cardWidth = (right - left - cardGap * 3) / cards.length;
+      const cardWidth = (right - left - cardGap * (cards.length - 1)) / cards.length;
       cards.forEach((card, index) => {
         const x = left + index * (cardWidth + cardGap);
         doc.setFillColor(...card.fill);
@@ -475,6 +477,9 @@ export const TicketRecap = () => {
           } else if (data.cell.raw === 'Diproses') {
             data.cell.styles.fillColor = [255, 244, 220];
             data.cell.styles.textColor = [152, 100, 11];
+          } else if (data.cell.raw === 'Dibatalkan') {
+            data.cell.styles.fillColor = [241, 245, 249];
+            data.cell.styles.textColor = [71, 85, 105];
           } else {
             data.cell.styles.fillColor = [255, 240, 240];
             data.cell.styles.textColor = [185, 56, 56];
@@ -691,9 +696,10 @@ export const TicketRecap = () => {
 
       {errorMessage && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{errorMessage}</p>}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {[
           { label: 'Total Tiket', count: filteredTickets.length, color: 'text-slate-900' },
+          { label: 'Dibatalkan', count: summary.Dibatalkan, color: 'text-slate-600' },
           { label: 'Ditolak', count: summary.Ditolak, color: 'text-rose-600' },
           { label: 'Selesai', count: summary.Selesai, color: 'text-emerald-600' },
           { label: 'Diproses', count: summary.Diproses, color: 'text-amber-600' }

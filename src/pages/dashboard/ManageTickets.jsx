@@ -582,7 +582,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
       .filter(Boolean)
       .map(role => String(role).toUpperCase());
     return roles.some(role => ['USER', 'MASYARAKAT'].includes(role))
-      && ['PENDING', 'REJECTED'].includes(String(ticket?.status_name || '').toUpperCase());
+      && String(ticket?.status_name || '').toUpperCase() === 'PENDING';
   };
 
   const executeCancelTicket = async (ticket) => {
@@ -1986,16 +1986,11 @@ export const TicketHistory = ({ mode = 'active' }) => {
         onClose={() => setShowRefillModal(false)}
         ticket={selectedTicket}
         onSave={async (updatedTicket) => {
-          try {
-            const formDataPayload = updatedTicket.form_data || selectedTicket?.form_data || {};
-            const logMessage = updatedTicket.logs?.[0]?.text || 'Pemohon telah memperbarui dan melengkapi formulir dokumen pengajuan. Tiket dikirim kembali untuk diverifikasi ulang.';
+          const formDataPayload = updatedTicket.form_data || selectedTicket?.form_data || {};
+          const logMessage = updatedTicket.logs?.[0]?.text || 'Pemohon telah memperbarui dan melengkapi formulir dokumen pengajuan. Tiket dikirim kembali untuk diverifikasi ulang.';
 
-            await api.updateTicketData(updatedTicket.uuid || updatedTicket.id, formDataPayload, logMessage, updatedTicket.files, updatedTicket.fileUrl);
-            loadTickets();
-          } catch (err) {
-            console.error(err);
-            alert('Gagal mengirim perbaikan form.');
-          }
+          await api.updateTicketData(updatedTicket.uuid || updatedTicket.id, formDataPayload, logMessage, updatedTicket.files, updatedTicket.fileUrl);
+          await loadTickets();
         }}
       />
 
