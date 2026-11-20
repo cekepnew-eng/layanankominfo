@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, ChevronDown, Download, FileText, RefreshCw, Search, X } from 'lucide-react';
 import { api } from '../../services/api';
 
@@ -63,6 +63,7 @@ export const TicketRecap = () => {
   const [exportError, setExportError] = useState('');
   const [selectedPreset, setSelectedPreset] = useState('monthly');
   const [signatoryUsers, setSignatoryUsers] = useState([]);
+  const signatoryJabatanCache = useRef(new Map());
   const [isExporting, setIsExporting] = useState(false);
   const [previewPdfUrl, setPreviewPdfUrl] = useState('');
   const [previewPdfName, setPreviewPdfName] = useState('');
@@ -223,6 +224,18 @@ export const TicketRecap = () => {
 
       if (jabatan) {
         setSelectedSignatory(current => current?.lookupKey === lookupKey ? { ...current, jabatan } : current);
+        const selectedIdentifiers = new Set(identifiers.map(identifier => identifier.toLowerCase()));
+        selectedIdentifiers.forEach(identifier => signatoryJabatanCache.current.set(identifier, jabatan));
+        setSignatoryUsers(currentUsers => currentUsers.map(candidate => {
+          const candidateIdentifiers = [
+            candidate.username,
+            candidate.email,
+            candidate.nip
+          ].map(value => String(value || '').trim().toLowerCase()).filter(Boolean);
+          return candidateIdentifiers.some(identifier => selectedIdentifiers.has(identifier))
+            ? { ...candidate, jabatan }
+            : candidate;
+        }));
       } else if (!existingJabatan) {
         setSignatoryError('Jabatan pegawai tidak ditemukan pada API TND.');
       }
@@ -250,7 +263,16 @@ export const TicketRecap = () => {
         });
         const users = Array.isArray(response.data) ? response.data : [];
         if (active) {
-          setSignatoryUsers(users);
+          setSignatoryUsers(users.map(user => {
+            const identifiers = [user.username, user.email, user.nip]
+              .map(value => String(value || '').trim().toLowerCase())
+              .filter(Boolean);
+            const existingJabatan = String(user.jabatan || user.position || user.job_title || '').trim();
+            const cachedJabatan = identifiers
+              .map(identifier => signatoryJabatanCache.current.get(identifier))
+              .find(Boolean);
+            return !existingJabatan && cachedJabatan ? { ...user, jabatan: cachedJabatan } : user;
+          }));
         }
       } catch (error) {
         if (active) {
@@ -430,14 +452,15 @@ export const TicketRecap = () => {
       const positionOffset = signatureNameOffset + nameLines.length * 4;
       const nipOffset = positionOffset + 4;
       const signatureBlockHeight = signatory ? nipOffset + 5 : 39;
-      const tableBottomMargin = signatureBlockHeight + 8 + 18;
+      const footerReserve = 22;
+      const signatureGap = 8;
       let lastDrawnBodyRow = -1;
 
       autoTable(doc, {
         head: [['No.', 'No. Tiket', 'Pemohon', 'Layanan', 'Waktu SLA', 'Status', 'Tanggal']],
         body: tableRows,
         startY: 115,
-        margin: { left, right: pageWidth - right, top: 14, bottom: 18 },
+        margin: { left, right: pageWidth - right, top: 14, bottom: footerReserve },
         tableWidth: right - left,
         showHead: 'everyPage',
         rowPageBreak: 'avoid',
@@ -487,14 +510,15 @@ export const TicketRecap = () => {
           data.cell.styles.fontStyle = 'bold';
         },
         willDrawPage: (data) => {
+          const headerHeight = data.table.head.reduce((height, row) => height + row.height, 0);
           const remainingRowsHeight = data.table.body
             .slice(lastDrawnBodyRow + 1)
             .reduce((height, row) => height + row.height, 0);
-          const headerHeight = data.table.head.reduce((height, row) => height + row.height, 0);
-          const availableHeight = pageHeight - (data.cursor?.y || 0) - headerHeight;
-          data.settings.margin.bottom = remainingRowsHeight <= availableHeight - tableBottomMargin
-            ? tableBottomMargin
-            : 18;
+          const requiredHeight = (data.cursor?.y || 0) + headerHeight + remainingRowsHeight +
+            signatureGap + signatureBlockHeight + footerReserve;
+          data.settings.margin.bottom = requiredHeight <= pageHeight
+            ? footerReserve + signatureGap + signatureBlockHeight
+            : footerReserve;
         },
         didDrawCell: (data) => {
           if (data.section === 'body') {
@@ -504,8 +528,7 @@ export const TicketRecap = () => {
       });
 
       let closingY = doc.lastAutoTable.finalY + 8;
-      const closingBottom = closingY + signatureBlockHeight;
-      if (closingBottom > pageHeight - 18) {
+      if (closingY + signatureBlockHeight > pageHeight - footerReserve) {
         doc.addPage();
         closingY = 18;
       }
@@ -514,13 +537,6 @@ export const TicketRecap = () => {
       doc.setDrawColor(224, 232, 240);
       doc.setLineWidth(0.3);
       doc.line(left, closingY, right, closingY);
-      doc.setDrawColor(40, 116, 184);
-      doc.setLineWidth(0.7);
-      doc.line(left, closingY + 8, left, closingY + 17);
-      doc.setTextColor(...blue);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.text(['Kolaborasi Menuju', 'Bogor Digital'], left + 3, closingY + 11);
 
       if (signatory) {
         doc.setTextColor(54, 87, 117);
@@ -556,17 +572,22 @@ export const TicketRecap = () => {
       const pageCount = doc.getNumberOfPages();
       for (let page = 1; page <= pageCount; page += 1) {
         doc.setPage(page);
-        const footerY = pageHeight - 9;
+        const footerTop = pageHeight - 16;
+        const footerY = pageHeight - 8;
         doc.setDrawColor(...blue);
         doc.setLineWidth(0.6);
-        doc.line(left, pageHeight - 14, right, pageHeight - 14);
+        doc.line(left, footerTop, right, footerTop);
+        doc.setDrawColor(40, 116, 184);
+        doc.setLineWidth(0.7);
+        doc.line(left, footerTop + 2, left, pageHeight - 3);
         doc.setTextColor(...blue);
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(7.5);
-        doc.text('DISKOMINFO KOTA BOGOR', left, footerY);
+        doc.setFontSize(7);
+        doc.text(['Kolaborasi Menuju', 'Bogor Digital'], left + 3, footerTop + 5);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(...muted);
-        doc.text('Laporan Rekapitulasi Tiket Helpdesk', left + 36, footerY);
+        doc.setFontSize(6.5);
+        doc.text('Laporan Rekapitulasi Tiket Helpdesk', pageWidth / 2, footerY, { align: 'center' });
         doc.text(`Dicetak: ${printedAt}  |  Halaman ${page}/${pageCount}`, right, footerY, { align: 'right' });
       }
 
@@ -834,7 +855,6 @@ export const TicketRecap = () => {
                       const name = user.name || user.full_name || '';
                       const nip = String(user.nip || '');
                       const jabatan = String(user.jabatan || user.position || user.job_title || '');
-                      const username = String(user.username || user.email || '');
                       return (
                         <button
                           key={user.id || `${user.source}-${user.email || nip}`}
@@ -849,8 +869,9 @@ export const TicketRecap = () => {
                               {nip && <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-600">NIP: {nip}</span>}
                               {user.source === 'TND' && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">TND</span>}
                             </span>
-                            <span className="mt-1 block truncate text-xs font-medium text-slate-500">Jabatan: {jabatan || 'Tidak tersedia dari API'}</span>
-                            {username && <span className="mt-0.5 block truncate text-xs font-medium text-slate-400">{username}</span>}
+                            {jabatan && (
+                              <span className="mt-1 block truncate text-xs font-medium text-slate-500">Jabatan: {jabatan}</span>
+                            )}
                           </span>
                           <span className="shrink-0 rounded-lg bg-sky-50 px-2.5 py-1.5 text-xs font-bold text-sky-700">
                             {name ? 'Pilih' : 'Data kurang'}
