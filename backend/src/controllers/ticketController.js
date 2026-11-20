@@ -1019,14 +1019,36 @@ exports.getAdminTicketRecap = async (req, res) => {
 
   try {
     const result = await db.query(`
+      WITH report_tickets AS (
+        SELECT id
+        FROM tickets
+        WHERE created_at >= $1::date
+          AND created_at < ($2::date + INTERVAL '1 day')
+      ),
+      work_times AS (
+        SELECT history.ticket_id,
+               MIN(history.created_at) FILTER (WHERE history_status.name = 'IN_PROGRESS') AS work_started_at,
+               MAX(history.created_at) FILTER (WHERE history_status.name = 'WAITING_USER_CONFIRMATION') AS work_completed_at
+        FROM ticket_histories history
+        JOIN ticket_statuses history_status ON history_status.id = history.new_status_id
+        JOIN report_tickets report_ticket ON report_ticket.id = history.ticket_id
+        GROUP BY history.ticket_id
+      )
       SELECT t.id, t.ticket_number, t.created_at, t.status_id,
              COALESCE(NULLIF(td.form_data->>'Nama Pemohon', ''), u.full_name) as pemohon,
-             s.service_name, st.name as status_name
+             s.service_name,
+             work_times.work_started_at,
+             COALESCE(
+               work_times.work_completed_at,
+               CASE WHEN st.name IN ('WAITING_USER_CONFIRMATION', 'COMPLETED') THEN t.updated_at END
+             ) AS work_completed_at,
+             st.name as status_name
       FROM tickets t
       JOIN users u ON t.user_id = u.id
       JOIN services s ON t.service_id = s.id
       JOIN ticket_statuses st ON t.status_id = st.id
       LEFT JOIN ticket_details td ON td.ticket_id = t.id
+      LEFT JOIN work_times ON work_times.ticket_id = t.id
       WHERE t.created_at >= $1::date
         AND t.created_at < ($2::date + INTERVAL '1 day')
       ORDER BY t.created_at DESC

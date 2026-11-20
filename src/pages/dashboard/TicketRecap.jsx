@@ -28,26 +28,45 @@ const getTicketStatus = (ticket) => {
   return 'Diproses';
 };
 
-const escapeHtml = (value) => String(value ?? '')
-  .replaceAll('&', '&amp;')
-  .replaceAll('<', '&lt;')
-  .replaceAll('>', '&gt;')
-  .replaceAll('"', '&quot;')
-  .replaceAll("'", '&#039;');
+const formatWorkDuration = (ticket) => {
+  const status = String(ticket.status_name || '').toUpperCase();
+  if (!['IN_PROGRESS', 'WAITING_USER_CONFIRMATION', 'COMPLETED'].includes(status)) return '-';
+
+  const workStartedAt = Date.parse(ticket.work_started_at || '');
+  const createdAt = Date.parse(ticket.created_at || '');
+  const startedAt = Number.isNaN(workStartedAt) ? createdAt : workStartedAt;
+  if (Number.isNaN(startedAt)) return '-';
+
+  const savedCompletedAt = Date.parse(ticket.work_completed_at || '');
+  const completedAt = Number.isNaN(savedCompletedAt) ? Date.now() : savedCompletedAt;
+  const totalMinutes = Math.max(0, Math.floor((completedAt - startedAt) / 60000));
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  const duration = [];
+
+  if (days) duration.push(`${days} hari`);
+  if (hours) duration.push(`${hours} jam`);
+  if (minutes || duration.length === 0) duration.push(`${minutes} menit`);
+  return duration.join(' ');
+};
 
 export const TicketRecap = () => {
   const today = new Date();
-  const [startDate, setStartDate] = useState(formatDateInput(new Date(today.getFullYear(), today.getMonth(), 1)));
-  const [endDate, setEndDate] = useState(formatDateInput(today));
-  const [selectedPreset, setSelectedPreset] = useState('monthly');
-  const [refreshKey, setRefreshKey] = useState(0);
   const [tickets, setTickets] = useState([]);
+  const [endDate, setEndDate] = useState(formatDateInput(today));
   const [loading, setLoading] = useState(true);
+  const [startDate, setStartDate] = useState(formatDateInput(new Date(today.getFullYear(), today.getMonth(), 1)));
+  const [refreshKey, setRefreshKey] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
   const [exportError, setExportError] = useState('');
+  const [selectedPreset, setSelectedPreset] = useState('monthly');
+  const [signatoryUsers, setSignatoryUsers] = useState([]);
+  const [isExporting, setIsExporting] = useState(false);
+  const [previewPdfUrl, setPreviewPdfUrl] = useState('');
+  const [previewPdfName, setPreviewPdfName] = useState('');
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isSignatoryDialogOpen, setIsSignatoryDialogOpen] = useState(false);
-  const [signatoryUsers, setSignatoryUsers] = useState([]);
   const [signatorySearchQuery, setSignatorySearchQuery] = useState('');
   const [isSignatoryTndSearchRequested, setIsSignatoryTndSearchRequested] = useState(false);
   const [signatoryTndSearchAttempt, setSignatoryTndSearchAttempt] = useState(0);
@@ -55,6 +74,11 @@ export const TicketRecap = () => {
   const [isSignatorySearchOpen, setIsSignatorySearchOpen] = useState(false);
   const [signatoryLoading, setSignatoryLoading] = useState(false);
   const [signatoryError, setSignatoryError] = useState('');
+
+  useEffect(() => {
+    if (!previewPdfUrl) return undefined;
+    return () => URL.revokeObjectURL(previewPdfUrl);
+  }, [previewPdfUrl]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -151,6 +175,63 @@ export const TicketRecap = () => {
     setSignatoryError('');
   };
 
+  const selectSignatory = async (user) => {
+    const name = user.name || user.full_name || '';
+    const nip = String(user.nip || '');
+    const email = String(user.email || '').trim();
+    const username = String(user.username || '').trim();
+    const lookupKey = (email || nip || username).toLowerCase();
+    const existingJabatan = String(user.jabatan || user.position || user.job_title || '').trim();
+    const identifiers = [...new Set([username, email, nip].map(value => value.trim()).filter(value => value.length >= 3))];
+
+    setSelectedSignatory({ name, nip, jabatan: existingJabatan, lookupKey });
+    setIsSignatorySearchOpen(false);
+    setSignatoryError('');
+
+    if (user.source === 'TND' && existingJabatan) return;
+    if (!identifiers.length) {
+      if (!existingJabatan) setSignatoryError('Username, email, atau NIP pegawai tidak tersedia untuk mencari jabatan di API TND.');
+      return;
+    }
+
+    setSignatoryLoading(true);
+    try {
+      let jabatan = '';
+      for (const identifier of identifiers) {
+        const response = await api.getOpdUsers(identifier, { searchTnd: true });
+        const candidates = Array.isArray(response.data) ? response.data : [];
+        const matchesIdentity = candidate => {
+          const candidateEmail = String(candidate.email || '').trim().toLowerCase();
+          const candidateUsername = String(candidate.username || '').trim().toLowerCase();
+          const candidateNip = String(candidate.nip || '').trim().toLowerCase();
+          return (email && candidateEmail === email.toLowerCase()) ||
+            (username && candidateUsername === username.toLowerCase()) ||
+            (nip && candidateNip === nip.toLowerCase());
+        };
+        const hasJabatan = candidate => Boolean(
+          String(candidate.jabatan || candidate.position || candidate.job_title || '').trim()
+        );
+        const tndCandidates = candidates.filter(candidate => candidate.source === 'TND');
+        const matchingUser = candidates.find(candidate => matchesIdentity(candidate) && hasJabatan(candidate))
+          || (tndCandidates.length === 1 && hasJabatan(tndCandidates[0]) ? tndCandidates[0] : null)
+          || candidates.find(matchesIdentity)
+          || (tndCandidates.length === 1 ? tndCandidates[0] : null);
+        jabatan = String(matchingUser?.jabatan || matchingUser?.position || matchingUser?.job_title || '').trim();
+        if (jabatan) break;
+      }
+
+      if (jabatan) {
+        setSelectedSignatory(current => current?.lookupKey === lookupKey ? { ...current, jabatan } : current);
+      } else if (!existingJabatan) {
+        setSignatoryError('Jabatan pegawai tidak ditemukan pada API TND.');
+      }
+    } catch (error) {
+      setSignatoryError(error.message || 'Gagal mengambil jabatan pegawai dari API TND.');
+    } finally {
+      setSignatoryLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!isSignatoryDialogOpen) return undefined;
     let active = true;
@@ -191,26 +272,13 @@ export const TicketRecap = () => {
     };
   }, [isSignatoryDialogOpen, signatorySearchQuery, isSignatoryTndSearchRequested, signatoryTndSearchAttempt]);
 
-  const exportPdf = (signatory = null) => {
+  const exportPdf = async (signatory = null) => {
     setExportError('');
-    const reportWindow = window.open('', '_blank');
-    if (!reportWindow) {
-      setExportError('Jendela laporan diblokir browser. Izinkan pop-up lalu coba lagi.');
-      return;
-    }
-
-    const rows = filteredTickets.map((ticket, index) => `
-      <tr>
-        <td>${index + 1}</td>
-        <td>${escapeHtml(ticket.ticket_number || ticket.id)}</td>
-        <td>${escapeHtml(ticket.pemohon || '-')}</td>
-        <td>${escapeHtml(ticket.service_name || '-')}</td>
-        <td><span class="status ${getTicketStatus(ticket) === 'Selesai' ? 'done' : getTicketStatus(ticket) === 'Diproses' ? 'progress' : ''}">${escapeHtml(getTicketStatus(ticket))}</span></td>
-        <td>${escapeHtml(new Date(ticket.created_at).toLocaleDateString('id-ID'))}</td>
-      </tr>
-    `).join('');
+    setIsExporting(true);
+    const fileName = `Rekap_Tiket_Helpdesk_${startDate}_${endDate}${signatory ? '_Ditandatangani' : ''}`;
+    const generatedAt = new Date();
     const rangeLabel = `${formatDate(start)} - ${formatDate(end)}`;
-    const printedAt = new Date().toLocaleString('id-ID', {
+    const printedAt = generatedAt.toLocaleString('id-ID', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -218,166 +286,292 @@ export const TicketRecap = () => {
       minute: '2-digit',
       second: '2-digit'
     });
-    const printedDate = new Date().toLocaleDateString('id-ID', {
-      weekday: 'long',
+    const printedDate = generatedAt.toLocaleDateString('id-ID', {
       day: 'numeric',
       month: 'long',
       year: 'numeric'
     });
-    const logoUrl = `${window.location.origin}/bogor.png`;
-    const logoDiskominfoUrl = `${window.location.origin}/kominfo.png`;
-    const signatorySection = signatory ? `
-      <section class="signatory-block">
-        <p class="signatory-date">Bogor, ${escapeHtml(printedDate)}</p>
-        <p class="signatory-description">Rekapitulasi ini memuat ${filteredTickets.length} tiket layanan pada periode ${escapeHtml(rangeLabel)}.</p>
-        <div class="signature-space"></div>
-        <strong class="signatory-name">${escapeHtml(signatory.name)}</strong>
-        <span class="signatory-detail">NIP. ${escapeHtml(signatory.nip || '-')}</span>
-        <span class="signatory-detail">${escapeHtml(signatory.position)}</span>
-      </section>
-    ` : '';
-    const closingSection = signatory
-      ? '<section class="closing"><div class="motto">Kolaborasi Menuju<br>Bogor Digital</div></section>'
-      : '<section class="closing"><div class="motto">Kolaborasi Menuju<br>Bogor Digital</div><div class="signoff">Dinas Komunikasi dan Informatika<br>Pemerintah Kota Bogor<div class="signature-space"></div><strong>Petugas / Penanggung Jawab</strong></div></section>';
+    const pageWidth = 210;
+    const pageHeight = 297;
+    const left = 13;
+    const right = pageWidth - left;
+    const blue = [23, 79, 134];
+    const muted = [100, 123, 147];
+    const loadImage = async (url) => {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Gagal memuat logo laporan.');
+      const imageBlob = await response.blob();
+      const imageUrl = URL.createObjectURL(imageBlob);
+      try {
+        const image = new Image();
+        image.src = imageUrl;
+        await image.decode();
+        const scale = Math.min(1, 500 / Math.max(image.naturalWidth, image.naturalHeight));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('Gagal menyiapkan logo laporan.');
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        return canvas.toDataURL('image/png');
+      } finally {
+        URL.revokeObjectURL(imageUrl);
+      }
+    };
 
-    reportWindow.document.open();
-    reportWindow.document.write(`<!doctype html>
-      <html lang="id">
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>Rekap Tiket Helpdesk</title>
-          <style>
-            * { box-sizing: border-box; }
-            :root { color-scheme: light; }
-            body { margin: 0; background: #eef3f8; color: #172b4d; font: 11px/1.45 Arial, Helvetica, sans-serif; }
-            .page { width: 100%; max-width: 210mm; min-height: 297mm; margin: 0 auto; padding: 14mm 13mm 12mm; background: #fff; }
-            .masthead { display: grid; grid-template-columns: 22mm minmax(0, 1fr) 31mm; align-items: center; gap: 5mm; padding: 0 0 5mm; border-bottom: 2px solid #174f86; }
-            .masthead-logo { width: 19mm; height: 21mm; object-fit: contain; }
-            .masthead-logo-diskominfo { width: 30mm; height: 21mm; object-fit: contain; justify-self: end; }
-            .agency-copy { min-width: 0; color: #1b3658; line-height: 1.45; text-align: center; }
-            .eyebrow { display: block; color: #637b96; font-size: 8px; font-weight: 700; letter-spacing: 1.2px; }
-            .agency-copy strong { display: block; margin: 1mm 0; color: #123f70; font-size: 15px; letter-spacing: .25px; }
-            .agency-copy b { display: block; color: #174f86; font-size: 10px; letter-spacing: .3px; }
-            .agency-copy span.address { display: block; margin-top: 1mm; color: #64748b; font-size: 8px; }
-            .document-label { align-self: center; padding: 2.5mm 3mm; border: 1px solid #c8d9e9; border-radius: 3mm; color: #174f86; text-align: center; font-size: 8px; font-weight: 700; letter-spacing: .5px; white-space: nowrap; }
-            .document-label span { display: block; margin-top: 1mm; color: #64748b; font-size: 7px; font-weight: 400; letter-spacing: 0; }
-            .report-title { padding: 8mm 0 5mm; text-align: center; }
-            .report-kicker { margin: 0 0 2mm; color: #64748b; font-size: 8px; font-weight: 700; letter-spacing: 1.4px; }
-            h1 { margin: 0; color: #123f70; font-size: 20px; line-height: 1.25; letter-spacing: .25px; }
-            .subtitle { margin: 2mm 0 4mm; color: #526b86; font-size: 10px; }
-            .period-row { display: flex; justify-content: center; flex-wrap: wrap; gap: 2mm; }
-            .period, .printed { display: inline-block; padding: 2mm 3mm; border-radius: 2mm; background: #f0f6fc; color: #234d78; font-size: 9px; }
-            .period strong { color: #123f70; }
-            .printed { background: #f7f9fc; color: #64748b; }
-            .section-heading { display: flex; align-items: center; gap: 3mm; margin: 0 0 3mm; color: #173f6a; font-size: 12px; font-weight: 700; }
-            .section-heading:after { height: 1px; flex: 1; background: #d7e3ef; content: ''; }
-            .summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3mm; margin: 0 0 7mm; }
-            .card { min-height: 23mm; padding: 3.5mm; border: 1px solid #d6e3ef; border-top: 3px solid #2874b8; border-radius: 2mm; background: #f8fbff; }
-            .card .label { color: #526b86; font-size: 8px; font-weight: 700; }
-            .card strong { display: block; margin-top: 2mm; color: #123f70; font-size: 23px; line-height: 1; }
-            .card.rejected { border-top-color: #d9534f; background: #fffafa; }
-            .card.rejected strong { color: #b93838; }
-            .card.completed { border-top-color: #1a9b72; background: #f7fcfa; }
-            .card.completed strong { color: #137c5c; }
-            .card.processing { border-top-color: #d99a22; background: #fffdf7; }
-            .card.processing strong { color: #a56a0a; }
-            .table-wrap { width: 100%; }
-            table { width: 100%; border-collapse: collapse; table-layout: auto; border: 1px solid #cbd9e7; }
-            thead { display: table-header-group; }
-            th, td { padding: 2.6mm 2.2mm; border: 1px solid #d6e0eb; text-align: left; vertical-align: top; }
-            th { background: #174f86; color: #fff; font-size: 8px; font-weight: 700; letter-spacing: .3px; }
-            td { color: #334b65; font-size: 8.5px; overflow-wrap: anywhere; }
-            tbody tr:nth-child(even) { background: #f6f9fc; }
-            th:first-child, td:first-child { width: 8mm; text-align: center; }
-            th:nth-child(2), td:nth-child(2) { width: 25mm; }
-            th:nth-child(5), td:nth-child(5) { width: 22mm; }
-            th:nth-child(6), td:nth-child(6) { width: 23mm; white-space: nowrap; }
-            .status { display: inline-block; padding: 1mm 2mm; border-radius: 10mm; background: #fff0f0; color: #b93838; font-size: 7.5px; font-weight: 700; white-space: nowrap; }
-            .status.done { background: #e7f7f1; color: #137c5c; }
-            .status.progress { background: #fff4dc; color: #98640b; }
-            .empty { padding: 10mm 3mm; color: #647b93; text-align: center; font-size: 9px; }
-            .closing { display: flex; align-items: flex-end; justify-content: space-between; gap: 10mm; margin-top: 12mm; padding-top: 4mm; border-top: 1px solid #e0e8f0; color: #365775; font-size: 8px; }
-            .motto { padding-left: 3mm; border-left: 2px solid #2874b8; color: #174f86; font-weight: 700; line-height: 1.6; }
-            .signoff { min-width: 48mm; text-align: center; line-height: 1.6; }
-            .signoff .signature-space { height: 14mm; }
-            .signatory-block { width: 66mm; margin: 6mm 0 8mm auto; color: #365775; text-align: center; font-size: 9px; line-height: 1.5; break-inside: avoid; page-break-inside: avoid; }
-            .signatory-date { margin: 0 0 2mm; text-align: right; }
-            .signatory-description { margin: 0 0 1mm; }
-            .signatory-block .signature-space { height: 22mm; }
-            .signatory-name { display: block; color: #172b4d; text-decoration: underline; }
-            .signatory-detail { display: block; }
-            .footer { display: flex; align-items: center; justify-content: space-between; gap: 5mm; margin-top: 7mm; padding-top: 3mm; border-top: 2px solid #174f86; color: #647b93; font-size: 7.5px; }
-            .footer strong { color: #174f86; }
-            @page { size: A4 portrait; margin: 36mm 13mm 18mm; }
-            @media screen { body { padding: 18px 0; } .page { box-shadow: 0 4px 24px #183b5b22; } }
-            @media print {
-              body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-              .page { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
-              .masthead { position: fixed; top: -31mm; left: 0; right: 0; width: 100%; padding-bottom: 3mm; background: #fff; }
-              .masthead, .report-title, .summary, .section-heading { break-inside: avoid; }
-              tr { break-inside: avoid; }
-              thead { display: table-header-group; }
-              .closing { break-inside: avoid; }
-              .footer { position: fixed; right: 0; bottom: -14mm; left: 0; margin-top: 0; padding-top: 2mm; background: #fff; }
-              .signatory-block { break-inside: avoid; page-break-inside: avoid; }
-            }
-          </style>
-        </head>
-        <body>
-          <main class="page">
-            <header class="masthead">
-              <img class="masthead-logo" src="${escapeHtml(logoUrl)}" alt="Logo Pemerintah Kota Bogor">
-              <div class="agency-copy">
-                <span class="eyebrow">PEMERINTAH DAERAH</span>
-                <strong>PEMERINTAH KOTA BOGOR</strong>
-                <b>DINAS KOMUNIKASI DAN INFORMATIKA</b>
-                <span class="address">Jl. Ir. H. Juanda No. 10, Bogor Tengah, Kota Bogor · Jawa Barat 16121</span>
-              </div>
-              <img class="masthead-logo-diskominfo" src="${escapeHtml(logoDiskominfoUrl)}" alt="Logo Diskominfo Kota Bogor">
-            </header>
+    try {
+      const [{ jsPDF }, { default: autoTable }] = await Promise.all([
+        import('jspdf'),
+        import('jspdf-autotable')
+      ]);
+      const [cityLogo, agencyLogo] = await Promise.all([
+        loadImage(`${window.location.origin}/bogor.png`),
+        loadImage(`${window.location.origin}/kominfo.png`)
+      ]);
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      doc.setProperties({ title: fileName, subject: 'Laporan Rekapitulasi Tiket Helpdesk' });
+      doc.setTextColor(23, 43, 77);
 
-            <section class="report-title">
-              <p class="report-kicker">SISTEM LAYANAN HELPDESK</p>
-              <h1>REKAPITULASI TIKET</h1>
-              <p class="subtitle">Dinas Komunikasi dan Informatika Pemerintah Kota Bogor</p>
-              <div class="period-row">
-                <span class="period"><strong>Periode:</strong> ${escapeHtml(rangeLabel)}</span>
-                <span class="printed">Tanggal cetak: ${escapeHtml(printedAt)}</span>
-              </div>
-            </section>
+      doc.addImage(cityLogo, 'PNG', left, 8, 19, 22);
+      doc.addImage(agencyLogo, 'PNG', right - 30, 8, 30, 22);
+      doc.setTextColor(...muted);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.text('PEMERINTAH DAERAH', pageWidth / 2, 13, { align: 'center' });
+      doc.setTextColor(...blue);
+      doc.setFontSize(13);
+      doc.text('PEMERINTAH KOTA BOGOR', pageWidth / 2, 19, { align: 'center' });
+      doc.setFontSize(8.5);
+      doc.text('DINAS KOMUNIKASI DAN INFORMATIKA', pageWidth / 2, 24, { align: 'center' });
+      doc.setTextColor(...muted);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.text('Jl. Ir. H. Juanda No. 10, Bogor Tengah, Kota Bogor - Jawa Barat 16121', pageWidth / 2, 29, { align: 'center' });
+      doc.setDrawColor(...blue);
+      doc.setLineWidth(0.7);
+      doc.line(left, 34, right, 34);
 
-            <h2 class="section-heading">Ringkasan Tiket</h2>
-            <div class="summary">
-              <div class="card"><div class="label">TOTAL TIKET</div><strong>${filteredTickets.length}</strong></div>
-              <div class="card rejected"><div class="label">DITOLAK</div><strong>${summary.Ditolak}</strong></div>
-              <div class="card completed"><div class="label">SELESAI</div><strong>${summary.Selesai}</strong></div>
-              <div class="card processing"><div class="label">DIPROSES</div><strong>${summary.Diproses}</strong></div>
-            </div>
+      doc.setTextColor(...muted);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.text('SISTEM LAYANAN HELPDESK DISKOMINFO', pageWidth / 2, 43, { align: 'center' });
+      doc.setTextColor(...blue);
+      doc.setFontSize(19);
+      doc.text('REKAPITULASI TIKET', pageWidth / 2, 51, { align: 'center' });
+      doc.setTextColor(82, 107, 134);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.text('Dinas Komunikasi dan Informatika Pemerintah Kota Bogor', pageWidth / 2, 57, { align: 'center' });
+      doc.setFillColor(240, 246, 252);
+      doc.roundedRect(42, 61, 126, 8, 2, 2, 'F');
+      doc.setTextColor(35, 77, 120);
+      doc.setFontSize(8);
+      doc.text(`Periode: ${rangeLabel}  |  Dicetak: ${printedAt}`, pageWidth / 2, 66.2, { align: 'center' });
 
-            ${signatorySection}
+      const drawSectionHeading = (text, y) => {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(23, 63, 106);
+        doc.text(text, left, y);
+        const textWidth = doc.getTextWidth(text);
+        doc.setDrawColor(215, 227, 239);
+        doc.setLineWidth(0.3);
+        doc.line(left + textWidth + 3, y - 1, right, y - 1);
+      };
+      drawSectionHeading('Ringkasan Tiket', 78);
 
-            <h2 class="section-heading">Rincian Tiket</h2>
-            <div class="table-wrap">
-              <table>
-                <thead><tr><th>No.</th><th>No. Tiket</th><th>Pemohon</th><th>Layanan</th><th>Status</th><th>Tanggal</th></tr></thead>
-                <tbody>${rows || '<tr><td class="empty" colspan="6">Tidak ada tiket pada rentang tanggal ini.</td></tr>'}</tbody>
-              </table>
-            </div>
+      const cards = [
+        { label: 'TOTAL TIKET', count: filteredTickets.length, color: [40, 116, 184], fill: [248, 251, 255] },
+        { label: 'DITOLAK', count: summary.Ditolak, color: [217, 83, 79], fill: [255, 250, 250] },
+        { label: 'SELESAI', count: summary.Selesai, color: [26, 155, 114], fill: [247, 252, 250] },
+        { label: 'DIPROSES', count: summary.Diproses, color: [217, 154, 34], fill: [255, 253, 247] }
+      ];
+      const cardGap = 3;
+      const cardWidth = (right - left - cardGap * 3) / cards.length;
+      cards.forEach((card, index) => {
+        const x = left + index * (cardWidth + cardGap);
+        doc.setFillColor(...card.fill);
+        doc.setDrawColor(214, 227, 239);
+        doc.roundedRect(x, 82, cardWidth, 20, 1.5, 1.5, 'FD');
+        doc.setFillColor(...card.color);
+        doc.rect(x, 82, cardWidth, 1.3, 'F');
+        doc.setTextColor(...muted);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.text(card.label, x + 3, 89);
+        doc.setTextColor(...card.color);
+        doc.setFontSize(16);
+        doc.text(String(card.count), x + 3, 98);
+      });
 
-            ${closingSection}
-            <footer class="footer"><span><strong>DISKOMINFO KOTA BOGOR</strong> · Laporan Rekapitulasi Tiket Helpdesk</span><span>Dicetak: ${escapeHtml(printedAt)}</span></footer>
-          </main>
-          <script>
-            window.addEventListener('load', () => {
-              const images = Array.from(document.images);
-              Promise.all(images.map(image => image.complete ? Promise.resolve() : new Promise(resolve => { image.onload = image.onerror = resolve; })))
-                .then(() => setTimeout(() => window.print(), 350));
-            });
-          </script>
-        </body>
-      </html>`);
-    reportWindow.document.close();
+      drawSectionHeading('Rincian Tiket', 111);
+      const tableRows = filteredTickets.length
+        ? filteredTickets.map((ticket, index) => [
+          String(index + 1),
+          String(ticket.ticket_number || ticket.id || '-'),
+          String(ticket.pemohon || '-'),
+          String(ticket.service_name || '-'),
+          formatWorkDuration(ticket),
+          getTicketStatus(ticket),
+          new Date(ticket.created_at).toLocaleDateString('id-ID')
+        ])
+        : [[{ content: 'Tidak ada tiket pada rentang tanggal ini.', colSpan: 7, styles: { halign: 'center' } }]];
+      const signatureX = right - 66;
+      const signatureCenter = signatureX + 33;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      const departmentLines = signatory
+        ? doc.splitTextToSize('Dinas Komunikasi & Informatika Kota Bogor', 66)
+        : [];
+      const nameLines = signatory ? doc.splitTextToSize(String(signatory.name || ''), 66) : [];
+      const signatureNameOffset = 12 + departmentLines.length * 4 + 20;
+      const positionOffset = signatureNameOffset + nameLines.length * 4;
+      const nipOffset = positionOffset + 4;
+      const signatureBlockHeight = signatory ? nipOffset + 5 : 39;
+      const tableBottomMargin = signatureBlockHeight + 8 + 18;
+      let lastDrawnBodyRow = -1;
+
+      autoTable(doc, {
+        head: [['No.', 'No. Tiket', 'Pemohon', 'Layanan', 'Waktu SLA', 'Status', 'Tanggal']],
+        body: tableRows,
+        startY: 115,
+        margin: { left, right: pageWidth - right, top: 14, bottom: 18 },
+        tableWidth: right - left,
+        showHead: 'everyPage',
+        rowPageBreak: 'avoid',
+        theme: 'grid',
+        styles: {
+          font: 'helvetica',
+          fontSize: 9,
+          cellPadding: { top: 2, right: 1.5, bottom: 2, left: 1.5 },
+          textColor: [51, 75, 101],
+          lineColor: [214, 224, 235],
+          lineWidth: 0.15,
+          overflow: 'linebreak',
+          valign: 'middle'
+        },
+        headStyles: {
+          fillColor: blue,
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          fontSize: 9,
+          halign: 'center'
+        },
+        alternateRowStyles: { fillColor: [246, 249, 252] },
+        columnStyles: {
+          0: { cellWidth: 8, halign: 'center' },
+          1: { cellWidth: 32, halign: 'center' },
+          2: { cellWidth: 36 },
+          3: { cellWidth: 39 },
+          4: { cellWidth: 26, halign: 'center' },
+          5: { cellWidth: 21, halign: 'center' },
+          6: { cellWidth: 22, halign: 'center' }
+        },
+        didParseCell: (data) => {
+          if (data.section !== 'body' || data.column.index !== 5) return;
+          if (data.cell.raw === 'Selesai') {
+            data.cell.styles.fillColor = [231, 247, 241];
+            data.cell.styles.textColor = [19, 124, 92];
+          } else if (data.cell.raw === 'Diproses') {
+            data.cell.styles.fillColor = [255, 244, 220];
+            data.cell.styles.textColor = [152, 100, 11];
+          } else {
+            data.cell.styles.fillColor = [255, 240, 240];
+            data.cell.styles.textColor = [185, 56, 56];
+          }
+          data.cell.styles.fontStyle = 'bold';
+        },
+        willDrawPage: (data) => {
+          const remainingRowsHeight = data.table.body
+            .slice(lastDrawnBodyRow + 1)
+            .reduce((height, row) => height + row.height, 0);
+          const headerHeight = data.table.head.reduce((height, row) => height + row.height, 0);
+          const availableHeight = pageHeight - (data.cursor?.y || 0) - headerHeight;
+          data.settings.margin.bottom = remainingRowsHeight <= availableHeight - tableBottomMargin
+            ? tableBottomMargin
+            : 18;
+        },
+        didDrawCell: (data) => {
+          if (data.section === 'body') {
+            lastDrawnBodyRow = Math.max(lastDrawnBodyRow, data.row.index);
+          }
+        }
+      });
+
+      let closingY = doc.lastAutoTable.finalY + 8;
+      const closingBottom = closingY + signatureBlockHeight;
+      if (closingBottom > pageHeight - 18) {
+        doc.addPage();
+        closingY = 18;
+      }
+      const signatureNameY = closingY + signatureNameOffset;
+
+      doc.setDrawColor(224, 232, 240);
+      doc.setLineWidth(0.3);
+      doc.line(left, closingY, right, closingY);
+      doc.setDrawColor(40, 116, 184);
+      doc.setLineWidth(0.7);
+      doc.line(left, closingY + 8, left, closingY + 17);
+      doc.setTextColor(...blue);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.text(['Kolaborasi Menuju', 'Bogor Digital'], left + 3, closingY + 11);
+
+      if (signatory) {
+        doc.setTextColor(54, 87, 117);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.text(`Bogor, ${printedDate}`, signatureCenter, closingY + 7, { align: 'center' });
+        doc.text(departmentLines, signatureCenter, closingY + 12, { align: 'center' });
+        doc.setTextColor(23, 43, 77);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.text(nameLines, signatureCenter, signatureNameY, { align: 'center' });
+        nameLines.forEach((line, index) => {
+          const lineY = signatureNameY + index * 4 + 0.8;
+          const lineWidth = doc.getTextWidth(line);
+          doc.setDrawColor(23, 43, 77);
+          doc.setLineWidth(0.25);
+          doc.line(signatureCenter - lineWidth / 2, lineY, signatureCenter + lineWidth / 2, lineY);
+        });
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.text(String(signatory.position || '-'), signatureCenter, closingY + positionOffset, { align: 'center' });
+        doc.text(`NIP. ${signatory.nip || '-'}`, signatureCenter, closingY + nipOffset, { align: 'center' });
+      } else {
+        doc.setTextColor(54, 87, 117);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.text(['Dinas Komunikasi dan Informatika', 'Pemerintah Kota Bogor'], signatureX + 33, closingY + 7, { align: 'center' });
+        doc.setTextColor(23, 43, 77);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Petugas / Penanggung Jawab', signatureX + 33, closingY + 36, { align: 'center' });
+      }
+
+      const pageCount = doc.getNumberOfPages();
+      for (let page = 1; page <= pageCount; page += 1) {
+        doc.setPage(page);
+        const footerY = pageHeight - 9;
+        doc.setDrawColor(...blue);
+        doc.setLineWidth(0.6);
+        doc.line(left, pageHeight - 14, right, pageHeight - 14);
+        doc.setTextColor(...blue);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.text('DISKOMINFO KOTA BOGOR', left, footerY);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...muted);
+        doc.text('Laporan Rekapitulasi Tiket Helpdesk', left + 36, footerY);
+        doc.text(`Dicetak: ${printedAt}  |  Halaman ${page}/${pageCount}`, right, footerY, { align: 'right' });
+      }
+
+      setPreviewPdfName(`${fileName}.pdf`);
+      setPreviewPdfUrl(URL.createObjectURL(doc.output('blob')));
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : 'Gagal membuat PDF rekap tiket.');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const matchingSignatoryUsers = signatoryUsers.filter(user => {
@@ -406,11 +600,11 @@ export const TicketRecap = () => {
             <button
               type="button"
               onClick={() => setIsExportMenuOpen(open => !open)}
-              disabled={!validRange || loading}
+              disabled={!validRange || loading || isExporting}
               aria-expanded={isExportMenuOpen}
               className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Download className="h-4 w-4" /> Export PDF <ChevronDown className="h-4 w-4" />
+              <Download className="h-4 w-4" /> {isExporting ? 'Menyiapkan PDF...' : 'Export PDF'} <ChevronDown className="h-4 w-4" />
             </button>
             {isExportMenuOpen && (
               <div className="absolute right-0 z-20 mt-2 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
@@ -422,15 +616,15 @@ export const TicketRecap = () => {
                   }}
                   className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
                 >
-                  Cetak PDF langsung
-                  <span className="mt-0.5 block text-xs font-normal text-slate-500">Format laporan seperti sebelumnya</span>
+                  Pratinjau PDF
+                  <span className="mt-0.5 block text-xs font-normal text-slate-500">Tinjau sebelum mengunduh</span>
                 </button>
                 <button
                   type="button"
                   onClick={openSignatoryDialog}
                   className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
                 >
-                  Cetak dengan penandatangan
+                  Pratinjau dengan penandatangan
                   <span className="mt-0.5 block text-xs font-normal text-slate-500">Cari pegawai lewat API</span>
                 </button>
               </div>
@@ -542,7 +736,7 @@ export const TicketRecap = () => {
           </table>
         </div>
       </section>
-      <p className="text-xs text-slate-500">Pilih opsi ekspor PDF, lalu gunakan “Simpan sebagai PDF” pada dialog cetak browser.</p>
+      <p className="text-xs text-slate-500">Periksa pratinjau terlebih dahulu, lalu unduh PDF dengan nama otomatis.</p>
 
       {isSignatoryDialogOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
@@ -585,12 +779,13 @@ export const TicketRecap = () => {
                 </div>
                 <button
                   type="button"
+                  disabled={signatoryLoading}
                   onClick={() => {
                     setSelectedSignatory(null);
                     setSignatorySearchQuery('');
                     setIsSignatorySearchOpen(true);
                   }}
-                  className="shrink-0 rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-sky-700 hover:bg-sky-100"
+                  className="shrink-0 rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-sky-700 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Ganti
                 </button>
@@ -639,10 +834,7 @@ export const TicketRecap = () => {
                           key={user.id || `${user.source}-${user.email || nip}`}
                           type="button"
                           disabled={!name}
-                          onClick={() => {
-                            setSelectedSignatory({ name, nip, jabatan });
-                            setIsSignatorySearchOpen(false);
-                          }}
+                          onClick={() => selectSignatory(user)}
                           className="flex w-full items-center justify-between gap-3 p-3 text-left transition-colors hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           <span className="min-w-0">
@@ -690,39 +882,53 @@ export const TicketRecap = () => {
             )}
 
             {selectedSignatory && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block space-y-1.5 text-xs font-bold uppercase tracking-wide text-slate-600">
-                  NIP
-                  <input
-                    value={selectedSignatory.nip || ''}
-                    onChange={event => {
-                      const value = event.target.value;
-                      setSelectedSignatory(current => ({
-                        ...current,
-                        nip: value
-                      }));
-                    }}
-                    maxLength={50}
-                    placeholder="Isi NIP pegawai"
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold normal-case tracking-normal text-slate-800 placeholder:font-normal"
-                  />
-                </label>
-                <label className="block space-y-1.5 text-xs font-bold uppercase tracking-wide text-slate-600">
-                  Jabatan
-                  <input
-                    value={selectedSignatory.jabatan || ''}
-                    onChange={event => {
-                      const value = event.target.value;
-                      setSelectedSignatory(current => ({
-                        ...current,
-                        jabatan: value
-                      }));
-                    }}
-                    maxLength={150}
-                    placeholder="Isi jabatan pegawai"
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold normal-case tracking-normal text-slate-800 placeholder:font-normal"
-                  />
-                </label>
+              <div className="space-y-2">
+                {signatoryLoading && (
+                  <p aria-live="polite" className="text-xs font-medium text-sky-700">
+                    Mengambil jabatan dari API TND...
+                  </p>
+                )}
+                {signatoryError && (
+                  <p role="alert" className="text-xs font-medium text-rose-700">
+                    {signatoryError}
+                  </p>
+                )}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block space-y-1.5 text-xs font-bold uppercase tracking-wide text-slate-600">
+                    NIP
+                    <input
+                      value={selectedSignatory.nip || ''}
+                      onChange={event => {
+                        const value = event.target.value;
+                        setSelectedSignatory(current => ({
+                          ...current,
+                          nip: value
+                        }));
+                      }}
+                      maxLength={50}
+                      placeholder="Isi NIP pegawai"
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold normal-case tracking-normal text-slate-800 placeholder:font-normal"
+                    />
+                  </label>
+                  <label className="block space-y-1.5 text-xs font-bold uppercase tracking-wide text-slate-600">
+                    Jabatan
+                    <input
+                      value={selectedSignatory.jabatan || ''}
+                      onChange={event => {
+                        const value = event.target.value;
+                        setSelectedSignatory(current => ({
+                          ...current,
+                          jabatan: value
+                        }));
+                        if (value.trim()) setSignatoryError('');
+                      }}
+                      maxLength={150}
+                      placeholder={signatoryLoading ? 'Mengambil jabatan dari API TND...' : 'Isi jabatan pegawai'}
+                      disabled={signatoryLoading}
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold normal-case tracking-normal text-slate-800 placeholder:font-normal"
+                    />
+                  </label>
+                </div>
               </div>
             )}
 
@@ -739,10 +945,62 @@ export const TicketRecap = () => {
                 disabled={signatoryLoading || !selectedSignatory?.name}
                 className="rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Export PDF
+                Pratinjau PDF
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {previewPdfUrl && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/70 p-3 backdrop-blur-sm sm:p-6">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ticket-recap-preview-title"
+            className="flex h-[calc(100vh-1.5rem)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:h-[calc(100vh-3rem)]"
+          >
+            <header className="flex items-center justify-between gap-4 border-b border-slate-200 px-4 py-3 sm:px-6">
+              <div className="min-w-0">
+                <h3 id="ticket-recap-preview-title" className="text-base font-black text-slate-900">Pratinjau Rekap Tiket</h3>
+                <p className="truncate text-xs text-slate-500">{previewPdfName}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setPreviewPdfUrl('');
+                  setPreviewPdfName('');
+                }}
+                aria-label="Tutup pratinjau"
+                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </header>
+            <iframe title="Pratinjau PDF rekap tiket" src={previewPdfUrl} className="min-h-0 w-full flex-1 bg-slate-200" />
+            <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 sm:px-6">
+              <p className="text-xs text-slate-500">Nama file akan digunakan otomatis saat diunduh.</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreviewPdfUrl('');
+                    setPreviewPdfName('');
+                  }}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  Tutup
+                </button>
+                <a
+                  href={previewPdfUrl}
+                  download={previewPdfName}
+                  className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-bold text-white hover:bg-sky-700"
+                >
+                  Unduh PDF
+                </a>
+              </div>
+            </footer>
+          </section>
         </div>
       )}
     </div>
