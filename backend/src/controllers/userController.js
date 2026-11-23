@@ -193,7 +193,7 @@ exports.createOpdUserFromTnd = async (req, res) => {
            email, nip, password_hash, full_name, department, jabatan, profile_image, profile_image_source,
            is_active, is_two_factor_enabled, two_factor_secret, backup_codes, password_changed_at, password_auth_source
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'TND', true, false, NULL, '[]'::jsonb, CURRENT_TIMESTAMP, 'TND')
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'TND', true, false, NULL, '[]'::jsonb, CURRENT_TIMESTAMP, 'TND')
          RETURNING id, email, nip, full_name, department, jabatan`,
         [finalEmail, nip || null, placeholderHash, fullName, department, jabatan || null, profileImage]
       );
