@@ -166,7 +166,8 @@ export const TicketHistory = ({ mode = 'active' }) => {
                   : statusName === 'IN_PROGRESS' ? 'Diproses'
                     : statusName === 'WAITING_USER_CONFIRMATION' ? 'Selesai'
                       : statusName === 'COMPLETED' ? 'Selesai & Dinilai'
-                        : (t.status || t.status_name || '');
+                        : statusName === 'CANCELLED' ? 'Dibatalkan'
+                          : (t.status || t.status_name || '');
 
           return {
             ...t,
@@ -288,11 +289,14 @@ export const TicketHistory = ({ mode = 'active' }) => {
 
       if (mode === 'active') {
         const statusName = String(found.status_name || '').toUpperCase();
+        const isPegawai = String(user?.role || '').toUpperCase() === 'PEGAWAI';
         if (
-          statusName === 'PENDING' ||
-          statusName === 'VERIFIED' ||
-          found.status === 'Verifikasi' ||
-          found.status === 'Menunggu Validasi'
+          !isPegawai && (
+            statusName === 'PENDING' ||
+            statusName === 'VERIFIED' ||
+            found.status === 'Verifikasi' ||
+            found.status === 'Menunggu Validasi'
+          )
         ) {
           setActiveTab('verifikasi');
         } else if (statusName === 'REJECTED' || found.status === 'Pending') {
@@ -578,23 +582,25 @@ export const TicketHistory = ({ mode = 'active' }) => {
   const closeModal = () => setModalConfig(prev => ({ ...prev, isOpen: false }));
 
   const canCancelTicket = (ticket) => {
-    const roles = [...(user?.roles || []), user?.role]
-      .filter(Boolean)
-      .map(role => String(role).toUpperCase());
-    return roles.some(role => ['USER', 'MASYARAKAT'].includes(role))
-      && String(ticket?.status_name || '').toUpperCase() === 'PENDING';
+    const activeRole = String(user?.role || (user?.roles && user.roles[0]) || '').toUpperCase();
+    const isApplicant = ['USER', 'MASYARAKAT'].includes(activeRole);
+    const statusName = String(ticket?.status_name || '').toUpperCase();
+    const isBeforePegawai = ['PENDING', 'VERIFIED', 'REJECTED'].includes(statusName)
+      && !ticket?.is_assigned_to_pegawai;
+    return isApplicant && isBeforePegawai;
   };
 
   const executeCancelTicket = async (ticket) => {
     try {
       await api.cancelTicket(ticket.uuid || ticket.id);
       await loadTickets(true);
+      setActiveTab('semua');
       handleClearSelectedTicket();
       setModalConfig({
         isOpen: true,
         type: 'success',
         title: 'Tiket Berhasil Dibatalkan',
-        message: `Tiket ${ticket.ticket_number || ticket.id} sudah dihapus. Aktivitas pembatalan tercatat di Log Activity.`,
+        message: `Tiket ${ticket.ticket_number || ticket.id} telah dibatalkan. Anda kini dapat mengajukan tiket layanan baru.`,
         confirmText: 'Tutup',
         cancelText: '',
         onConfirm: closeModal
@@ -618,7 +624,7 @@ export const TicketHistory = ({ mode = 'active' }) => {
       isOpen: true,
       type: 'danger',
       title: 'Batalkan Tiket?',
-      message: `Tiket ${ticket.ticket_number || ticket.id} hanya bisa dibatalkan sebelum disetujui Helpdesk. Pembatalan tidak dapat diurungkan.`,
+      message: `Apakah Anda yakin ingin membatalkan tiket ${ticket.ticket_number || ticket.id}? Tiket hanya bisa dibatalkan selama belum diteruskan Helpdesk ke Pegawai.`,
       confirmText: 'Ya, Batalkan',
       cancelText: 'Kembali',
       onConfirm: () => {
@@ -972,6 +978,13 @@ export const TicketHistory = ({ mode = 'active' }) => {
         { id: 'semua', label: 'Semua Tiket Selesai' }
       ];
     }
+    if (String(user?.role || '').toUpperCase() === 'PEGAWAI') {
+      return [
+        { id: 'semua', label: 'Semua' },
+        { id: 'proses', label: 'Sedang Diproses' },
+        { id: 'pending', label: 'Pending' }
+      ];
+    }
     return [
       { id: 'semua', label: 'Semua' },
       { id: 'verifikasi', label: 'Menunggu Verifikasi' },
@@ -1032,6 +1045,8 @@ export const TicketHistory = ({ mode = 'active' }) => {
 
   const getBaseTickets = () => {
     if (!tickets) return [];
+    const activeRole = String(user?.role || '').toUpperCase();
+    const isApplicant = activeRole === 'USER' || activeRole === 'MASYARAKAT';
     if (mode === 'history') {
       return tickets.filter(t => {
         const s = t.status || '';
@@ -1042,12 +1057,13 @@ export const TicketHistory = ({ mode = 'active' }) => {
     return tickets.filter(t => {
       const s = t.status || '';
       const sn = t.status_name || '';
+      if (!isApplicant && (s === 'Dibatalkan' || sn === 'CANCELLED')) {
+        return false;
+      }
       return !s.includes('Selesai') &&
         s !== 'Menunggu Konfirmasi User' &&
-        s !== 'Dibatalkan' &&
         sn !== 'COMPLETED' &&
-        sn !== 'WAITING_USER_CONFIRMATION' &&
-        sn !== 'CANCELLED';
+        sn !== 'WAITING_USER_CONFIRMATION';
     });
   };
 
@@ -1180,8 +1196,8 @@ export const TicketHistory = ({ mode = 'active' }) => {
                         )}
                         <span className="text-sm text-slate-400 font-semibold">{t.date}</span>
                       </div>
-                      <h3 className="font-extrabold text-base text-slate-800 leading-snug">{t.title}</h3>
-                      <p className="text-xs text-slate-450 font-bold uppercase tracking-wider">{t.pemohon}</p>
+                      <h3 className="font-normal text-base text-slate-800 leading-snug">{t.title}</h3>
+                      <p className="text-xs text-slate-900 font-extrabold uppercase tracking-wider">{t.pemohon}</p>
                       {/* Progress bar removed dynamically */}
 
                       <div className="text-xs text-slate-450 font-bold mt-2.5 flex items-center gap-1.5 flex-wrap">
@@ -1190,6 +1206,8 @@ export const TicketHistory = ({ mode = 'active' }) => {
                         <span className="text-slate-300">|</span>
                         {t.status.includes('Selesai') ? (
                           <span className="text-emerald-600 font-extrabold">Selesai</span>
+                        ) : (t.status === 'Dibatalkan' || t.status_name === 'CANCELLED') ? (
+                          <span className="text-rose-600 font-extrabold">Tiket Dibatalkan</span>
                         ) : t.status === 'Verifikasi' ? (
                           <span className="text-slate-400 font-semibold">Belum Berjalan (Menunggu Verifikasi)</span>
                         ) : t.status === 'Pending' ? (
@@ -1205,11 +1223,12 @@ export const TicketHistory = ({ mode = 'active' }) => {
                     </div>
                     <div className="flex md:flex-col items-center md:items-end gap-3 self-stretch md:self-auto justify-between shrink-0">
                       <span className={`px-2.5 py-1 rounded text-xs font-extrabold uppercase tracking-wider ${t.status.includes('Selesai') ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                        (t.status === 'Dibatalkan' || t.status_name === 'CANCELLED') ? 'bg-rose-100 text-rose-700 border border-rose-200' :
                         t.status === 'Pending' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
                           t.status === 'Diproses' ? 'bg-sky-50 text-sky-700 border border-sky-100' :
                             'bg-slate-100 text-slate-600 border border-slate-200'
                         }`}>
-                        {t.status}
+                        {(t.status === 'Dibatalkan' || t.status_name === 'CANCELLED') ? 'Tiket Dibatalkan' : t.status}
                       </span>
                       <button
                         type="button"
@@ -1274,11 +1293,12 @@ export const TicketHistory = ({ mode = 'active' }) => {
                     )}
                   </div>
                   <span className={`px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${selectedTicket.status.includes('Selesai') ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                    (selectedTicket.status === 'Dibatalkan' || selectedTicket.status_name === 'CANCELLED') ? 'bg-rose-100 text-rose-700 border border-rose-200' :
                     selectedTicket.status === 'Pending' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
                       selectedTicket.status === 'Diproses' ? 'bg-sky-50 text-sky-700 border border-sky-100' :
                         'bg-slate-100 text-slate-600'
                     }`}>
-                    {selectedTicket.status}
+                    {(selectedTicket.status === 'Dibatalkan' || selectedTicket.status_name === 'CANCELLED') ? 'Tiket Dibatalkan' : selectedTicket.status}
                   </span>
                 </div>
                 <h3 className="font-extrabold text-lg text-slate-800 tracking-tight leading-snug break-words">{selectedTicket.title}</h3>
@@ -1322,6 +1342,31 @@ export const TicketHistory = ({ mode = 'active' }) => {
                     <span>Perbaiki & Ajukan Ulang Formulir</span>
                   </button>
                 )}
+
+                {(selectedTicket.status === 'Dibatalkan' || selectedTicket.status_name === 'CANCELLED') && (user?.role === 'USER' || user?.role === 'MASYARAKAT') && (
+                  <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl space-y-3 mt-3">
+                    <p className="text-xs font-bold text-rose-700 leading-relaxed">
+                      Tiket ini telah Anda batalkan. Anda dapat mengajukan ulang formulir tiket ini atau membuat pengajuan layanan baru.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowRefillModal(true)}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 bg-white hover:bg-rose-100/50 text-rose-700 border border-rose-200 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Ajukan Ulang Tiket Ini</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/dashboard/user/create-ticket')}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-sm cursor-pointer"
+                      >
+                        <span>Ajukan Tiket Baru</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4 bg-white border border-slate-200/90 rounded-2xl p-4 text-left shadow-xs">
@@ -1333,16 +1378,18 @@ export const TicketHistory = ({ mode = 'active' }) => {
                 </div>
                 <div>
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Status SLA</span>
-                  <p className={`text-sm font-black mt-0.5 ${(selectedTicket.status === 'Diproses' && selectedTicket.slaRemainingDays < 0) ? 'text-rose-600' : 'text-slate-700'}`}>
+                  <p className={`text-sm font-black mt-0.5 ${(selectedTicket.status === 'Dibatalkan' || selectedTicket.status_name === 'CANCELLED' || (selectedTicket.status === 'Diproses' && selectedTicket.slaRemainingDays < 0)) ? 'text-rose-600' : 'text-slate-700'}`}>
                     {selectedTicket.status.includes('Selesai')
                       ? 'Selesai'
-                      : selectedTicket.status === 'Verifikasi'
-                        ? 'Belum Berjalan (Menunggu Verifikasi)'
-                        : selectedTicket.status === 'Pending'
-                          ? 'Tertangguh (Menunggu Revisi)'
-                          : (selectedTicket.slaRemainingDays !== undefined ? selectedTicket.slaRemainingDays : selectedTicket.remainingDays) < 0
-                            ? `Terlewat ${Math.abs(selectedTicket.slaRemainingDays !== undefined ? selectedTicket.slaRemainingDays : selectedTicket.remainingDays)} Hari`
-                            : `${selectedTicket.slaRemainingDays !== undefined ? selectedTicket.slaRemainingDays : selectedTicket.remainingDays} Hari Tersisa`}
+                      : (selectedTicket.status === 'Dibatalkan' || selectedTicket.status_name === 'CANCELLED')
+                        ? 'Tiket Dibatalkan'
+                        : selectedTicket.status === 'Verifikasi'
+                          ? 'Belum Berjalan (Menunggu Verifikasi)'
+                          : selectedTicket.status === 'Pending'
+                            ? 'Tertangguh (Menunggu Revisi)'
+                            : (selectedTicket.slaRemainingDays !== undefined ? selectedTicket.slaRemainingDays : selectedTicket.remainingDays) < 0
+                              ? `Terlewat ${Math.abs(selectedTicket.slaRemainingDays !== undefined ? selectedTicket.slaRemainingDays : selectedTicket.remainingDays)} Hari`
+                              : `${selectedTicket.slaRemainingDays !== undefined ? selectedTicket.slaRemainingDays : selectedTicket.remainingDays} Hari Tersisa`}
                   </p>
                 </div>
               </div>

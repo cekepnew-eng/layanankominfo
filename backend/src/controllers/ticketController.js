@@ -30,50 +30,34 @@ exports.createTicket = async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // 1. Resolve user roles first
-    let isHelpdeskOrAdmin = false;
-    let isHelpdesk = false;
+    // 1. Resolve user roles first (from JWT token + user_roles + users.role_id)
+    const tokenRoles = [
+      req.user?.role,
+      ...(Array.isArray(req.user?.roles) ? req.user.roles : [])
+    ]
+      .filter(Boolean)
+      .map(r => String(r).toUpperCase());
+    let isHelpdesk = tokenRoles.includes('HELPDESK');
+    let isHelpdeskOrAdmin = isHelpdesk || tokenRoles.includes('ADMIN');
     try {
       const userRolesQuery = await client.query(`
         SELECT r.name FROM user_roles ur
         JOIN roles r ON ur.role_id = r.id
         WHERE ur.user_id = $1
+        UNION
+        SELECT r.name FROM users u
+        JOIN roles r ON u.role_id = r.id
+        WHERE u.id = $1
       `, [req.user.id]);
-      const roles = userRolesQuery.rows.map(row => row.name.toUpperCase());
-      isHelpdesk = roles.includes('HELPDESK');
-      isHelpdeskOrAdmin = isHelpdesk || roles.includes('ADMIN');
+      const dbRoles = userRolesQuery.rows.map(row => String(row.name || '').toUpperCase());
+      isHelpdesk = isHelpdesk || dbRoles.includes('HELPDESK');
+      isHelpdeskOrAdmin = isHelpdeskOrAdmin || isHelpdesk || dbRoles.includes('ADMIN');
     } catch (e) {
       console.error('Role resolution error in createTicket:', e);
     }
 
-    // 2. Check active ticket ONLY for standard users (USER / MASYARAKAT)
-    // Helpdesk and Admin are authorized to create multiple tickets to assist applicants / citizens
+    // 2. Allow users and helpdesk to create unlimited tickets without single-ticket restriction
     const isSubmittedByHelpdesk = Boolean(form_data.submitted_by_helpdesk === true || form_data.submitted_by_helpdesk === 'true');
-    if (!isSubmittedByHelpdesk && !isHelpdeskOrAdmin) {
-      const activeRes = await client.query(`
-        SELECT t.id, t.ticket_number FROM tickets t
-        LEFT JOIN ticket_details td ON td.ticket_id = t.id
-        WHERE (
-          t.user_id = $1 
-          OR t.user_id IN (
-            SELECT id FROM users 
-            WHERE (email IS NOT NULL AND email = (SELECT email FROM users WHERE id = $1))
-               OR (nip IS NOT NULL AND nip = (SELECT nip FROM users WHERE id = $1))
-          )
-        ) 
-        AND t.status_id NOT IN (7, 8)
-        AND (td.form_data->>'submitted_by_helpdesk' IS NULL OR td.form_data->>'submitted_by_helpdesk' != 'true')
-        AND (td.form_data->>'Nama Pemohon' IS NULL OR td.form_data->>'Nama Pemohon' NOT ILIKE '%via Helpdesk%')
-      `, [req.user.id]);
-
-      if (activeRes.rows.length > 0) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ 
-          success: false, 
-          message: `Anda masih memiliki tiket permohonan yang belum selesai (${activeRes.rows[0].ticket_number || 'aktif'}). Harap selesaikan tiket sebelumnya terlebih dahulu sebelum mengajukan tiket baru.` 
-        });
-      }
-    }
 
     let finalServiceId = service_id;
     if (!finalServiceId && service_name) {
@@ -110,7 +94,13 @@ exports.createTicket = async (req, res) => {
     const rawVerifType = String(srvRes.rows[0]?.verification_type || '').trim().toLowerCase();
     const isAuto = rawVerifType === 'otomatis' || rawVerifType === 'auto' || rawVerifType === 'false';
     const needsVerification = !isAuto;
-    const defaultTeamId = srvRes.rows[0]?.default_team_id;
+    let defaultTeamId = srvRes.rows[0]?.default_team_id;
+    if (defaultTeamId !== null && defaultTeamId !== undefined && defaultTeamId !== '') {
+      const teamExists = await client.query('SELECT id FROM teams WHERE id::text = $1 LIMIT 1', [String(defaultTeamId)]);
+      defaultTeamId = teamExists.rows[0]?.id || null;
+    } else {
+      defaultTeamId = null;
+    }
 
     let initialStatusId = 1; // PENDING
     let isAutoAssigned = false;
@@ -129,11 +119,12 @@ exports.createTicket = async (req, res) => {
     // Resolve final ticket owner (Target OPD user or Helpdesk)
     let finalTicketUserId = req.user.id;
     let targetOpdUser = null;
+    const isValidUuid = (val) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(val || '').trim());
 
-    if (isHelpdeskOrAdmin && target_user_id) {
+    if (isHelpdeskOrAdmin && target_user_id && isValidUuid(target_user_id)) {
       const opdLookup = await client.query(`
         SELECT id, full_name, email, nip, department FROM users WHERE id = $1
-      `, [target_user_id]);
+      `, [String(target_user_id).trim()]);
 
       if (opdLookup.rows.length > 0) {
         targetOpdUser = opdLookup.rows[0];
@@ -141,9 +132,21 @@ exports.createTicket = async (req, res) => {
       }
     }
 
-    // Generate Ticket Number
-    const countRes = await client.query('SELECT COUNT(*) FROM tickets');
-    const ticket_number = `REQ-${new Date().getFullYear()}-${(parseInt(countRes.rows[0].count) + 1).toString().padStart(4, '0')}`;
+    // Generate Ticket Number safely using MAX sequence + uniqueness check
+    const currentYear = new Date().getFullYear();
+    const maxNumRes = await client.query(
+      `SELECT COALESCE(MAX((regexp_match(ticket_number, '^REQ-' || $1 || '-(\\d+)$'))[1]::int), COUNT(*)::int, 0) AS max_num
+       FROM tickets`,
+      [String(currentYear)]
+    );
+    let nextSeq = Number(maxNumRes.rows[0]?.max_num || 0) + 1;
+    let ticket_number = `REQ-${currentYear}-${String(nextSeq).padStart(4, '0')}`;
+    while (true) {
+      const existsRes = await client.query('SELECT 1 FROM tickets WHERE ticket_number = $1 LIMIT 1', [ticket_number]);
+      if (existsRes.rows.length === 0) break;
+      nextSeq += 1;
+      ticket_number = `REQ-${currentYear}-${String(nextSeq).padStart(4, '0')}`;
+    }
 
     // 1. Insert Ticket
     const ticketRes = await client.query(`
@@ -204,27 +207,41 @@ exports.createTicket = async (req, res) => {
 
     await createHistory(client, ticketId, req.user.id, null, initialStatusId, historyTextCreate);
 
-    // 5. Notifications
-    // Notify the creator
-    await createNotification(client, req.user.id, ticketId, 'INFO', 'Tiket Dibuat', `Tiket ${ticket_number} berhasil diajukan.`);
+    // 5. Notifications (guarded with SAVEPOINT so notification issues never fail ticket creation)
+    await client.query('SAVEPOINT before_ticket_notifications');
+    try {
+      // Notify the creator
+      await createNotification(client, req.user.id, ticketId, 'INFO', 'Tiket Dibuat', `Tiket ${ticket_number} berhasil diajukan.`);
 
-    // If submitted by Helpdesk for an OPD user, also notify the OPD user!
-    if (targetOpdUser && targetOpdUser.id !== req.user.id) {
-      await createNotification(client, targetOpdUser.id, ticketId, 'INFO', 'Tiket Diajukan', `Tiket permohonan ${ticket_number} telah diajukan untuk akun Anda oleh Helpdesk.`);
-    }
+      // If submitted by Helpdesk for an OPD user, also notify the OPD user!
+      if (targetOpdUser && targetOpdUser.id !== req.user.id) {
+        await createNotification(client, targetOpdUser.id, ticketId, 'INFO', 'Tiket Diajukan', `Tiket permohonan ${ticket_number} telah diajukan untuk akun Anda oleh Helpdesk.`);
+      }
 
-    // If it needs helpdesk action (status 1 PENDING or status 2 VERIFIED without auto-assign)
-    if (!isAutoAssigned) {
-      const helpdesks = await client.query("SELECT u.id FROM users u JOIN user_roles ur ON u.id = ur.user_id JOIN roles r ON ur.role_id = r.id WHERE r.name='HELPDESK'");
-      for (let hd of helpdesks.rows) {
-        await createNotification(client, hd.id, ticketId, 'ACTION_REQUIRED', 'Tiket Baru', `Tiket baru ${ticket_number} menunggu tindakan Anda.`);
+      // If it needs helpdesk action (status 1 PENDING or status 2 VERIFIED without auto-assign)
+      if (!isAutoAssigned) {
+        const helpdesks = await client.query(`
+          SELECT DISTINCT u.id
+          FROM users u
+          LEFT JOIN user_roles ur ON u.id = ur.user_id
+          LEFT JOIN roles r1 ON ur.role_id = r1.id
+          LEFT JOIN roles r2 ON u.role_id = r2.id
+          WHERE r1.name = 'HELPDESK' OR r2.name = 'HELPDESK'
+        `);
+        for (let hd of helpdesks.rows) {
+          await createNotification(client, hd.id, ticketId, 'ACTION_REQUIRED', 'Tiket Baru', `Tiket baru ${ticket_number} menunggu tindakan Anda.`);
+        }
+      } else if (defaultTeamId) {
+        // Notify the Team members that a new ticket was assigned to their team
+        const teamMembers = await client.query("SELECT user_id FROM team_members WHERE team_id = $1", [defaultTeamId]);
+        for (let member of teamMembers.rows) {
+          await createNotification(client, member.user_id, ticketId, 'ASSIGNMENT', 'Penugasan Tiket Baru (Otomatis)', `Tiket ${ticket_number} telah ditugaskan secara otomatis ke tim Anda.`);
+        }
       }
-    } else {
-      // Notify the Team members that a new ticket was assigned to their team
-      const teamMembers = await client.query("SELECT user_id FROM team_members WHERE team_id = $1", [defaultTeamId]);
-      for (let member of teamMembers.rows) {
-        await createNotification(client, member.user_id, ticketId, 'ASSIGNMENT', 'Penugasan Tiket Baru (Otomatis)', `Tiket ${ticket_number} telah ditugaskan secara otomatis ke tim Anda.`);
-      }
+      await client.query('RELEASE SAVEPOINT before_ticket_notifications');
+    } catch (notifErr) {
+      await client.query('ROLLBACK TO SAVEPOINT before_ticket_notifications');
+      console.error('Non-fatal notification error in createTicket:', notifErr.message);
     }
 
     await client.query('COMMIT');
@@ -260,6 +277,7 @@ exports.getMyTickets = async (req, res) => {
              END) as opd,
              s.service_name as service_name, s.target_sla as target_sla, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
              tf.rating,
+             EXISTS (SELECT 1 FROM ticket_assignments ta WHERE ta.ticket_id = t.id) as is_assigned_to_pegawai,
              (SELECT file_name FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_name,
              (SELECT file_url FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_url,
              (SELECT COALESCE(json_agg(json_build_object('id', sub.id, 'task_name', sub.task_name, 'assigned_to_name', su.full_name, 'status', sub.status)), '[]'::json) FROM subtasks sub LEFT JOIN users su ON sub.assigned_to = su.id WHERE sub.ticket_id = t.id) as subtasks
@@ -343,20 +361,24 @@ exports.cancelTicket = async (req, res) => {
       await client.query('ROLLBACK');
       return res.status(403).json({ success: false, message: 'Anda bukan pemilik tiket ini.' });
     }
-    if (Number(ticket.status_id) !== 1 || !ticket.has_no_assignment) {
+    if (![1, 2, 3].includes(Number(ticket.status_id)) || !ticket.has_no_assignment) {
       await client.query('ROLLBACK');
       return res.status(409).json({
         success: false,
-        message: 'Tiket hanya bisa dibatalkan sebelum disetujui Helpdesk.'
+        message: 'Tiket hanya bisa dibatalkan selama belum diteruskan Helpdesk ke Pegawai / Tim Teknis.'
       });
     }
 
-    const historyText = `Tiket ${ticket.ticket_number} dibatalkan oleh pemohon sebelum disetujui Helpdesk.`;
+    const historyText = `Tiket ${ticket.ticket_number} dibatalkan oleh pemohon.`;
     await client.query(
-      'UPDATE tickets SET status_id = 3, updated_at = NOW() WHERE id = $1',
+      'UPDATE tickets SET status_id = 8, updated_at = NOW() WHERE id = $1',
       [id]
     );
-    await createHistory(client, id, req.user.id, Number(ticket.status_id), 3, historyText);
+    await createHistory(client, id, req.user.id, Number(ticket.status_id), 8, historyText);
+    await client.query(
+      "DELETE FROM notifications WHERE ticket_id = $1 AND type = 'ACTION_REQUIRED'",
+      [id]
+    );
     await recordRequestActivity(client, req, {
       activityType: 'ticket_cancelled',
       description: historyText,
@@ -369,7 +391,7 @@ exports.cancelTicket = async (req, res) => {
     await client.query('COMMIT');
     res.json({
       success: true,
-      message: `Tiket ${ticket.ticket_number} dikembalikan ke Pending. Silakan isi ulang formulir.`
+      message: `Tiket ${ticket.ticket_number} berhasil dibatalkan.`
     });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -683,6 +705,7 @@ exports.getHelpdeskTickets = async (req, res) => {
              END) as opd,
              s.service_name as service_name, s.target_sla as target_sla, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
              tf.rating,
+             EXISTS (SELECT 1 FROM ticket_assignments ta WHERE ta.ticket_id = t.id) as is_assigned_to_pegawai,
              (SELECT file_name FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_name,
              (SELECT file_url FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_url,
              (SELECT COALESCE(json_agg(json_build_object('id', sub.id, 'task_name', sub.task_name, 'assigned_to_name', su.full_name, 'status', sub.status)), '[]'::json) FROM subtasks sub LEFT JOIN users su ON sub.assigned_to = su.id WHERE sub.ticket_id = t.id) as subtasks
@@ -692,6 +715,7 @@ exports.getHelpdeskTickets = async (req, res) => {
       JOIN ticket_statuses st ON t.status_id = st.id
       LEFT JOIN ticket_details td ON td.ticket_id = t.id
       LEFT JOIN ticket_feedback tf ON tf.ticket_id = t.id
+      WHERE t.status_id != 8 AND st.name != 'CANCELLED'
       ORDER BY last_activity_at DESC NULLS LAST, t.created_at DESC
     `);
     const mappedRows = result.rows.map(t => ({
@@ -826,6 +850,7 @@ exports.getEmployeeTickets = async (req, res) => {
              END) as opd,
              s.service_name as service_name, s.target_sla as target_sla, st.name as status_name, s.required_docs as required_docs, s.verification_type as requires_helpdesk, td.form_data, td.title, td.description,
              tf.rating,
+             EXISTS (SELECT 1 FROM ticket_assignments ta WHERE ta.ticket_id = t.id) as is_assigned_to_pegawai,
              (SELECT file_name FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_name,
              (SELECT file_url FROM ticket_attachments WHERE ticket_id = t.id AND file_url IS NOT NULL AND TRIM(file_url) != '' AND file_url != '/bast_selesai.pdf' ORDER BY uploaded_at DESC LIMIT 1) as bast_file_url,
              (SELECT COALESCE(json_agg(json_build_object('id', sub.id, 'task_name', sub.task_name, 'assigned_to_name', su.full_name, 'status', sub.status)), '[]'::json) FROM subtasks sub LEFT JOIN users su ON sub.assigned_to = su.id WHERE sub.ticket_id = t.id) as subtasks
@@ -995,6 +1020,7 @@ exports.getAdminTickets = async (req, res) => {
       JOIN ticket_statuses st ON t.status_id = st.id
       LEFT JOIN ticket_details td ON td.ticket_id = t.id
       LEFT JOIN ticket_feedback tf ON tf.ticket_id = t.id
+      WHERE t.status_id != 8 AND st.name != 'CANCELLED'
       ORDER BY last_activity_at DESC NULLS LAST, t.created_at DESC
     `);
     const mappedRows = result.rows.map(t => ({

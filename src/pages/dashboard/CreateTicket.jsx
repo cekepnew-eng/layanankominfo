@@ -257,12 +257,18 @@ export const CreateTicket = () => {
     const sn = String(t.status_name || '').toUpperCase();
     const s = String(t.status || '').toLowerCase();
     const sid = Number(t.status_id);
-    return sid === 7 || sn === 'COMPLETED' || s === 'selesai & dinilai';
+    return (
+      sid === 7 ||
+      sid === 8 ||
+      sn === 'COMPLETED' ||
+      sn === 'CANCELLED' ||
+      s === 'selesai & dinilai' ||
+      s === 'dibatalkan' ||
+      s === 'tiket dibatalkan'
+    );
   };
 
-  const activeTicket = isRegularUser
-    ? tickets.find(t => !isTicketCompleted(t))
-    : null;
+  const activeTicket = null;
 
   const handleCompleteSkm = async (t) => {
     try {

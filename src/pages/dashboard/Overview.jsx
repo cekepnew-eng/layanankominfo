@@ -304,7 +304,8 @@ export const Overview = () => {
                   : t.status_name === 'IN_PROGRESS' ? 'Diproses'
                     : t.status_name === 'WAITING_USER_CONFIRMATION' ? 'Selesai'
                       : t.status_name === 'COMPLETED' ? 'Selesai & Dinilai'
-                        : (t.status || t.status_name || '');
+                        : t.status_name === 'CANCELLED' ? 'Tiket Dibatalkan'
+                          : (t.status || t.status_name || '');
 
           return {
             ...t,

@@ -71,11 +71,12 @@ export const TicketDetailModal = ({ isOpen, onClose, ticket, onBagiTugas }) => {
               <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider block">Status Permohonan</span>
               <span className={`inline-block px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
                 ticket.status === 'Selesai' ? 'bg-emerald-100 text-emerald-800' :
+                (ticket.status === 'Dibatalkan' || ticket.status === 'Tiket Dibatalkan' || ticket.status_name === 'CANCELLED') ? 'bg-rose-100 text-rose-700 border border-rose-200' :
                 ticket.status === 'Pending' ? 'bg-amber-100 text-amber-800' :
                 ticket.status === 'Diproses' ? 'bg-sky-100 text-sky-800' :
                 'bg-slate-200 text-slate-700'
               }`}>
-                {ticket.status}
+                {(ticket.status === 'Dibatalkan' || ticket.status === 'Tiket Dibatalkan' || ticket.status_name === 'CANCELLED') ? 'Tiket Dibatalkan' : ticket.status}
               </span>
             </div>
             <div className="space-y-0.5 text-left sm:text-right">
